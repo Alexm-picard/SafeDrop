@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "serc/server.js",
+  "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
     "test": "vitest",
