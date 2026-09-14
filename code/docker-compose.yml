@@ -1,0 +1,42 @@
+# Local development stack for SafeDrop.
+#
+# From the code/ folder:
+#   docker compose up --build        # start frontend + backend
+#   docker compose up --build -V     # same, but refresh node_modules after adding a dependency
+#   docker compose down              # stop everything
+#
+# Frontend: http://localhost:5173
+# Backend:  http://localhost:4000
+#
+# The database is MongoDB Atlas (cloud), so there is no local DB container.
+#
+# AI-USAGE SUMMARY 
+# Tools: Claude Code
+# Overall AI Contribution: ~100% 
+# AI-Assisted Areas: Initial docker-compose setup
+#Notes: AI-generated code was reviewed and tested prior to commit
+
+
+name: safedrop
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "4000:4000"
+    env_file:
+      - path: .env
+        required: false   # copy .env.example to .env when you need real values
+    volumes:
+      - ./backend:/app        # bind mount so `node --watch` reloads on edits
+      - /app/node_modules     # keep the container's node_modules, not the host's
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app       # bind mount so Vite HMR picks up edits
+      - /app/node_modules
+    depends_on:
+      - backend
