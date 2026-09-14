@@ -2,10 +2,14 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "node --watch src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --watch src/server.js",
+    "test": "vitest",
+    "test-coverage": "vitest --coverage",
+    "migrate": "migrate-mongo up",
+    "migrate-down": "migrate-mongo down",
+    "migrate-create": "migrate-mongo create"
   },
   "keywords": [],
   "author": "",
@@ -16,13 +20,18 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "mongodb": "^7.6.0",
     "mongoose": "^9.10.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.5.1",
+    "@vitest/coverage-v8": "^5.0.0",
+    "migrate-mongo": "^14.0.7",
+    "supertest": "^7.2.2",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }
