@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment files (SR-11: secrets never enter source control)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker / runtime
+*.pid
