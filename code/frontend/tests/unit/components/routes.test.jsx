@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: smoke test: every route renders its heading for an ORG_ADMIN; placeholders show their ticket; AuthProvider bootstraps from /me
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
-
 /**
  * Tests for routing and session bootstrapping, against the real route table.
  *
@@ -31,7 +24,9 @@ describe('routes', () => {
     ['/requests', 'My requests', 'SCRUM-requests-list'],
     ['/admin', 'Dashboard', null],
     ['/admin/approvals', 'Approval queue', 'SCRUM-requests-approve'],
-    ['/admin/audit', 'Audit log', 'SCRUM-audit-log'],
+    // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
+    // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
+    ['/admin/audit', 'Audit log', null],
   ])('%s renders "%s" for an ORG_ADMIN', async (route, heading, ticket) => {
     renderApp(route, authenticatedState(adminUser));
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();

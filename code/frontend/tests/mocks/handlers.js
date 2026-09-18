@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: MSW fixtures and default happy-path handlers for every endpoint, plus helpers to override per test
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
-
 /**
  * The mock API: fixture data and the default MSW handlers.
  *
@@ -53,6 +46,64 @@ export const summary = {
   held: 1,
   retired: 2,
 };
+/**
+ * 30 audit events, newest first — enough to page at the UI's 25 per page.
+ *
+ * The shape matches what the real API serialises: an `id` rather than `_id`, ObjectIds flattened to
+ * strings, and a server-set `timestamp` (see models/base.js). The actions cycle so that filtering by
+ * one action returns a predictable subset rather than everything or nothing.
+ */
+export const auditEvents = Array.from({ length: 30 }, (_, i) => {
+  const actions = ['ASSET_CHECKED_OUT', 'REQUEST_APPROVED', 'ASSET_RETURNED'];
+  const action = actions[i % actions.length];
+  return {
+    id: `6aab2a45c6e457e01ac09${String(700 + i).padStart(4, '0')}`,
+    orgId: org.id,
+    actorId: adminUser.id,
+    actorRole: 'ORG_ADMIN',
+    action,
+    targetType: action === 'REQUEST_APPROVED' ? 'CheckoutRequest' : 'AssetUnit',
+    targetId: `6aab2a45c6e457e01ac09${String(800 + i).padStart(4, '0')}`,
+    before: null,
+    after: null,
+    requestId: `req-${i}`,
+    // One event per day, walking backwards from a fixed date so the order is stable.
+    timestamp: new Date(Date.UTC(2026, 8, 18) - i * 86_400_000).toISOString(),
+  };
+});
+/**
+ * Apply the audit filters and pagination the real endpoint applies.
+ *
+ * Mirroring the server here — rather than always returning the whole fixture array — is what lets a
+ * test tell a working filter from one whose parameters never leave the browser.
+ * @param {URLSearchParams} search
+ * @returns {{ items: object[], total: number, page: number, limit: number }}
+ */
+export function auditPage(search) {
+  const action = search.get('action');
+  const targetType = search.get('targetType');
+  const from = search.get('from');
+  const to = search.get('to');
+  const filtered = auditEvents.filter((e) => {
+    if (action && e.action !== action) {
+      return false;
+    }
+    if (targetType && e.targetType !== targetType) {
+      return false;
+    }
+    if (from && e.timestamp < from) {
+      return false;
+    }
+    if (to && e.timestamp > to) {
+      return false;
+    }
+    return true;
+  });
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
 /**
  * Build an error response in the API's exact envelope.
  *
@@ -135,5 +186,7 @@ export const handlers = [
   http.get('*/api/assets', () => notImplemented('SCRUM-assets-list')),
   http.get('*/api/assets/:id', () => notImplemented('SCRUM-assets-read')),
   http.get('*/api/requests', () => notImplemented('SCRUM-requests-list')),
-  http.get('*/api/audit', () => notImplemented('SCRUM-audit-log')),
+  http.get('*/api/audit', ({ request }) =>
+    HttpResponse.json(auditPage(new URL(request.url).searchParams)),
+  ),
 ];
