@@ -69,4 +69,5 @@ export const PASSWORD_MIN_LENGTH = 10;
 export const PASSWORD_MAX_BYTES = 72;
 
 export const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
-export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])?$/;
+// 1–64 chars, alphanumeric at both ends. The middle is {0,62} so two-character slugs like "bu" match.
+export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;

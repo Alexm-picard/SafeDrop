@@ -105,6 +105,21 @@ describe('POST /api/organizations (SCRUM-101)', () => {
     expect(await countAll()).toEqual({ orgs: 0, users: 0, audits: 0, tokens: 0 });
   });
 
+  it('accepts a two-character name such as "BU" and its admin can log in with slug "bu"', async () => {
+    const res = await request(app)
+      .post('/api/organizations')
+      .send({ ...valid(), orgName: 'BU' });
+    expect(res.status).toBe(201);
+    expect(res.body.organization.slug).toBe('bu');
+
+    const login = await request(app).post('/api/auth/login').send({
+      orgSlug: 'bu',
+      email: valid().adminEmail,
+      password: valid().adminPassword,
+    });
+    expect(login.status).toBe(200);
+  });
+
   it('rejects a second organisation with the same slug with 409', async () => {
     await request(app).post('/api/organizations').send(valid());
     const res = await request(app)
