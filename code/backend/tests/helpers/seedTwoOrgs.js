@@ -5,6 +5,16 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The standard test fixture: two fully populated organisations.
+ *
+ * Two, not one, and that is the point. Tenant isolation (SR-2) can only be tested against a second
+ * organisation that also has data — with a single tenant, a query missing its `orgId` filter would
+ * pass every test. Every isolation test here asks whether org A can see or touch org B.
+ *
+ * Each organisation gets one user per role, one asset with three units in different statuses, a
+ * pending checkout request and an audit event, so a test can exercise any layer without seeding more.
+ */
 import bcrypt from 'bcryptjs';
 import * as assetRepo from '../../src/repositories/asset.repository.js';
 import * as assetUnitRepo from '../../src/repositories/assetUnit.repository.js';
@@ -20,15 +30,34 @@ import {
 } from '../../src/utils/constants.js';
 import { ROLES } from '../../src/utils/permissions.js';
 
+/**
+ * The password every seeded user shares.
+ */
 export const TEST_PASSWORD = 'Correct-Horse-Battery-9';
 
 let hashPromise;
-/** Hashed once per test file at the real cost so login tests exercise the production work factor. */
+/**
+ * Hash the shared test password, once per test file.
+ *
+ * At the *real* bcrypt cost, so login tests exercise the production work factor rather than a
+ * weakened one. That is deliberately expensive — hence the memoised promise, which pays the cost once
+ * instead of once per seeded user.
+ * @returns {Promise<string>}
+ */
 export function testPasswordHash() {
   hashPromise ??= bcrypt.hash(TEST_PASSWORD, BCRYPT_COST);
   return hashPromise;
 }
 
+/**
+ * Seed one organisation with its users, asset, units, request and audit event.
+ *
+ * Names and emails are derived from `key` (`org-a`, `admin@a.test`), so the two organisations are
+ * told apart at a glance in a failing assertion. The users are created concurrently since they are
+ * independent inserts.
+ * @param {string} key short identifier, 'a' or 'b'
+ * @returns {Promise<object>} the organisation and everything seeded in it
+ */
 async function seedOrg(key) {
   const passwordHash = await testPasswordHash();
   const org = await orgRepo.create({ name: `Org ${key.toUpperCase()}`, slug: `org-${key}` });
@@ -95,8 +124,10 @@ async function seedOrg(key) {
 }
 
 /**
- * Two organisations, each with an ORG_ADMIN, APPROVER and MEMBER (all with TEST_PASSWORD), one asset
- * with three units (AVAILABLE, OUT, HELD), one pending checkout request and one audit event.
+ * Seed both organisations and return them as `{ a, b, password }`.
+ *
+ * Org A is conventionally the caller and org B the one that must remain invisible to it.
+ * @returns {Promise<{ a: object, b: object, password: string }>}
  */
 export async function seedTwoOrgs() {
   const a = await seedOrg('a');

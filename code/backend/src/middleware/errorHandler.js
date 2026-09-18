@@ -5,11 +5,34 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Chain step 10: the 404 handler and the single error handler every failure ends up in.
+ *
+ * One rule governs this file: only errors this codebase raised on purpose may speak to the client.
+ * An `AppError` carries a status, a code and a message written to be read by a user. Everything else
+ * — a Mongo duplicate-key error, a cast failure, a bug — is logged in full and answered with a
+ * generic message, because driver errors carry field names, values and query text that describe the
+ * schema to an attacker.
+ *
+ * Every response has the same shape: `{ error: { code, message, details?, requestId? } }`, so the
+ * frontend has exactly one error format to handle, and the request id lets a user's report be matched
+ * to a log line.
+ *
+ * Exports: `notFound`, `createErrorHandler(options)`, `errorHandler`.
+ */
 import { env } from '../config/env.js';
 import { isAppError, NotFoundError } from '../utils/errors.js';
 import { logger as defaultLogger } from '../utils/logger.js';
 
-/** Chain step 10a: anything that fell through every router is a 404 in the standard shape. */
+/**
+ * Turn anything that fell through every router into a 404 in the standard error shape.
+ *
+ * Mounted after all routes, so an unknown path produces the same `{ error: { code, message } }` body
+ * as any other failure rather than Express's default HTML page.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} _res
+ * @param {import('express').NextFunction} next
+ */
 export function notFound(_req, _res, next) {
   next(new NotFoundError('Route not found'));
 }
@@ -24,8 +47,15 @@ const BODY_PARSER_CODES = {
 };
 
 /**
- * Translate any thrown value into { status, code, message, details, expose }.
- * Only AppError messages are considered client-safe; everything else gets a generic message.
+ * Map any thrown value to the status, code and message the client will see.
+ *
+ * The order matters. Deliberate `AppError`s pass through with their own message. Body-parser
+ * failures get a specific but harmless code. Mongo errors are recognised (11000 duplicate key,
+ * `CastError`, Mongoose `ValidationError`) and deliberately flattened to generic text — the server
+ * knows which unique index was violated, the client is told only that something unique already
+ * exists. Anything unrecognised is a 500 with "Something went wrong".
+ * @param {unknown} err
+ * @returns {{ status: number, code: string, message: string, details?: unknown }}
  */
 function classify(err) {
   if (isAppError(err)) {
@@ -53,8 +83,20 @@ function classify(err) {
 }
 
 /**
- * Chain step 10b. Factory so tests can pin production behaviour and capture logs.
- * @param {{ isProduction?: boolean, logger?: import('../utils/logger.js').logger }} [options]
+ * Build the Express error handler.
+ *
+ * Logging is levelled by what the failure means: 5xx is `error` (our bug), 401/403/429 is `warn`
+ * (worth watching for an attack pattern), and the rest is `info` (an ordinary bad request). The
+ * full error object goes to the log; only `classify()`'s output goes to the client.
+ *
+ * If headers were already sent, the response is simply ended — the status line is long gone, and
+ * trying to write a body would throw on top of the original error.
+ *
+ * Stack traces are attached to 5xx bodies outside production only; the `isProduction` flag is a
+ * parameter rather than a direct `env` read so tests can pin production behaviour and prove the
+ * traces stay out.
+ * @param {{ isProduction?: boolean, logger?: object }} [options]
+ * @returns {import('express').ErrorRequestHandler}
  */
 export function createErrorHandler({
   isProduction = env.isProduction,

@@ -4,8 +4,19 @@
 // AI-Assisted Areas: 404 page
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * The catch-all 404 page for an unrecognised URL.
+ *
+ * Outside the authenticated layout, so it renders for signed-out visitors too — which is why it
+ * provides its own `<main>` landmark instead of relying on the shell's.
+ */
 import { Link } from 'react-router';
 import { ROUTES } from '../utils/constants';
+/**
+ * Render the not-found message with a way back to the catalogue.
+ * @returns {JSX.Element}
+ */
 export function NotFoundPage() {
   return (
     <main id="main" className="auth-page">

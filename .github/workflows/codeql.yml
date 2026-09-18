@@ -4,6 +4,15 @@
 # AI-Assisted Areas: standard CodeQL workflow for JavaScript/TypeScript (SPPP §5a SAST)
 # Human Contributions: pending team review
 # Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+#
+# Static application security testing (SPPP §5a SAST).
+#
+# GitHub's CodeQL scans the JavaScript in this repository for security defects — injection, unsafe
+# deserialisation, hard-coded credentials — and reports them in the Security tab. It runs on pushes
+# and pull requests to main, plus on a weekly schedule: the ruleset improves over time, so code that
+# was clean when merged can be flagged later without anyone touching it.
+#
+# This complements the checks in ci.yml (lint, tests, npm audit) rather than replacing them.
 
 name: CodeQL
 

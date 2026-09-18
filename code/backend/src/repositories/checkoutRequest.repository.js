@@ -5,8 +5,23 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Data access for the `checkoutrequests` collection (the borrowing workflow).
+ *
+ * Alongside the usual tenant-scoped reads, this repository owns `transition()`, the conditional
+ * write that makes the request state machine safe under concurrency.
+ *
+ * Exports: `create`, `findById`, `listForRequester`, `list`, `transition`.
+ */
 import { CheckoutRequest } from '../models/CheckoutRequest.js';
 
+/**
+ * Open a new checkout request. It starts PENDING via the schema default.
+ * @param {string} orgId
+ * @param {{ unitId: string, requesterId: string, neededFrom: Date, neededTo: Date, note?: string }} data
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document>}
+ */
 export async function create(
   orgId,
   { unitId, requesterId, neededFrom, neededTo, note },
@@ -21,10 +36,27 @@ export async function create(
   return doc;
 }
 
+/**
+ * Fetch one request by id, scoped to the tenant.
+ * @param {string} orgId
+ * @param {string} requestId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>}
+ */
 export async function findById(orgId, requestId, { session } = {}) {
   return CheckoutRequest.findOne({ _id: requestId, orgId }).session(session ?? null);
 }
 
+/**
+ * List one member's own requests, newest first — the "My requests" view.
+ *
+ * Scoped by `requesterId` as well as tenant, which is how the `requests:read:own` permission is
+ * honoured at the data layer rather than by filtering after the fact.
+ * @param {string} orgId
+ * @param {string} requesterId
+ * @param {{ page?: number, limit?: number }} [options]
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
+ */
 export async function listForRequester(orgId, requesterId, { page = 1, limit = 50 } = {}) {
   const filter = { orgId, requesterId };
   const skip = (page - 1) * limit;
@@ -35,6 +67,14 @@ export async function listForRequester(orgId, requesterId, { page = 1, limit = 5
   return { items, total, page, limit };
 }
 
+/**
+ * List every request in the organisation, newest first, optionally filtered by state.
+ *
+ * Backs the approval queue (`state=PENDING`), so it is reachable only with `requests:decide`.
+ * @param {string} orgId
+ * @param {{ state?: string, page?: number, limit?: number }} [query]
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
+ */
 export async function list(orgId, { state, page = 1, limit = 50 } = {}) {
   const filter = { orgId };
   if (state) {
@@ -49,8 +89,17 @@ export async function list(orgId, { state, page = 1, limit = 50 } = {}) {
 }
 
 /**
- * Apply a state transition. The caller (checkout.service) has already validated the transition;
- * `expectedState` makes the write conditional so two concurrent decisions cannot both succeed.
+ * Apply a state transition as a single conditional write.
+ *
+ * `expectedState` is part of the filter, so the update is a compare-and-set: two approvers clicking
+ * at the same moment cannot both succeed, because the second no longer matches the state it expected
+ * and gets `null` back. Validating the transition first (in checkout.service) and then writing
+ * unconditionally would leave exactly that race open.
+ * @param {string} orgId
+ * @param {string} requestId
+ * @param {{ expectedState: string, patch: Record<string, unknown> }} change the state required before the write, and the fields to set
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>} the updated request, or null if it had already moved on
  */
 export async function transition(orgId, requestId, { expectedState, patch }, { session } = {}) {
   return CheckoutRequest.findOneAndUpdate(

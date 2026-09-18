@@ -5,6 +5,22 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Reusable Zod pieces that route schemas are built from.
+ *
+ * Sharing these keeps one definition of what a valid id, email, password or page number is, so two
+ * routes cannot disagree about it — and a rule that changes (a longer minimum password, say) changes
+ * in one place.
+ *
+ * The validation rules here encode real constraints rather than taste: `objectId` matches what
+ * MongoDB will accept so a malformed id is a 400 rather than a cast error deeper in; `password` caps
+ * at 72 *bytes* because bcrypt silently ignores anything beyond that, and silently ignoring part of a
+ * password is worse than refusing it; `pagination` caps `limit` so a client cannot ask for an
+ * unbounded page.
+ *
+ * Exports: `objectId`, `idParams`, `email`, `personName`, `orgName`, `orgSlug`, `password`,
+ * `pagination`, `emptyBody`.
+ */
 import { z } from 'zod';
 import { slugify } from '../utils/slug.js';
 import {

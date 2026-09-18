@@ -4,5 +4,13 @@
 // AI-Assisted Areas: auth context object and its value shape (kept out of the .tsx so react-refresh only sees components there)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * The auth React context object, on its own.
+ *
+ * Separated from AuthContext.jsx because Vite's fast refresh only preserves component state when a
+ * module exports components exclusively. Keeping the context here lets the provider file export just
+ * its component, and lets `useAuth` import the context without pulling in the provider.
+ */
 import { createContext } from 'react';
 export const AuthContext = createContext(null);

@@ -4,6 +4,18 @@
 // AI-Assisted Areas: smoke test: every route renders its heading for an ORG_ADMIN; placeholders show their ticket; AuthProvider bootstraps from /me
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for routing and session bootstrapping, against the real route table.
+ *
+ * Covers what only an end-to-end mount can show: a MEMBER is bounced from `/admin` to the catalogue
+ * with a notice, unknown paths render the 404 page, and `AuthProvider` establishes the session from
+ * `GET /api/auth/me` on load.
+ *
+ * The two expiry tests matter most. A 401 from `/me` (after a failed refresh) must land on the login
+ * page, and a session that dies *mid-use* must do the same — that second case is the `expired` event
+ * from services/api.js travelling to AuthProvider, which no smaller test exercises.
+ */
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';

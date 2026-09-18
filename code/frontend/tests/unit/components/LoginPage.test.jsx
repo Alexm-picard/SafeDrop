@@ -4,6 +4,15 @@
 // AI-Assisted Areas: LoginPage tests: submit, 401 error, redirect on success (MSW), redirect back to the page the user came from
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the login page.
+ *
+ * Covers the accessible form structure, the failure paths (a 401 keeps the user on the page with the
+ * API's message; an unreachable API shows a generic one), and the navigation rules: a successful
+ * login goes to the catalogue, or back to the protected page the user was originally sent from, and
+ * an already-authenticated visitor is redirected away from the form.
+ */
 import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -11,6 +20,15 @@ import { describe, expect, it } from 'vitest';
 import { adminUser, errorResponse, meHandler } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { anonymousState, renderApp } from '../../utils/render';
+/**
+ * Fill in the three login fields and submit.
+ *
+ * Drives the form through user-event — real typing and clicking rather than direct state changes —
+ * so the test exercises what a user actually does, including the disabled-while-pending button.
+ * @param {object} user a user-event instance
+ * @param {string} password the password to type
+ * @returns {Promise<void>}
+ */
 async function fillAndSubmit(user, password) {
   await user.type(screen.getByLabelText('Organization'), 'acme-robotics');
   await user.type(screen.getByLabelText('Email'), 'ada@acme.test');

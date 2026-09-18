@@ -5,6 +5,14 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Chain step 4: brute-force protection for the authentication endpoints.
+ *
+ * Only the auth routes are limited — the rest of the API is already behind a session — and only
+ * *failed* attempts are counted, so a user working normally never approaches the limit while someone
+ * guessing passwords does. The counter lives in memory, which is correct for a single instance and
+ * the known limitation to revisit if the API is ever scaled out (a shared store would be needed).
+ */
 import { MemoryStore, rateLimit } from 'express-rate-limit';
 import { env } from '../config/env.js';
 import { RateLimitError } from '../utils/errors.js';
@@ -12,9 +20,17 @@ import { RateLimitError } from '../utils/errors.js';
 export const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 
 /**
- * Brute-force protection for the auth endpoints. Counts failed attempts per client IP; successful
- * logins/refreshes do not count, and GET /api/auth/me is skipped so page loads never trip it.
+ * Build the auth rate limiter: at most `limit` failed attempts per IP per window.
+ *
+ * `skipSuccessfulRequests` is what makes the limit target guessing rather than usage — a successful
+ * login or refresh is not counted at all. GET and OPTIONS are skipped too, so `GET /api/auth/me`
+ * firing on every page load can never exhaust the budget. Hitting the limit produces the API's own
+ * `RateLimitError` (429) so the response matches every other error in shape.
+ *
+ * The store is exposed through a `reset()` on the returned limiter because tests share one process
+ * and would otherwise inherit each other's counters.
  * @param {{ limit?: number, windowMs?: number }} [options]
+ * @returns {import('express').RequestHandler & { reset: () => void }}
  */
 export function createAuthRateLimiter({
   limit = env.RATE_LIMIT_AUTH_MAX,
@@ -40,7 +56,13 @@ export function createAuthRateLimiter({
 
 export const authRateLimiter = createAuthRateLimiter();
 
-/** Test helper: clear all counters of the shared limiter. */
+/**
+ * Clear every counter of the shared limiter.
+ *
+ * Test-only helper. Without it, a test that exercises failed logins would leave the limiter tripped
+ * for whatever runs next in the same process.
+ * @returns {void}
+ */
 export function resetAuthRateLimiter() {
   authRateLimiter.reset();
 }

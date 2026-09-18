@@ -5,6 +5,19 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Security tests for deny-by-default across the whole route table (SDD §6.4, SR-1).
+ *
+ * This suite proves the invariant rather than sampling it. It walks the *live* Express router stack,
+ * asserts that every `/api` route declares a permission and that exactly three routes are public, then
+ * exercises each protected route to confirm it actually refuses an unauthorized caller.
+ *
+ * It also attacks the mechanism itself: routes registered without `defineRoute()`, a plain
+ * `router.use()` handler inside a resource router, a mounted sub-app, a RegExp path, a tenant id in a
+ * URL. Each must be refused at boot. The last few tests then bypass the boot assertion deliberately to
+ * show the runtime gate still refuses a handler that slipped through — the two layers are tested
+ * separately because each is meant to hold on its own.
+ */
 import express from 'express';
 import mongoose from 'mongoose';
 import request from 'supertest';
@@ -33,7 +46,17 @@ const withId = (path) => path.replace(':id', new mongoose.Types.ObjectId().toStr
 const send = (method, path) =>
   request(app)[method.toLowerCase()](path).set('Content-Type', 'application/json');
 
-/** Register something rogue on the real assets router, run `fn`, then undo it. */
+/**
+ * Temporarily register something rogue on the real assets router, run `fn`, then undo it.
+ *
+ * The tests here have to attack the *real* route table — a copy would prove nothing about the app
+ * that actually serves traffic — so the router is mutated in place and the stack truncated back to
+ * its original length in a `finally`. Without that restore, a leaked rogue handler would fail every
+ * later test in the file for an unrelated reason.
+ * @param {(router: import('express').Router) => void} register adds the offending route or middleware
+ * @param {() => Promise<void>} fn the assertions to run while it is registered
+ * @returns {Promise<void>}
+ */
 async function withRogue(register, fn) {
   const before = assetsRouter.stack.length;
   register(assetsRouter);

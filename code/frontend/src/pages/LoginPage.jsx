@@ -4,11 +4,40 @@
 // AI-Assisted Areas: working login form (org slug + email + password), API error display, redirect after success (SCRUM-102)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * The sign-in screen.
+ *
+ * Collects the three things a SafeDrop login needs — organisation slug, email and password — because
+ * email is unique per organisation (OD-3), so the slug is what selects the tenant to authenticate
+ * against.
+ *
+ * The form is deliberately plain HTML with `noValidate`: the browser's own validation bubbles are
+ * inconsistent and hard to make accessible, so the API's answer is the single source of truth about
+ * what was wrong.
+ */
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { errorMessage } from '../services/api';
 import { APP_NAME, ROUTES } from '../utils/constants';
+/**
+ * Render the login form and sign the user in.
+ *
+ * An already-authenticated visitor is redirected instead of shown the form, to wherever they were
+ * headed before `RequireAuth` intercepted them (`location.state.from`), falling back to the home
+ * page.
+ *
+ * On submit, the slug is lowercased and the email trimmed — the API normalises both, and doing it
+ * here means a stray capital or trailing space never reads as a failed login. The password is sent
+ * exactly as typed, since trimming it would silently change a legitimate credential.
+ *
+ * Failures show the API's message verbatim; it is deliberately the same for a wrong organisation, an
+ * unknown email and a wrong password, so the screen cannot reveal which accounts exist. `pending`
+ * disables the button to stop double submission, and is cleared in `finally` so the form stays usable
+ * after a failure.
+ * @returns {JSX.Element}
+ */
 export function LoginPage() {
   const { status, login } = useAuth();
   const navigate = useNavigate();

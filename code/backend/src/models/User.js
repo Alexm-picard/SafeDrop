@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The `users` collection: a person within one organisation (SDD §2.4).
+ *
+ * A user belongs to exactly one organisation and holds exactly one role, which is the input to every
+ * authorization decision (see utils/permissions.js). Email is stored lowercase and is unique *per
+ * organisation* rather than globally (OD-3) — the uniqueness index is `{ orgId, email }` and lives in
+ * migrations/ — which is why the same address can exist in two tenants and why login needs an org
+ * slug to disambiguate.
+ *
+ * `passwordHash` is `select: false`, so it is absent from query results unless a repository asks for
+ * it by name; only the login path does.
+ */
 import mongoose from 'mongoose';
 import { ROLE_LIST, ROLES } from '../utils/permissions.js';
 import { createSchema, orgIdField } from './base.js';

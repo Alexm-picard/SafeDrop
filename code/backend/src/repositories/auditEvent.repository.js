@@ -8,6 +8,15 @@
 // There is deliberately no update or delete function here, and no route exposes one. The model
 // additionally throws on every mutating Mongoose operation (see models/AuditEvent.js).
 
+/**
+ * Data access for the `auditevents` collection — append and read, nothing else (SR-8).
+ *
+ * The missing functions are the point: there is no update and no delete here, and no route exposes
+ * one, so the only way an audit row can change is through code that does not exist. models/AuditEvent.js
+ * backs that up by throwing on every mutating Mongoose operation.
+ *
+ * Exports: `append(orgId, event, options)`, `query(orgId, filters)`.
+ */
 import mongoose from 'mongoose';
 import { AuditEvent } from '../models/AuditEvent.js';
 
@@ -39,9 +48,19 @@ export async function append(orgId, event, { session } = {}) {
 }
 
 /**
- * Newest-first, paginated, tenant-scoped query.
+ * Read the audit trail for one tenant, newest first and paginated.
+ *
+ * Every filter is optional and only applied when present, so the same function serves the full log
+ * and a narrow "what happened to this request" view. The sort is `timestamp` then `_id`, which keeps
+ * the order stable across pages when several events share a timestamp — without the tiebreak, a row
+ * can appear on two pages or on none.
+ *
+ * The date range is wrapped in `mongoose.trusted()` because `sanitizeFilter` is on globally: it
+ * strips query operators out of filter *values* to defeat injection, so operators the server builds
+ * itself must be marked as ours.
  * @param {string} orgId
  * @param {{ targetType?: string, targetId?: string, actorId?: string, action?: string, from?: Date, to?: Date, page?: number, limit?: number }} [filters]
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export async function query(
   orgId,

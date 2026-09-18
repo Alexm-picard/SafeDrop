@@ -4,6 +4,13 @@
 // AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the application shell.
+ *
+ * Covers the accessibility structure — landmarks, the skip link, the signed-in user's details — and
+ * signing out, which must both end the session and navigate to `/login`.
+ */
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +19,14 @@ import { adminUser, approverUser, memberUser } from '../../mocks/handlers';
 import { renderWithAuth } from '../../utils/render';
 const Page = () => <h1>Page</h1>;
 const Login = () => <h1>Login</h1>;
+/**
+ * Render the Layout for a given user, with a `/login` destination registered.
+ *
+ * The extra route exists so the sign-out test can assert on where it landed rather than only on the
+ * router's internal state.
+ * @param {object} user
+ * @returns {{ router: object, value: object } & import('@testing-library/react').RenderResult}
+ */
 function renderLayout(user) {
   return renderWithAuth(<Page />, {
     user,

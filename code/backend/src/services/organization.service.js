@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Organisation lifecycle and user administration.
+ *
+ * The implemented half is `createOrganization()`, the system's bootstrap: it creates a tenant, its
+ * first ORG_ADMIN, the ORG_CREATED audit event and the admin's session, all in one transaction. The
+ * user-management half is Sprint 1 stubs — the routes, permissions and audit obligations are settled,
+ * the behaviour belongs to later tickets.
+ *
+ * Exports: `createOrganization`, `listUsers` (stub), `inviteUser` (stub), `changeUserRole` (stub), and
+ * a re-export of `slugify`.
+ */
 import { withTransaction } from '../config/db.js';
 import * as orgRepo from '../repositories/organization.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
@@ -18,10 +29,26 @@ import { hashPassword, publicUser, startSession } from './auth.service.js';
 export { slugify };
 
 /**
- * POST /api/organizations (SCRUM-101). Creates the organisation and its first ORG_ADMIN and appends
- * the ORG_CREATED audit event, all inside one transaction (OD-2): a failure anywhere creates nothing.
- * Also starts the admin's session so the SPA can go straight to the dashboard.
+ * Create an organisation with its first administrator (`POST /api/organizations`, SCRUM-101).
+ *
+ * This is the one route that creates a privileged account without a privileged caller, so everything
+ * about it is deliberate. The slug is derived from the name and must survive slugification — a name
+ * of nothing but punctuation is a 400. An existing slug is a 409 before any work is done, though the
+ * unique index remains the real guarantee against two concurrent creations.
+ *
+ * The password is hashed *outside* the transaction: bcrypt at cost 12 takes appreciable time, and
+ * holding a MongoDB transaction open across it would lock rows for no reason.
+ *
+ * Inside the transaction the organisation, the admin, the ORG_CREATED audit event and the admin's
+ * session are created together (OD-2), so a failure at any step leaves no half-built tenant — no
+ * organisation without an admin, no admin without an audit record.
+ *
+ * The session is started here, rather than making the new admin log in, so the SPA can go straight
+ * to the dashboard.
  * @param {{ orgName: string, adminName: string, adminEmail: string, adminPassword: string, requestId?: string }} input
+ * @returns {Promise<{ organization: object, user: object, accessToken: string, accessExpiresAt: Date, refreshToken: string, refreshExpiresAt: Date, refreshTokenId: string }>}
+ * @throws {ValidationError} (400) when the name yields an empty slug
+ * @throws {ConflictError} (409) when the slug is taken
  */
 export async function createOrganization({
   orgName,
@@ -79,23 +106,46 @@ export async function createOrganization({
 
 // ---- User management (Sprint 1 stubs) -----------------------------------------------------------
 
-/** GET /api/users — TODO(SCRUM-users-list): ORG_ADMIN lists members of their own org only. */
+/**
+ * List the organisation's members (`GET /api/users`) — not implemented yet.
+ *
+ * TODO(SCRUM-users-list): an ORG_ADMIN lists members of their own organisation only, paginated via
+ * `userRepo.list()`.
+ * @param {string} _orgId
+ * @param {object} _query
+ * @throws {NotImplementedError} (501) until the ticket is delivered
+ */
 export async function listUsers(_orgId, _query) {
   throw new NotImplementedError('SCRUM-users-list', 'User listing is not implemented yet');
 }
 
 /**
- * POST /api/users/invite — TODO(SCRUM-users-invite): ORG_ADMIN invites by email; creates the user
- * in the admin's org (OD-3) and appends USER_INVITED in the same transaction.
+ * Invite a new member (`POST /api/users/invite`) — not implemented yet.
+ *
+ * TODO(SCRUM-users-invite): create the user in the *admin's own* organisation (never one named by
+ * the request — OD-3, SR-2) and append USER_INVITED in the same transaction.
+ * @param {string} _orgId
+ * @param {object} _actor
+ * @param {object} _input
+ * @throws {NotImplementedError} (501) until the ticket is delivered
  */
 export async function inviteUser(_orgId, _actor, _input) {
   throw new NotImplementedError('SCRUM-users-invite', 'User invitation is not implemented yet');
 }
 
 /**
- * PATCH /api/users/:id/role — TODO(SCRUM-users-role): re-read the actor's role from the DB (not the
- * token) via userRepo.findRole before allowing the change (SDD §6.2); append USER_ROLE_CHANGED with
- * before/after in the same transaction; an admin cannot demote the last ORG_ADMIN.
+ * Change a member's role (`PATCH /api/users/:id/role`) — not implemented yet.
+ *
+ * TODO(SCRUM-users-role). Three requirements the implementation must meet:
+ *  - re-read the *actor's* role from the database with `userRepo.findRole()` rather than trusting the
+ *    token, so a just-demoted admin cannot use an old token to promote themselves (SDD §6.2);
+ *  - append USER_ROLE_CHANGED with before/after in the same transaction;
+ *  - refuse to demote the last ORG_ADMIN, which would leave the organisation unadministrable.
+ * @param {string} _orgId
+ * @param {object} _actor
+ * @param {string} _userId
+ * @param {string} _role
+ * @throws {NotImplementedError} (501) until the ticket is delivered
  */
 export async function changeUserRole(_orgId, _actor, _userId, _role) {
   throw new NotImplementedError('SCRUM-users-role', 'Role changes are not implemented yet');

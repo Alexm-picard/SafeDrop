@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Vitest configuration for the frontend (SPPP §6a/§6d).
+ *
+ * Runs component tests in jsdom with React Testing Library and MSW, wired up by `tests/setup.js`.
+ * Mocking at the network layer rather than mocking the API client means the tests exercise the real
+ * request building, error parsing and refresh-retry logic in services/api.js.
+ *
+ * `css: false` skips stylesheet processing, which the assertions never look at.
+ *
+ * Coverage is gated at 80% of lines. `main.jsx` is excluded as the DOM mount point and `types/` as
+ * pure JSDoc with no runtime code — both would only dilute the figure.
+ */
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 

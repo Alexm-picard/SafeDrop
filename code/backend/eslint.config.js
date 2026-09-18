@@ -5,16 +5,33 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * ESLint configuration for the backend.
+ *
+ * Beyond ordinary style rules, this config enforces the layering from SDD §2.3.2 as a lint error, so
+ * an import that breaks the architecture fails CI rather than being caught in review — or not at all.
+ *
+ * ESLint 9 is pinned deliberately: jsx-a11y and typescript-eslint 8 do not support ESLint 10 yet.
+ */
 import js from '@eslint/js';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
 /**
- * Layering rule (SDD §2.3.2): routes → controllers → services → repositories → models.
- * Lower layers never import higher ones. Controllers never import Mongoose. Services never touch express.
- * Implemented with core `no-restricted-imports` so no extra plugin is needed; patterns match the import
- * specifier string, so `../models/User.js` is caught by `**\/models/**`.
+ * Build a config block forbidding one layer from importing another.
+ *
+ * The layering is routes → controllers → services → repositories → models, and lower layers never
+ * import higher ones: controllers never import Mongoose, services never touch Express. Encoding that
+ * here means the rule is checkable rather than a convention people remember.
+ *
+ * Implemented with core `no-restricted-imports` so no extra plugin is needed. The patterns match the
+ * import *specifier string*, which is why `../models/User.js` is caught by a `**` + `/models/**`
+ * pattern rather than by a resolved path.
+ * @param {string[]} files glob patterns for the layer being constrained
+ * @param {string[]} patterns import specifier globs it may not use
+ * @param {string} message the explanation shown when the rule fires
+ * @returns {object} an ESLint flat-config block
  */
 const layer = (files, patterns, message) => ({
   files,

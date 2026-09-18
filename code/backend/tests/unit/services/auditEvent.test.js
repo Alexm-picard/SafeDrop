@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for audit-event immutability (SR-8).
+ *
+ * The audit trail is only evidence if it cannot be rewritten, so this suite goes through every way one
+ * might try. The repository exposes only `append()` and `query()`; re-saving an existing document is
+ * rejected; unknown fields are refused; a client-supplied timestamp is overwritten on both `create()`
+ * and `insertMany()`; and an aggregation with `$out` or `$merge` is refused while read-only
+ * aggregations still work.
+ *
+ * That last one is easy to miss — a writing aggregation could rewrite the whole collection without
+ * triggering any update or delete hook.
+ */
 import mongoose from 'mongoose';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AuditEvent, AuditImmutabilityError } from '../../../src/models/AuditEvent.js';

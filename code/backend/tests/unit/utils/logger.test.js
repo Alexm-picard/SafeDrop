@@ -5,6 +5,12 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the logger.
+ *
+ * Covers the level threshold — lines below the configured level are not written at all — and child
+ * bindings, which are how a request id reaches every line produced while handling one request.
+ */
 import { describe, expect, it } from 'vitest';
 import { createLogger } from '../../../src/utils/logger.js';
 

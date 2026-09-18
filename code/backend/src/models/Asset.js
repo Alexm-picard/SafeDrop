@@ -5,6 +5,16 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The `assets` collection: a *kind* of item the organisation lends out (SDD §2.4).
+ *
+ * An Asset is the catalogue entry — "Dell XPS 15", "Canon EOS R6" — not a physical object. The
+ * individual objects are AssetUnit documents pointing back at it, which is what lets several
+ * identical items be tracked and checked out independently.
+ *
+ * Retirement is a soft delete: `retiredAt` is stamped rather than the row removed, so historical
+ * requests and audit events still resolve to a real asset.
+ */
 import mongoose from 'mongoose';
 import { createSchema, orgIdField } from './base.js';
 

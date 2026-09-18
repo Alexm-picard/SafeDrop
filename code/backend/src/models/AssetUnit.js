@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The `assetunits` collection: one physical, individually trackable object (SDD §2.4).
+ *
+ * A unit is what a member actually receives — a specific laptop, identified by the `tag` on its
+ * sticker. It points at the Asset describing what kind of thing it is, and carries the `status` that
+ * the checkout flow moves through AVAILABLE → HELD → OUT → AVAILABLE.
+ *
+ * `status` is the unit's own lifecycle and is distinct from a request's `state`: approving a request
+ * holds a unit, checking out sends it out, returning it makes it available again. `tag` is unique per
+ * organisation (index in migrations/).
+ */
 import mongoose from 'mongoose';
 import {
   ASSET_CONDITION,

@@ -4,6 +4,17 @@
 // AI-Assisted Areas: ErrorState, LoadingState, DataTable, TicketPlaceholder, NotFoundPage tests
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the shared presentational components.
+ *
+ * Mostly accessibility contracts: LoadingState is a polite live region, ErrorState is an alert
+ * carrying the message, code, request id, ticket and retry, and DataTable renders a real table with a
+ * caption and column headers, or an empty message with no table at all.
+ *
+ * ErrorState is also given a plain Error and a non-Error value, since it must never render
+ * "undefined" whatever it is handed.
+ */
 import { render, screen } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';

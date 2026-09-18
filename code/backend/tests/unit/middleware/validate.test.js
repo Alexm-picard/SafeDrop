@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the validation middleware (SR-6).
+ *
+ * Covers the two rules the middleware exists to enforce. *Routes accept only what they declare*:
+ * unknown keys are a 400 — including inside optional and nullable schemas — a location with no schema
+ * accepts nothing, and a nested non-strict object is refused at boot rather than at request time.
+ * *Nothing containing a Mongo operator gets through*: `{"$ne": null}` is rejected even where a string
+ * is expected, and an operator key nested anywhere fails before the schema runs at all.
+ *
+ * The Express 5 query getter is also pinned here: the parsed value must actually shadow it, or the
+ * unvalidated query would survive.
+ */
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { assertNoMongoOperators, validate } from '../../../src/middleware/validate.js';

@@ -4,6 +4,17 @@
 // AI-Assisted Areas: RequireRole renders children for allowed roles and redirects otherwise; RequireAuth handles loading/anonymous/authenticated
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the route guards.
+ *
+ * `RequireRole`: the right roles get through, the wrong ones and a missing role are redirected home
+ * with the denial notice.
+ *
+ * `RequireAuth`: the `loading` state must render a loading indicator rather than a redirect — treating
+ * an unresolved session as "signed out" would bounce an authenticated user to the login page on every
+ * page refresh — and an anonymous user is redirected with the attempted path remembered.
+ */
 import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { RequireAuth } from '../../../src/components/RequireAuth';

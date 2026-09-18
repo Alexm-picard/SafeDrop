@@ -8,6 +8,21 @@
 // Reference these from JSDoc, e.g. `/** @type {import('../types/api').User} */`.
 // Converting the SPA to TypeScript (Iteration 3 optional item) turns these into real types.
 
+/**
+ * JSDoc typedefs for every shape the API returns.
+ *
+ * The frontend is plain JavaScript for Iteration 1 (SPPP §3), so these stand in for TypeScript
+ * interfaces: editors and `checkJs` read them, and they document the contract between the SPA and the
+ * API in one place. Reference them from a JSDoc `@type` annotation, as the header comment above
+ * shows.
+ *
+ * They must match what the backend actually sends — `publicUser()` in services/auth.service.js and the
+ * repositories' list shapes. Converting the SPA to TypeScript (the Iteration 3 optional item) turns
+ * these into real types with no rewriting.
+ *
+ * The file exports nothing at runtime; it exists only for its types.
+ */
+
 /** @typedef {'MEMBER' | 'APPROVER' | 'ORG_ADMIN'} Role */
 
 /**

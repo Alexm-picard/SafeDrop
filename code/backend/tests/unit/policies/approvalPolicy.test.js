@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the Iteration 1 approval policy.
+ *
+ * The central rule is separation of duties: a requester cannot decide their own request, *even as
+ * ORG_ADMIN*. A role that lacks `requests:decide` cannot decide at all, and unknown roles or a missing
+ * actor are denied rather than defaulted.
+ *
+ * One test compares an ObjectId against a string id, because that is what actually happens in
+ * production — the request carries a Mongoose id and the actor's comes from a token — and a strict
+ * comparison there would silently let a requester approve their own request.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   getPolicy,

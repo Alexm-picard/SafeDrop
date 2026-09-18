@@ -5,6 +5,22 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * ESLint configuration for the frontend.
+ *
+ * Alongside the React and hooks rules, three project-specific constraints are enforced here as lint
+ * errors:
+ *
+ *  - **jsx-a11y** (NFR-12), so accessibility regressions fail the build rather than waiting for a
+ *    manual audit;
+ *  - **`dangerouslySetInnerHTML` is banned**, which removes the SPA's most direct route to an XSS;
+ *  - **`fetch` only in `src/services/`** (SDD §2.3.1), which is what guarantees that every API call
+ *    goes through the client with its cookie handling, error typing and refresh logic.
+ *
+ * `eslint-plugin-react` is included because the frontend is plain JavaScript: without the TypeScript
+ * parser, core ESLint does not see JSX usage, so `jsx-uses-vars` and `jsx-key` are needed to avoid
+ * false "unused variable" reports and to catch missing list keys.
+ */
 import js from '@eslint/js';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';

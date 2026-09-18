@@ -4,6 +4,15 @@
 // AI-Assisted Areas: OrgSetupPage tests: field-level API errors, success adopts the session and lands on the dashboard (SCRUM-101)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the organisation setup page.
+ *
+ * The distinction under test is how two kinds of failure are presented: a 400 with field details puts
+ * each message beside its own input, while a 409 conflict becomes one message at the top of the form.
+ * The success path checks that the returned session is adopted directly and the admin lands on the
+ * dashboard without a second round trip.
+ */
 import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http } from 'msw';
@@ -11,6 +20,12 @@ import { describe, expect, it } from 'vitest';
 import { errorResponse } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { anonymousState, renderApp } from '../../utils/render';
+/**
+ * Fill in the four setup fields and submit.
+ * @param {object} user a user-event instance
+ * @param {string} password the password to type
+ * @returns {Promise<void>}
+ */
 async function fill(user, password) {
   await user.type(screen.getByLabelText('Organization name'), 'Acme Robotics');
   await user.type(screen.getByLabelText('Your name'), 'Ada');

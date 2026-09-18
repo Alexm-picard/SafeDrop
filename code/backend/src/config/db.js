@@ -5,6 +5,20 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * MongoDB connection lifecycle and global Mongoose configuration.
+ *
+ * Every process that talks to MongoDB (the API server, migrations, the test harness) goes through
+ * this module so that the security-relevant Mongoose settings are applied in exactly one place.
+ * It owns three concerns: the one-time global configuration, opening/closing the connection, and
+ * running a unit of work inside a transaction.
+ *
+ * Exports:
+ *  - `configureMongoose()` — apply the global settings once (idempotent).
+ *  - `connectDb(uri, options)` — configure, then connect, and return the connection.
+ *  - `disconnectDb()` — close the connection.
+ *  - `withTransaction(fn)` — run `fn` inside a MongoDB transaction.
+ */
 import mongoose from 'mongoose';
 
 let configured = false;
@@ -38,6 +52,13 @@ export async function connectDb(uri, options = {}) {
   return mongoose.connection;
 }
 
+/**
+ * Close the Mongoose connection and every pooled socket.
+ *
+ * Called by the server's shutdown handler and by the test teardown; leaving the pool open keeps
+ * the Node process alive, so a missing call here shows up as a test run that never exits.
+ * @returns {Promise<void>}
+ */
 export async function disconnectDb() {
   await mongoose.disconnect();
 }

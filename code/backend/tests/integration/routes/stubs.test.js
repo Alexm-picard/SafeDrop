@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Integration tests for the Sprint 1 stubs, and the specification of what replaces them.
+ *
+ * Two halves. The first proves that every stubbed route is real: it authenticates, authorizes and
+ * validates, then answers 501 with its owning ticket — and that validation still runs *before* the
+ * stub, so bad input is a 400 rather than a 501. That is what makes the route surface testable now.
+ *
+ * The second half is a list of `it()` calls with no body: Vitest reports them as todo, so the
+ * acceptance criteria agreed during design are recorded as pending tests rather than as prose that
+ * can drift. Implementing a ticket means giving its todo a body.
+ */
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';

@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Integration tests for the session endpoints (SDD §6.2, SR-3, SR-4).
+ *
+ * The most security-sensitive suite in the project. It covers login (cookie attributes, the identical
+ * 401 for every kind of wrong credential, per-organisation email uniqueness, rate limiting), `GET /me`
+ * (including tampered, expired and `alg:none` tokens), and refresh-token rotation.
+ *
+ * The rotation tests are the heart of it: a rotated token reused outside the grace window must revoke
+ * the entire family, the same reuse inside the window must not, and two concurrent refreshes with one
+ * token must leave exactly one winner and a surviving family. Those three cases are why the raw
+ * `refreshtokens` collection is read directly — the invariants are about stored rows, not responses.
+ */
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import request from 'supertest';

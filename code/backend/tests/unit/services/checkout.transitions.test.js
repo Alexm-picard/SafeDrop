@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the checkout state machine (arch review F4).
+ *
+ * Tests the table as a whole rather than case by case: every state appears exactly once as a source,
+ * the allowed moves are exactly the ones the SDD lists, terminal states have no outgoing transitions,
+ * and the table is frozen.
+ *
+ * The prototype-key tests are the security-relevant ones. A state string reaching the machine from
+ * client input must not resolve `constructor` or `__proto__` to something truthy — with plain property
+ * lookups it would, producing a "legal" transition that was never in the table.
+ */
 import { describe, expect, it } from 'vitest';
 import * as checkout from '../../../src/services/checkout.service.js';
 import { REQUEST_STATE_LIST, UNIT_STATUS } from '../../../src/utils/constants.js';

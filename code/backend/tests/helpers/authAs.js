@@ -5,13 +5,26 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Test helpers for authenticating requests and reading cookies back.
+ *
+ * Two ways to get an authenticated request. `accessCookieFor()` signs a token directly, which is fast
+ * and lets a test choose the TTL or the role; `loginAs()` goes through the real login endpoint, which
+ * is what a test of the login flow itself needs. Everything else here is for asserting on the
+ * `Set-Cookie` headers the API returns.
+ */
 import request from 'supertest';
 import { ACCESS_COOKIE, REFRESH_COOKIE, signAccessToken } from '../../src/utils/tokens.js';
 
 /**
- * Cookie header value carrying a freshly signed access token for a seeded user document.
+ * Build a Cookie header carrying a freshly signed access token for a seeded user.
+ *
+ * Skips the login round trip, so a test about authorization does not spend bcrypt time proving
+ * authentication again. Accepts either `id` or `_id`, so it takes a Mongoose document or a plain
+ * object. `ttl` lets a test mint a nearly-expired token to exercise expiry handling.
  * @param {{ id?: string, _id?: unknown, orgId: unknown, role: string }} user
  * @param {{ ttl?: string }} [options]
+ * @returns {string} a `Cookie` header value
  */
 export function accessCookieFor(user, { ttl } = {}) {
   const userId = String(user.id ?? user._id);
@@ -22,7 +35,15 @@ export function accessCookieFor(user, { ttl } = {}) {
   return `${ACCESS_COOKIE}=${token}`;
 }
 
-/** Parse Set-Cookie headers into { name: { value, attributes } }. */
+/**
+ * Parse a response's `Set-Cookie` headers into `{ name: { value, attributes } }`.
+ *
+ * The attributes are what several security tests assert on — `HttpOnly`, `SameSite`, `Path`,
+ * `Max-Age` — so they are kept rather than discarded, lowercased for stable lookup, with valueless
+ * flags recorded as `true`.
+ * @param {import('supertest').Response} res
+ * @returns {Record<string, { value: string, attributes: Record<string, string|true> }>}
+ */
 export function parseSetCookies(res) {
   const raw = res.headers['set-cookie'] ?? [];
   const out = {};
@@ -41,7 +62,15 @@ export function parseSetCookies(res) {
   return out;
 }
 
-/** Build a Cookie request header from a response's Set-Cookie (skips cleared cookies). */
+/**
+ * Turn a response's `Set-Cookie` headers into a `Cookie` header for the next request.
+ *
+ * Cleared cookies (empty value) are filtered out, which is what makes this behave like a browser:
+ * after logout, the resulting header carries no session, so a follow-up request is genuinely
+ * unauthenticated.
+ * @param {import('supertest').Response} res
+ * @returns {string} a `Cookie` header value
+ */
 export function cookieHeaderFrom(res) {
   const cookies = parseSetCookies(res);
   return Object.entries(cookies)
@@ -50,7 +79,17 @@ export function cookieHeaderFrom(res) {
     .join('; ');
 }
 
-/** Real login through the API. Returns the response and a ready-to-use Cookie header. */
+/**
+ * Log in through the real API and return everything a test might assert on.
+ *
+ * Unlike `accessCookieFor`, this exercises the whole login path — password verification, session
+ * creation, cookie attributes — so it is what tests of authentication itself use. The response is
+ * returned alongside the cookies so a caller can assert on the status and body too, and the access
+ * and refresh cookies are exposed separately for tests that need to present exactly one of them.
+ * @param {import('express').Application} app
+ * @param {{ orgSlug: string, email: string, password: string }} credentials
+ * @returns {Promise<{ res: object, cookies: object, cookieHeader: string, accessCookie: string|null, refreshCookie: string|null }>}
+ */
 export async function loginAs(app, { orgSlug, email, password }) {
   const res = await request(app).post('/api/auth/login').send({ orgSlug, email, password });
   const cookies = parseSetCookies(res);

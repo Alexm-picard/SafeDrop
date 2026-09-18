@@ -5,6 +5,19 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Who may approve a checkout request, expressed as a swappable policy.
+ *
+ * The rule is behind an interface rather than inlined into the checkout service because it is the
+ * part most likely to differ per organisation — some will want approvals per asset category, per team,
+ * or none at all for cheap items (Iteration 2). The checkout service asks `policyFor(org)` and applies
+ * whatever comes back, so a new rule is a new object here rather than a change to the workflow.
+ *
+ * Iteration 1 ships one policy: every request needs a decision by someone with `requests:decide` who
+ * is not the requester.
+ *
+ * Exports: `requireDistinctApprover`, `policyFor(org)`, `registerPolicy(policy)`, `getPolicy(name)`.
+ */
 import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
 
 /**
@@ -17,8 +30,15 @@ import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
  */
 
 /**
- * Iteration 1 policy: every request needs approval by an APPROVER or ORG_ADMIN who is not the
- * requester. Configurable per-asset / per-group policies are Iteration 2 (desirable features).
+ * The Iteration 1 policy: every request needs approval, and nobody approves their own.
+ *
+ * `canDecide` checks two things in order — the actor's role must hold `requests:decide`, and the
+ * actor must not be the requester. The second is separation of duties: an approver filing their own
+ * request could otherwise grant it themselves, which is exactly what an approval step is meant to
+ * prevent. Ids are compared as strings because one side is a Mongoose ObjectId and the other comes
+ * from a token.
+ *
+ * The returned `reason` is for logs and tests; callers translate a refusal into a 403.
  * @type {ApprovalPolicy}
  */
 export const requireDistinctApprover = Object.freeze({
@@ -37,12 +57,26 @@ export const requireDistinctApprover = Object.freeze({
 
 const policies = new Map([[requireDistinctApprover.name, requireDistinctApprover]]);
 
-/** Resolve the policy for an organisation. Iteration 1: always the fixed policy. */
+/**
+ * Resolve the approval policy for an organisation.
+ *
+ * Iteration 1 always answers `requireDistinctApprover`; the parameter is already in the signature so
+ * that per-organisation policies can arrive without touching the callers.
+ * @param {object} _org
+ * @returns {ApprovalPolicy}
+ */
 export function policyFor(_org) {
   return requireDistinctApprover;
 }
 
-/** Registration point for future policies (Iteration 2). */
+/**
+ * Register an additional policy under its name (Iteration 2 extension point).
+ *
+ * The shape is validated on the way in — a policy missing `canDecide` would otherwise fail much
+ * later, in the middle of an approval, where the failure is expensive and confusing.
+ * @param {ApprovalPolicy} policy
+ * @throws {TypeError} when the policy lacks a name, `canDecide()` or `requiresApproval()`
+ */
 export function registerPolicy(policy) {
   if (
     !policy?.name ||
@@ -54,6 +88,11 @@ export function registerPolicy(policy) {
   policies.set(policy.name, policy);
 }
 
+/**
+ * Look up a registered policy by name.
+ * @param {string} name
+ * @returns {ApprovalPolicy|null} null when no policy is registered under that name
+ */
 export function getPolicy(name) {
   return policies.get(name) ?? null;
 }

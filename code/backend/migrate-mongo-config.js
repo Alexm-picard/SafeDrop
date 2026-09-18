@@ -8,6 +8,21 @@
 // Migrations run at deploy time (`npm run migrate`), never at application boot (architecture review F3/F6).
 // Locally, docker-compose runs them when the backend container starts.
 
+/**
+ * migrate-mongo configuration.
+ *
+ * Migrations run at deploy time (`npm run migrate`), never at application boot (architecture review
+ * F3/F6) — a booting instance must not be able to alter the schema of a database other instances are
+ * serving. Locally, Docker Compose runs them when the backend container starts.
+ *
+ * `MONGODB_URI` is required and the connection fails loudly without it, rather than defaulting to
+ * something that might quietly be the wrong database.
+ *
+ * Two details worth knowing. The database name is extracted from the URI with a regular expression
+ * rather than `new URL()`, because a multi-host replica-set URI (`mongodb://h1,h2/db`) is not
+ * WHATWG-parseable and would throw. And the lock collection with its TTL serialises concurrent
+ * `migrate up` runs, so a deploy hook and a manual run cannot apply the same migration twice.
+ */
 import 'dotenv/config';
 
 const uri = process.env.MONGODB_URI;

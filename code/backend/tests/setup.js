@@ -5,6 +5,23 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Per-file test setup: a private database, the real indexes, and a clean slate between tests.
+ *
+ * Runs for every test file. Three decisions here keep integration tests both realistic and
+ * independent:
+ *
+ * **A database per file**, named with a random suffix, so files running in parallel workers cannot see
+ * or delete each other's data.
+ *
+ * **The production migration is applied**, not `autoIndex`. Unique constraints and TTL behaviour are
+ * then exactly what production has — a test that proves a duplicate email is rejected is proving the
+ * real index, not a test-only one.
+ *
+ * **A wipe after each test** at the driver level, deliberately bypassing Mongoose hooks: the audit
+ * model refuses every delete through Mongoose (SR-8), so a model-level cleanup would be impossible by
+ * design.
+ */
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import { afterAll, afterEach, beforeAll, inject } from 'vitest';

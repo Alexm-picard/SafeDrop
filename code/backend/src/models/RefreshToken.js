@@ -5,6 +5,22 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The `refreshtokens` collection: one issued refresh token, stored only as a hash (SDD §6.2, SR-4).
+ *
+ * Each row is a single token in a rotation chain. Every token descending from one login shares a
+ * `familyId`, and each rotation marks its predecessor with `replacedBy`. That chain is what makes
+ * theft detectable: presenting a token that has already been rotated means two parties hold tokens
+ * from the same family, so the whole family is revoked and both are logged out (see auth.service.js
+ * for the grace window that keeps honest concurrent refreshes from tripping this).
+ *
+ * The two expiries do different jobs. `expiresAt` is the idle timeout and moves forward on each
+ * rotation; `absoluteExpiresAt` is fixed at login and inherited unchanged by every rotation, capping
+ * the total session life. The MongoDB TTL index is on the *absolute* one, so a rotated-away token
+ * survives long enough to still be recognised as reuse for the family's whole life.
+ *
+ * Only `tokenHash` is stored; the raw value exists solely in the client's cookie.
+ */
 import mongoose from 'mongoose';
 import { createSchema, ObjectId, orgIdField } from './base.js';
 
@@ -27,6 +43,13 @@ const refreshTokenSchema = createSchema(
   { collection: 'refreshtokens' },
 );
 
+/**
+ * Is this token still usable right now?
+ *
+ * True only when it has not been explicitly revoked, has not been rotated away (`replacedBy`), and
+ * is inside both the idle and the absolute window. A virtual rather than a stored field, so it can
+ * never go stale.
+ */
 refreshTokenSchema.virtual('isActive').get(function isActive() {
   const now = Date.now();
   return (

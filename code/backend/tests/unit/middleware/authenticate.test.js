@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the authenticate middleware.
+ *
+ * Mostly a list of tokens that must be rejected: missing, `alg: none`, signed with another algorithm
+ * or secret, wrong issuer, expired, or carrying a role that is not one of the three. Each is a
+ * separate way of forging a session, and each must fail identically.
+ *
+ * It also pins the two positive behaviours: `req.auth` is attached and frozen for a valid token, and
+ * the three public routes pass through without a cookie — including with trailing slashes and query
+ * strings, so path matching cannot be side-stepped.
+ */
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 import { env } from '../../../src/config/env.js';

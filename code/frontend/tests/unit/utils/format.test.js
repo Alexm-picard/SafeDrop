@@ -4,6 +4,14 @@
 // AI-Assisted Areas: formatter tests
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the display formatters.
+ *
+ * Each one is given garbage as well as valid input — an unparseable date, a non-number, an empty
+ * string — because these run in table cells where missing data is normal and must render as an em dash
+ * rather than as `Invalid Date`, `NaN`, or an exception.
+ */
 import { describe, expect, it } from 'vitest';
 import { formatCount, formatDate, humanize, pluralize } from '../../../src/utils/format';
 describe('format', () => {

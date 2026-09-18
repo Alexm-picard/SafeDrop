@@ -5,12 +5,33 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Routes for `/api/auth`: the session endpoints (SDD §6.2).
+ *
+ * `POST /login` and `POST /refresh` are two of the three public routes in the system — they must be
+ * reachable without a session, since they are how one is obtained. `POST /logout` and `GET /me`
+ * require only `session:self`, the permission every role holds, so any signed-in user can inspect or
+ * end their own session.
+ *
+ * The login body accepts `orgSlug` + email + password: because email is unique per organisation
+ * (OD-3), the slug is what selects the tenant to authenticate against.
+ *
+ * Exports: `authRouter`, and `loginBody` for reuse in tests.
+ */
 import { z } from 'zod';
 import * as auth from '../controllers/auth.controller.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
 import { email, emptyBody, orgSlug } from './schemas.js';
 
+/**
+ * Body schema for `POST /api/auth/login`.
+ *
+ * The password is bounded but otherwise unvalidated here: this route compares a password rather than
+ * setting one, so strength rules (length, byte cap) belong at creation time. Enforcing them at login
+ * would reject existing users whose password predates a rule change, and would leak which rules are
+ * in force to anyone guessing.
+ */
 export const loginBody = z.object({
   orgSlug,
   email,

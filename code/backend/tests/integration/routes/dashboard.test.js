@@ -5,6 +5,16 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Integration tests for `GET /api/dashboard/summary` (SCRUM-103).
+ *
+ * The one fully implemented read path in Iteration 1, so this suite proves the whole stack end to end:
+ * route, permission, controller, service, repository aggregation.
+ *
+ * It pins the counting rules — retired units are excluded from `totalAssets`, an organisation with no
+ * units reports zeros rather than an error — and the access rules for a route that only ORG_ADMIN
+ * holds.
+ */
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';

@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the error handler (SDD §6.5).
+ *
+ * The recurring question is what the client is *not* told. A MongoDB duplicate-key error must become
+ * a plain 409 with no field names, a cast error a plain 400, and an unexpected error a 500 whose
+ * message and stack never leave the server. The tests run the handler with `isProduction: true` by
+ * default so that is the behaviour under test.
+ *
+ * The rest covers the standard response shape, validation details on 4xx, body-parser errors mapped to
+ * 400/413, the log level chosen per status, and the headers-already-sent case, where the only correct
+ * move is to end the response.
+ */
 import { describe, expect, it, vi } from 'vitest';
 import { createErrorHandler, notFound } from '../../../src/middleware/errorHandler.js';
 import {
@@ -19,6 +31,13 @@ import {
 } from '../../../src/utils/errors.js';
 import { createLogger } from '../../../src/utils/logger.js';
 
+/**
+ * A minimal Express response double that records what the handler did to it.
+ *
+ * Chainable `status()` and capturing `json()`/`end()`, so a test can assert on the status and body
+ * without a real server. `headersSent` is settable, which is how the already-sent case is exercised.
+ * @returns {object} the response double
+ */
 function mockRes() {
   const res = { statusCode: 200, headersSent: false, body: undefined };
   res.status = (code) => {

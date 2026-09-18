@@ -10,7 +10,34 @@
 // in-memory database so unique constraints behave identically in tests.
 
 /**
+ * First migration: every index the data model relies on (SDD §2.4).
+ *
+ * Mongoose `autoIndex` is off, so this file is the single source of truth for indexes — nothing is
+ * created implicitly by a process starting up. tests/setup.js applies it to the in-memory database
+ * too, so unique constraints and TTL behave identically under test.
+ *
+ * Two conventions run through it. **Every tenant index begins with `orgId`** (NFR-4), because every
+ * query is scoped by tenant first; an index that did not lead with it would not serve those queries.
+ * And **every index is named explicitly**, so `down()` can drop exactly what `up()` created rather
+ * than relying on generated names.
+ */
+/**
+ * Create every index.
+ *
+ * Most are ordinary compound indexes supporting the queries each repository makes. Two are worth
+ * singling out:
+ *
+ * `assetunits.orgId_tag_unique` is what makes an asset tag unique *within* an organisation while
+ * allowing two organisations to use the same tag — the same pattern as `users.orgId_email_unique`
+ * (OD-3).
+ *
+ * `refreshtokens.absoluteExpiresAt_ttl` puts the TTL on the *absolute* expiry rather than the idle
+ * one. A rotated-away token must stay in the collection for the family's whole life, because that is
+ * what makes reuse of a stolen ancestor detectable; expiring it on the idle timeout would delete the
+ * evidence while the session was still alive. Retention is therefore bounded by the 12-hour absolute
+ * session limit.
  * @param {import('mongodb').Db} db
+ * @returns {Promise<void>}
  */
 export const up = async (db) => {
   await db
@@ -62,7 +89,13 @@ export const up = async (db) => {
 };
 
 /**
+ * Drop every index this migration created.
+ *
+ * Each drop is individually tolerant of a missing index or collection: a rollback often runs against
+ * a database where the migration only partly applied, and failing there would leave no way to roll
+ * back at all.
  * @param {import('mongodb').Db} db
+ * @returns {Promise<void>}
  */
 export const down = async (db) => {
   const drop = async (collection, names) => {

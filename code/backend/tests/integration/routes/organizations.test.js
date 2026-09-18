@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Integration tests for `POST /api/organizations` (SCRUM-101), the public bootstrap route.
+ *
+ * Proves that one call creates an organisation, its first ORG_ADMIN and an ORG_CREATED audit event,
+ * and signs the admin in.
+ *
+ * The transaction test is the important one: when the audit write is made to fail, *nothing* is
+ * left behind — no organisation, no user (OD-2). Without that, a failure could produce a tenant whose
+ * creation was never recorded. The suite also covers duplicate slugs (409) and names that cannot
+ * become a slug at all.
+ */
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';

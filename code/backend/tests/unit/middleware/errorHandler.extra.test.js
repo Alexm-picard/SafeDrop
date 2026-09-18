@@ -5,6 +5,13 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit test for the error handler's debug block.
+ *
+ * Split out from errorHandler.test.js because it needs a different environment: the debug block with
+ * its stack trace appears only outside production and only for unexpected 5xx errors. Keeping it
+ * separate avoids reconfiguring the shared handler in the middle of the main suite.
+ */
 import { describe, expect, it } from 'vitest';
 import { createErrorHandler } from '../../../src/middleware/errorHandler.js';
 import { NotImplementedError } from '../../../src/utils/errors.js';

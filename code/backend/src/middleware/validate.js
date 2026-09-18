@@ -5,16 +5,45 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Chain step 8: validate and replace every piece of client input with Zod.
+ *
+ * Two principles run through this file.
+ *
+ * **Routes accept only what they declare.** Every location — params, query, body — is validated on
+ * every route, and a location with no schema gets an empty strict object, meaning any key a client
+ * sends there is a 400. Schemas are made strict by construction, including nested objects, so a field
+ * nobody declared can never be silently stripped and then silently ignored.
+ *
+ * **Nothing containing a Mongo operator gets through.** Independently of what a schema allows, no key
+ * anywhere in client input may begin with `$` or contain `.` (SR-6). That is defence in depth: the
+ * repositories are already careful, `sanitizeFilter` is on globally, and this is a third layer.
+ *
+ * Parsed values (coerced, defaulted) replace the raw ones, so a controller only ever sees data that
+ * has been through a schema.
+ *
+ * Exports: `validate(schemas)` — the middleware factory; `assertNoMongoOperators(value, location)` —
+ * the operator-injection guard, exported for direct testing.
+ */
 import { z } from 'zod';
 import { ValidationError } from '../utils/errors.js';
 
 const MAX_DEPTH = 16;
 
 /**
- * Defence in depth against NoSQL operator injection (SR-6): no key anywhere in client input may
- * start with `$` or contain `.`, regardless of what the route schema allows.
- * @param {unknown} value
- * @param {string} location
+ * Walk a value and reject any key that could become a MongoDB operator or a path traversal.
+ *
+ * Keys starting with `$` are operators (`$ne`, `$gt`, `$where`); keys containing `.` reach into
+ * nested document paths. Either one, reaching a query builder from client input, turns a filter
+ * into an attacker-controlled query — the classic `{ password: { $ne: null } }` login bypass.
+ *
+ * Recursion is bounded by `MAX_DEPTH`, so a deeply nested body is rejected rather than being allowed
+ * to exhaust the stack.
+ * @param {unknown} value the client-supplied value to inspect
+ * @param {string} [location] 'params' | 'query' | 'body', for the error message
+ * @param {string[]} [path] internal: the key path walked so far
+ * @param {number} [depth] internal: current recursion depth
+ * @throws {ValidationError} (400) on a forbidden key or excessive nesting
  */
 export function assertNoMongoOperators(value, location = 'body', path = [], depth = 0) {
   if (depth > MAX_DEPTH) {
@@ -44,11 +73,26 @@ export function assertNoMongoOperators(value, location = 'body', path = [], dept
   }
 }
 
+/**
+ * Does this Zod object schema reject unknown keys? True when its catchall is `never`, which is how
+ * Zod 4 represents `.strict()`.
+ * @param {unknown} schema
+ * @returns {boolean}
+ */
 const isStrictObject = (schema) => schema?.def?.catchall?.def?.type === 'never';
 
 /**
- * Boot-time walk: every object schema nested anywhere inside a route schema must be strict
- * (`z.strictObject()` / `.strict()`), otherwise unknown keys would be silently stripped.
+ * Boot-time walk asserting that every *nested* object schema is strict.
+ *
+ * `.strict()` applies only to the object it is called on, so a lax nested object would silently drop
+ * unknown keys — leaving a route that appears to validate but accepts anything inside a sub-object.
+ * The traversal unwraps the Zod wrappers (optional, nullable, default, pipe, union, array, record,
+ * tuple) so the check cannot be evaded by wrapping. The top-level object is exempt because
+ * `strictify()` makes it strict itself.
+ * @param {unknown} schema
+ * @param {string} location 'params' | 'query' | 'body'
+ * @param {string[]} path key path, for the error message
+ * @throws {TypeError} at boot when a nested object is not `z.strictObject()`
  */
 function assertNestedStrict(schema, location, path) {
   const def = schema?.def;
@@ -100,8 +144,15 @@ function assertNestedStrict(schema, location, path) {
 }
 
 /**
- * Make a route schema strict by construction. Accepts an object schema, optionally wrapped in
- * `.optional()` / `.nullable()`, or (for bodies) an array schema. Anything else is a boot error.
+ * Make a route schema strict, or refuse it at boot.
+ *
+ * Accepts an object schema, optionally wrapped in `.optional()`/`.nullable()`, and — for bodies only
+ * — an array schema. Anything else is a programming error and throws while routes are being built,
+ * so the shape of every route's input is known to be checkable before the server accepts traffic.
+ * @param {unknown} schema
+ * @param {string} location 'params' | 'query' | 'body'
+ * @returns {import('zod').ZodTypeAny} the strict equivalent
+ * @throws {TypeError} at boot for an unsupported schema type
  */
 function strictify(schema, location) {
   const type = schema?.def?.type;
@@ -129,6 +180,17 @@ function strictify(schema, location) {
 /** Routes that declare nothing for a location accept nothing there. */
 const EMPTY = z.strictObject({});
 
+/**
+ * Run the operator guard, then the schema, and return the parsed value.
+ *
+ * Every Zod issue is reported at once, flattened to `{ location, path, message }`, so a client
+ * fixing a form learns about all its problems in one response rather than one per round trip.
+ * @param {import('zod').ZodTypeAny} schema
+ * @param {unknown} value
+ * @param {string} location 'params' | 'query' | 'body'
+ * @returns {unknown} the parsed, coerced value
+ * @throws {ValidationError} (400) with one entry per failed field
+ */
 function parse(schema, value, location) {
   assertNoMongoOperators(value, location);
   const result = schema.safeParse(value);
@@ -146,10 +208,18 @@ function parse(schema, value, location) {
 }
 
 /**
- * Chain step 8. `validate({ params, query, body })` with Zod schemas. Every location is validated on
- * every route: a missing schema means "nothing is accepted here". Parsed (coerced, defaulted) values
- * replace the raw ones so controllers only ever see validated data.
- * @param {{ params?: z.ZodTypeAny, query?: z.ZodTypeAny, body?: z.ZodTypeAny }} schemas
+ * Build the validation middleware for one route.
+ *
+ * Schemas are compiled once at registration, so the strictness checks run at boot and the per-request
+ * cost is just parsing. An undeclared location becomes `EMPTY`, which accepts nothing — that is what
+ * makes "routes accept only what they declare" true by default rather than by vigilance.
+ *
+ * `req.query` is replaced through `Object.defineProperty` because Express 5 serves it from a
+ * prototype getter and a plain assignment would be discarded, leaving the unvalidated query in
+ * place. An array body is refused unless the body schema is itself an array, so a handler expecting
+ * an object never receives one.
+ * @param {{ params?: import('zod').ZodTypeAny, query?: import('zod').ZodTypeAny, body?: import('zod').ZodTypeAny }} [schemas]
+ * @returns {import('express').RequestHandler}
  */
 export function validate(schemas = {}) {
   const compiled = {

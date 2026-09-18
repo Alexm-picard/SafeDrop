@@ -4,6 +4,22 @@
 // AI-Assisted Areas: fetch wrapper tests: JSON/credentials, ApiError shape, single refresh + single retry on 401, 204 handling
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the HTTP client.
+ *
+ * Request shape: JSON with credentials included, an empty JSON object for a body-less POST, 204
+ * resolving to `undefined`, relative paths resolved against the page origin.
+ *
+ * Error handling: a typed `ApiError` with code, details and request id, and a non-JSON failure — a
+ * proxy error page — wrapped the same way rather than surfacing as a parse error.
+ *
+ * The session logic is the substantial part: a 401 refreshes once and retries once, gives up after
+ * that one retry, never refreshes for the auth endpoints themselves, announces expiry when the
+ * refresh fails, and shares a single refresh between concurrent 401s. That last one is not just an
+ * optimisation — parallel refreshes would present the same rotated token twice, which the backend
+ * treats as token theft and answers by revoking the whole family.
+ */
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import {

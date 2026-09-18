@@ -5,11 +5,21 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The admin dashboard summary.
+ *
+ * A thin aggregation over the unit status counts — the one service in this layer that is fully
+ * implemented in Sprint 1, because it reads and nothing more.
+ */
 import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
 import { UNIT_STATUS } from '../utils/constants.js';
 
 /**
- * GET /api/dashboard/summary. Retired units are not counted as assets the org can lend.
+ * Count the organisation's units by status for the dashboard (`GET /api/dashboard/summary`).
+ *
+ * `totalAssets` deliberately excludes retired units: it answers "how much can this organisation lend
+ * out?", and a retired item is gone from that pool even though its row remains for history. The
+ * retired count is returned separately so the number is visible rather than merely absent.
  * @param {string} orgId
  * @returns {Promise<{ totalAssets: number, checkedOut: number, available: number, held: number, retired: number }>}
  */

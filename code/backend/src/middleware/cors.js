@@ -5,12 +5,27 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Chain step 2: cross-origin request policy.
+ *
+ * Under OD-1 Option A the SPA and the API share an origin in production (a Vercel rewrite) and in
+ * development (the Vite proxy), so in practice CORS rarely comes into play. It is configured anyway,
+ * strictly, for tooling and for the possibility of split origins later.
+ */
 import cors from 'cors';
 
 /**
- * With OD-1 Option A the SPA and API share an origin in production (Vercel rewrite) and in dev
- * (Vite proxy), so CORS rarely triggers. It stays configured for tooling and future split origins.
+ * Build the CORS middleware for an exact-match origin allowlist.
+ *
+ * The origin callback answers with a boolean rather than echoing the request's origin, which is the
+ * whole point: reflecting an arbitrary `Origin` back with `credentials: true` would let any site
+ * read authenticated responses. A missing `Origin` means it is not a cross-origin browser request,
+ * so no CORS headers are needed; an unknown one gets no headers and the browser blocks the response.
+ *
+ * `credentials: true` is required because the session travels in cookies, and only `Content-Type`
+ * is accepted as a request header — the narrower that list, the fewer preflights succeed by accident.
  * @param {string[]} allowlist exact origins, e.g. https://safedrop.vercel.app
+ * @returns {import('express').RequestHandler}
  */
 export function createCors(allowlist) {
   const allowed = new Set(allowlist);

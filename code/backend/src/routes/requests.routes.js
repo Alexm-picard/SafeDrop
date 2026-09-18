@@ -5,6 +5,22 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Routes for `/api/requests`: the borrowing workflow from request to return.
+ *
+ * The permissions map onto the three parts people play. A member creates and cancels their own
+ * requests (`requests:create`) and reads them (`requests:read:own`); an approver decides them
+ * (`requests:decide`); whoever hands the item over and takes it back records that
+ * (`requests:handoff`). Approvers and admins hold the deciding and handoff permissions as well, since
+ * the roles are cumulative.
+ *
+ * Each state change is its own POST — `/approve`, `/deny`, `/cancel`, `/checkout`, `/return` — rather
+ * than a PATCH setting `state`. That way each transition has its own permission and its own audit
+ * event, and a client cannot move a request to an arbitrary state by naming it.
+ *
+ * Exports: `requestsRouter`, and the `createRequestBody` / `decisionBody` / `returnBody` / `listQuery`
+ * schemas for reuse in tests.
+ */
 import { z } from 'zod';
 import * as requests from '../controllers/requests.controller.js';
 import { REQUEST_STATE_LIST } from '../utils/constants.js';
@@ -12,6 +28,13 @@ import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
 import { emptyBody, idParams, objectId, pagination } from './schemas.js';
 
+/**
+ * Body for `POST /api/requests`: which unit, for what window, with an optional note.
+ *
+ * The `.refine()` enforces that the window is ordered — a request ending before it starts is
+ * nonsense the service would otherwise have to handle. There is no requester field: who is asking
+ * comes from the token, so one member cannot file a request in another's name.
+ */
 export const createRequestBody = z
   .object({
     unitId: objectId,
@@ -24,11 +47,29 @@ export const createRequestBody = z
     path: ['neededTo'],
   });
 
+/**
+ * Body shared by `/approve` and `/deny`: just the decision note.
+ *
+ * The note defaults to empty and the body itself is optional on both routes, so approving without
+ * comment is a POST with no body at all.
+ */
 export const decisionBody = z.object({ note: z.string().trim().max(1000).default('') });
+/**
+ * Body for `/return`: the condition the item came back in, plus an optional note.
+ *
+ * Condition is optional — when it is omitted the unit keeps the condition it had — so the person
+ * taking an item back only has to record a change.
+ */
 export const returnBody = z.object({
   condition: z.enum(['NEW', 'GOOD', 'FAIR', 'POOR']).optional(),
   note: z.string().trim().max(1000).default(''),
 });
+/**
+ * Query for listing requests: pagination plus an optional state filter.
+ *
+ * `state=PENDING` is what the approval queue asks for. The filter is restricted to known states, so
+ * an unknown value is a 400 rather than a query that silently matches nothing.
+ */
 export const listQuery = pagination.extend({ state: z.enum(REQUEST_STATE_LIST).optional() });
 
 export const requestsRouter = createRouter();

@@ -5,8 +5,21 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * HTTP layer for `/api/audit`.
+ *
+ * One handler, for reading the trail. There is no write handler anywhere: audit events are appended
+ * by services as part of the transactions they describe, never by an HTTP call (SR-8).
+ */
 import * as auditService from '../services/audit.service.js';
 
+/**
+ * `GET /api/audit` — read the organisation's audit trail, newest first.
+ *
+ * Stub: answers 501 until SCRUM-AUDIT-LOG lands.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
 export async function list(req, res) {
   res.status(200).json(await auditService.list(req.orgId, req.query));
 }

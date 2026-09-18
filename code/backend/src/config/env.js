@@ -5,6 +5,20 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Environment-variable contract for the backend: parse it once, validate it hard, freeze it.
+ *
+ * `.env` is loaded from the package directory or the repository root, then the whole environment is
+ * run through a Zod schema that supplies defaults, coerces types and refuses values that would be
+ * unsafe in production (insecure cookies, an empty CORS allow-list, a malformed origin). A bad
+ * deploy therefore fails at boot with a list of every problem, instead of failing at the first
+ * request (SR-11).
+ *
+ * Exports:
+ *  - `envSchema` — the Zod schema, exported so tests can exercise it directly.
+ *  - `loadEnv(source)` — validate a raw environment object and return a frozen, typed copy.
+ *  - `env` — the validated environment for this process, loaded at import time.
+ */
 import dotenv from 'dotenv';
 import { z } from 'zod';
 import { DURATION_PATTERN } from '../utils/duration.js';

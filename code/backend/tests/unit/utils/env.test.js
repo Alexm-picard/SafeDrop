@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for environment validation (SR-11).
+ *
+ * Pins the documented defaults, the coercions (comma-separated origins into a trimmed list, strings
+ * into booleans and numbers), and that every problem is reported in one error rather than one per
+ * restart.
+ *
+ * The refusals are the point: in production, insecure cookies and an empty CORS allowlist must both
+ * stop the boot, and an origin with a path or no scheme is rejected. A deploy that would be unsafe
+ * never starts.
+ */
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
 

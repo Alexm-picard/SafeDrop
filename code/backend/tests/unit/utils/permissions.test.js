@@ -5,6 +5,16 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the permission matrix (SDD §6.4, SR-1).
+ *
+ * Asserts the matrix against a literal copy of the table in the design document, so a permission
+ * silently added to or removed from a role fails the build rather than changing the system quietly.
+ *
+ * It also pins deny-by-default from both directions: unknown roles and unknown permissions answer
+ * false, exactly three routes are public, and `authorize()` refuses at build time to create middleware
+ * for a permission nobody declared.
+ */
 import { describe, expect, it } from 'vitest';
 import { authorize } from '../../../src/middleware/authorize.js';
 import { AuthError, ForbiddenError } from '../../../src/utils/errors.js';

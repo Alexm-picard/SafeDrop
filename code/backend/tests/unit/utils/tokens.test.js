@@ -5,6 +5,18 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Unit tests for the token primitives (SDD §6.2, SR-4).
+ *
+ * Access tokens: round-trip with HS256, issuer and audience; refuse to sign without every claim; and
+ * reject a token signed with a different secret, garbage, or one with no `exp` — an access token
+ * without an expiry would be a permanent session.
+ *
+ * Refresh tokens: 43-character base64url values that are unique and stored only as a SHA-256 hash.
+ *
+ * Cookies: `HttpOnly`, `SameSite=Lax`, path-scoped, with a `Max-Age` that follows the token's real
+ * lifetime — including the capped case, where a short TTL must shorten the cookie too.
+ */
 import jwt from 'jsonwebtoken';
 import { describe, expect, it } from 'vitest';
 import { durationToMs } from '../../../src/utils/duration.js';

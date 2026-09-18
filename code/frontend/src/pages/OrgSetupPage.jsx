@@ -4,12 +4,29 @@
 // AI-Assisted Areas: working organization bootstrap form with field-level API errors (SCRUM-101)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * The sign-up screen: create an organisation and become its first administrator.
+ *
+ * The one route that creates a privileged account without a privileged caller, matching the public
+ * `POST /api/organizations` endpoint. Because that call also returns a session, the new admin lands on
+ * their dashboard without a separate login.
+ *
+ * The fields are declared as data rather than written out four times, which keeps each one's label,
+ * hint and error wiring identical.
+ */
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { errorMessage, isApiError } from '../services/api';
 import * as organizationsApi from '../services/organizations.api';
 import { ROUTES } from '../utils/constants';
+/**
+ * The form's fields, as data: name, label, input type, autocomplete hint, and optional help text.
+ *
+ * Driving the markup from this list means the accessibility wiring — label association,
+ * `aria-describedby`, `aria-invalid` — is written once and applies to every field.
+ */
 const FIELDS = [
   { name: 'orgName', label: 'Organization name', type: 'text', autoComplete: 'organization' },
   { name: 'adminName', label: 'Your name', type: 'text', autoComplete: 'name' },
@@ -22,6 +39,19 @@ const FIELDS = [
     hint: 'At least 10 characters.',
   },
 ];
+/**
+ * Render the sign-up form, create the organisation, and adopt the returned session.
+ *
+ * On success `setSession()` takes the user and organisation straight from the response, so the app
+ * does not need a second `/me` round trip before navigating.
+ *
+ * Error handling separates the two cases a user can act on differently. A 400 with field details is
+ * spread across the individual inputs via `fieldErrors()`, so each problem appears next to the field
+ * it belongs to. Anything else — a 409 on a duplicate name, a network failure — becomes one message
+ * at the top of the form, since it is not about a single field. A 400 that arrives with no field
+ * details also falls back to the banner rather than vanishing.
+ * @returns {JSX.Element}
+ */
 export function OrgSetupPage() {
   const { setSession } = useAuth();
   const navigate = useNavigate();

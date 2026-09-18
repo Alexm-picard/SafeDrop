@@ -11,6 +11,19 @@
 //     are skipped until their ticket lands; flip the flag when you implement the endpoint and the
 //     row asserts 404 (never 403, which would confirm the id exists).
 
+/**
+ * Security tests for tenant isolation (SR-2), at every layer.
+ *
+ * Organisation A must never see or affect organisation B. The suite checks this three ways: at the
+ * repository layer, that `orgId` is the first argument of every function and genuinely scopes the
+ * query; at the HTTP layer, that org A addressing org B's records gets nothing back, and that an
+ * `orgId` smuggled in a query string or body is stripped before it reaches a handler; and at the
+ * Mongoose layer, that `strictQuery: 'throw'` makes a mistyped tenant key throw instead of quietly
+ * widening a query to every organisation.
+ *
+ * That last case is the subtle one — a filter on `orgID` instead of `orgId` would otherwise match
+ * everything, which is precisely the bug this setting exists to prevent.
+ */
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';

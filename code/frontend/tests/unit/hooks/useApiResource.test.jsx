@@ -4,6 +4,15 @@
 // AI-Assisted Areas: resource hook tests: loading→success, error, reload, stale results ignored after unmount
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the shared data-fetching hook.
+ *
+ * The two happy paths (loading → success, loading → error with a working `reload()`) and the one that
+ * prevents a real bug: a result arriving after unmount must be ignored and the signal aborted.
+ * Without that, React logs a state-update-on-unmounted-component warning and a slow response can
+ * overwrite fresher data.
+ */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useApiResource } from '../../../src/hooks/useApiResource';

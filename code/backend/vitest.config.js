@@ -5,6 +5,22 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Vitest configuration for the backend (SPPP §6a/§6d).
+ *
+ * The interesting part is the database strategy: `globalSetup` starts one in-memory MongoDB replica
+ * set for the whole run, and `setupFiles` gives each test file its own database inside it with the
+ * production indexes applied. Integration tests therefore run against real MongoDB semantics —
+ * transactions, unique constraints, TTL — rather than a mock.
+ *
+ * The `env` block supplies a complete, valid environment, because config/env.js validates at import
+ * time and would otherwise refuse to load. `RATE_LIMIT_AUTH_MAX` is lowered to 5 so the rate-limit
+ * test does not need twenty failed logins, and `LOG_LEVEL: 'fatal'` keeps the output readable.
+ *
+ * The timeouts are generous because starting the in-memory server can be slow on a cold machine.
+ * Coverage is gated at 80% of lines; server.js is excluded as it is process wiring with no logic to
+ * test.
+ */
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

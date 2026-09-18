@@ -5,6 +5,17 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * Integration tests for the app-wide middleware chain (app.js).
+ *
+ * Covers what every request passes through before it reaches a route: the public `/health` probe,
+ * security headers and the request id, the standard 404 shape, the CORS allowlist, the JSON-only rule
+ * and the Origin/Referer/Sec-Fetch-Site checks that together defend against CSRF, and the body-parser
+ * limits.
+ *
+ * The assertions are mostly about what the API *refuses*: an arbitrary origin is never reflected, a
+ * form-encoded POST is a 415, an oversized body is a 413.
+ */
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import app from '../../src/app.js';

@@ -4,6 +4,14 @@
 // AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-103 AC2)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+
+/**
+ * Tests for the admin dashboard page.
+ *
+ * Walks the three states every data-driven screen has: loading, then the counts from the API; an
+ * error with a working retry; and the forbidden case, where a non-admin sees the API's rejection
+ * rather than an empty dashboard.
+ */
 import { screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';

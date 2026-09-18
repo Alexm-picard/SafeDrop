@@ -5,6 +5,19 @@
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
+/**
+ * The `checkoutrequests` collection: one member's request to borrow one unit (SDD §2.4).
+ *
+ * This is the workflow document. It is created PENDING and moves through the state machine defined
+ * in services/checkout.service.js — approved or denied, then checked out, then returned — and the
+ * fields record who decided what and when: `decidedBy`/`decidedAt`/`decisionNote` for the decision,
+ * `checkedOutAt`/`dueAt`/`returnedAt` for the handoff.
+ *
+ * Those fields are nullable because they are filled in as the request advances; which ones must be
+ * set is decided by the transition rules in the service, not by the schema. `unitId` and
+ * `requesterId` are immutable, so a request cannot be retargeted at another unit or person after the
+ * fact — the audit trail would no longer describe what was approved.
+ */
 import mongoose from 'mongoose';
 import { REQUEST_STATE, REQUEST_STATE_LIST } from '../utils/constants.js';
 import { createSchema, ObjectId, orgIdField } from './base.js';
