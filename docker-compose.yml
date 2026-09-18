@@ -1,0 +1,98 @@
+# AI-USAGE SUMMARY
+# Tools: Claude Code
+# Overall AI Contribution: ~90% (skeleton generated from team design documents)
+# AI-Assisted Areas: three-container local stack (mongo replica set + init sidecar, backend, frontend)
+# Human Contributions: pending team review (original two-service file by Alex Picard; mongo services added)
+# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+#
+# Local development stack for SafeDrop (SDD §2.3.4, kickoff SCRUM-111).
+#
+# From the repository root:
+#   docker compose up --build        # start mongo + backend + frontend
+#   docker compose up --build -V     # same, but refresh node_modules after adding a dependency
+#   docker compose down              # stop everything (keeps the mongo-data volume)
+#   docker compose down -v           # stop everything and wipe the database
+#
+# Frontend: http://localhost:5173   (Vite dev server; /api/* is proxied to the backend container)
+# Backend:  http://localhost:4000
+# Mongo:    mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true
+#
+# Mongoose transactions require a replica set, so mongod runs with --replSet and the one-shot
+# `mongo-init` sidecar runs rs.initiate() once the server is healthy. Migrations run when the backend
+# container starts (dev convenience only). In staging/production they are a deploy step, never app boot.
+#
+# Values come from a root `.env` (copy .env.example) or fall back to the dev-only defaults below.
+
+name: safedrop
+
+services:
+  mongo:
+    image: mongo:7
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  mongo-init:
+    image: mongo:7
+    restart: 'no'
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: >
+      mongosh --host mongo --quiet --eval "
+        try {
+          rs.status();
+          print('replica set rs0 already initiated');
+        } catch (e) {
+          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] });
+          print('replica set rs0 initiated');
+        }
+      "
+
+  backend:
+    build: ./code/backend
+    command: sh -c "npm run migrate && npm run dev"
+    ports:
+      - '4000:4000'
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      MONGODB_URI: mongodb://mongo:27017/safedrop?replicaSet=rs0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-secret-not-for-deploy-change-me-0123456789abcdef}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_IDLE_TTL: ${JWT_REFRESH_IDLE_TTL:-30m}
+      JWT_REFRESH_ABSOLUTE_TTL: ${JWT_REFRESH_ABSOLUTE_TTL:-12h}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      COOKIE_SECURE: 'false'
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
+    volumes:
+      - ./code/backend:/app # bind mount so `node --watch` reloads on edits
+      - /app/node_modules # keep the container's node_modules, not the host's
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+
+  frontend:
+    build: ./code/frontend
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_API_BASE: ''
+      VITE_DEV_PROXY_TARGET: http://backend:4000
+    volumes:
+      - ./code/frontend:/app # bind mount so Vite HMR picks up edits
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:

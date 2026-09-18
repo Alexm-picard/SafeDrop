@@ -40,17 +40,29 @@ Orelmis Toribio - QA
 1. Clone the repo and enter the project folder:
 
 ```bash
-   git clone <repo-url>
-   cd CS673OLF26P3/code
+git clone https://github.com/BUMETCS673/CS673OLF26P3.git
+cd CS673OLF26P3
+cp .env.example .env        # optional for local dev: every variable has a dev-only default in docker-compose.yml
+docker compose up --build   # mongo (replica set) + mongo-init + backend (runs migrations, then dev server) + frontend
 ```
 
-2. Install all dependencies (root, backend, and frontend):
+- Frontend: <http://localhost:5173> — the first screen is the login page; use **Create an organization** to bootstrap the first admin.
+- Backend: <http://localhost:4000> (`/health` is a public liveness probe).
+- Mongo from the host: `mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true`.
+
+Useful variants:
 
 ```bash
-   npm run install:all
+docker compose up --build -V   # also renews node_modules volumes: run this after anyone adds a dependency
+docker compose down            # stop, keep the database volume
+docker compose down -v         # stop and wipe the database
+docker compose logs -f backend
+docker compose exec backend npm run migrate:status
 ```
 
-3. Create environment files by copying the examples:
+## Quick start (without Docker)
+
+Prerequisites: Node.js 22 (`.nvmrc`), npm 10, and a MongoDB **replica set** (transactions need one). The easiest replica set is still Compose: `docker compose up mongo mongo-init`.
 
 ```bash
    cp backend/.env.example backend/.env

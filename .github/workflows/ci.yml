@@ -1,0 +1,127 @@
+# AI-USAGE SUMMARY
+# Tools: Claude Code
+# Overall AI Contribution: ~90% (skeleton generated from team design documents)
+# AI-Assisted Areas: matrix test job, docker build job, deploy placeholders
+# Human Contributions: pending team review
+# Notes: Generated from SDD v0.1, SPPP §5c, NFR doc (NFR-10, SR-13), Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+#
+# Lives at the repository root because GitHub only reads .github/ from the root (the old code/.github was never run).
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.package }} • lint, format, test, audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [backend, frontend]
+    defaults:
+      run:
+        working-directory: code/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: code/${{ matrix.package }}/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (NFR-10)
+        run: npm run lint
+
+      - name: Format check (NFR-10)
+        run: npm run format:check
+
+      - name: Test with coverage (fails under 80% lines, SPPP §6a)
+        run: npm test -- --coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.package }}
+          path: code/${{ matrix.package }}/coverage/lcov.info
+          if-no-files-found: ignore
+
+      - name: Dependency audit (SR-13)
+        run: npm audit --audit-level=high
+
+  docker:
+    name: ${{ matrix.package }} • docker build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: code/${{ matrix.package }}
+          push: false
+          tags: safedrop-${{ matrix.package }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy staging (placeholder)
+    needs: [test, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Trigger Render deploy hook (API)
+        # TODO(config lead): replace with `curl -fsS "$RENDER_DEPLOY_HOOK"` once the Render service exists.
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set; skipping"; exit 0; fi
+          echo "Would POST to the Render deploy hook here."
+      - name: Deploy SPA to Vercel
+        # TODO(config lead): replace with `npx vercel deploy --token "$VERCEL_TOKEN"` from code/frontend.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN not set; skipping"; exit 0; fi
+          echo "Would run vercel deploy (preview/staging) here."
+
+  deploy-production:
+    name: Deploy production (placeholder)
+    needs: [test, docker]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger Render deploy hook (API)
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set; skipping"; exit 0; fi
+          echo "Would POST to the Render deploy hook for tag ${GITHUB_REF_NAME} here."
+      - name: Deploy SPA to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN not set; skipping"; exit 0; fi
+          echo "Would run vercel deploy --prod for tag ${GITHUB_REF_NAME} here."
