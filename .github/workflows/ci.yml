@@ -84,27 +84,37 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Render (API) and Vercel (SPA) both auto-deploy from Alexm-picard/SafeDrop, so staging is deployed by
+  # mirroring main there once tests and the Docker build pass. SafeDrop is a mirror: anything committed
+  # directly to it is overwritten on the next merge. Auth is a write-enabled deploy key on SafeDrop whose
+  # private half is the SAFEDROP_DEPLOY_KEY secret here.
   deploy-staging:
-    name: Deploy staging (placeholder)
+    name: Deploy staging (mirror main to Alexm-picard/SafeDrop)
     needs: [test, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Trigger Render deploy hook (API)
-        # TODO(config lead): replace with `curl -fsS "$RENDER_DEPLOY_HOOK"` once the Render service exists.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: pushing from a shallow clone is rejected
+          persist-credentials: false
+
+      - name: Push main to Alexm-picard/SafeDrop
         env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          SAFEDROP_DEPLOY_KEY: ${{ secrets.SAFEDROP_DEPLOY_KEY }}
         run: |
-          if [ -z "$RENDER_DEPLOY_HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set; skipping"; exit 0; fi
-          echo "Would POST to the Render deploy hook here."
-      - name: Deploy SPA to Vercel
-        # TODO(config lead): replace with `npx vercel deploy --token "$VERCEL_TOKEN"` from code/frontend.
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          if [ -z "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN not set; skipping"; exit 0; fi
-          echo "Would run vercel deploy (preview/staging) here."
+          if [ -z "$SAFEDROP_DEPLOY_KEY" ]; then
+            echo "::warning::SAFEDROP_DEPLOY_KEY not set; skipping the SafeDrop mirror"
+            exit 0
+          fi
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SAFEDROP_DEPLOY_KEY" > "$HOME/.ssh/safedrop"
+          chmod 600 "$HOME/.ssh/safedrop"
+          # Pinned GitHub host key (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints).
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$HOME/.ssh/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/safedrop -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          git push --force git@github.com:Alexm-picard/SafeDrop.git "$GITHUB_SHA:refs/heads/main"
 
   deploy-production:
     name: Deploy production (placeholder)
