@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://safedrop-api.onrender.com/api/$1"
+      "destination": "https://safedrop-ony6.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
