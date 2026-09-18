@@ -255,6 +255,52 @@ button.secondary {
   font-weight: 700;
 }
 
+/* A row of filter controls above a list. Wraps to one control per line on a narrow screen. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.filters .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 10rem;
+}
+.filters label {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.filters select,
+.filters input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+/* Secondary identifiers inside a table cell: present for traceability, not competing with the label. */
+.meta {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.pagination span {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
