@@ -14,9 +14,11 @@
 import * as auditService from '../services/audit.service.js';
 
 /**
- * `GET /api/audit` — read the organisation's audit trail, newest first.
+ * `GET /api/audit` — read the organisation's audit trail, newest first (SCRUM-46).
  *
- * Stub: answers 501 until SCRUM-AUDIT-LOG lands.
+ * Thin by design: `req.orgId` comes from `scopeTenant` (the verified token, never the request) and
+ * `req.query` has already been through the route's Zod schema, so there is nothing left for the
+ * controller to decide.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */

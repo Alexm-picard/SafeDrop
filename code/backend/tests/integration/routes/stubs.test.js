@@ -19,6 +19,11 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';
+import { AuditEvent } from '../../../src/models/AuditEvent.js';
+import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
+import { listRoutes } from '../../../src/routes/define.js';
+import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../../../src/utils/constants.js';
+import { ROLES } from '../../../src/utils/permissions.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
 import { seedTwoOrgs } from '../../helpers/seedTwoOrgs.js';
 
@@ -52,7 +57,8 @@ const stubs = [
   { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },
   { method: 'POST', path: '/api/requests/:request/checkout', as: 'approver' },
   { method: 'POST', path: '/api/requests/:request/return', as: 'approver' },
-  { method: 'GET', path: '/api/audit', as: 'admin' },
+  // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
+  // criteria live in the un-skipped describe block below.
   { method: 'GET', path: '/api/users', as: 'admin' },
   {
     method: 'POST',
@@ -119,9 +125,111 @@ describe.skip('SCRUM-requests-*: checkout workflow (F4 state machine)', () => {
   it('a MEMBER reading another member’s request gets 404');
 });
 
-describe.skip('SCRUM-audit-log: GET /api/audit', () => {
-  it('returns the org’s events newest-first with page/limit and never another org’s events');
-  it('there is no route that can update or delete an audit event (SR-8)');
+describe('SCRUM-46: GET /api/audit', () => {
+  /**
+   * Append `count` extra events to one organisation, newest last.
+   *
+   * Sequential rather than concurrent on purpose: the events are inserted in a known order so the
+   * newest-first assertion below is meaningful. Several may share a millisecond, which is exactly why
+   * the repository sorts by `_id` after `timestamp` — ObjectIds rise monotonically within a process,
+   * so the tiebreak makes the order deterministic instead of incidental.
+   */
+  const appendEvents = async (org, actions) => {
+    for (const action of actions) {
+      await auditRepo.append(org.orgId, {
+        actorId: org.admin._id,
+        actorRole: ROLES.ORG_ADMIN,
+        action,
+        targetType: AUDIT_TARGET_TYPE.Asset,
+        targetId: org.asset._id,
+      });
+    }
+  };
+
+  it('returns the org’s events newest-first with page/limit and never another org’s events', async () => {
+    // The fixture gives each org one ORG_CREATED event; add two more to A and one to B.
+    await appendEvents(seed.a, [AUDIT_ACTION.ASSET_CREATED, AUDIT_ACTION.ASSET_UPDATED]);
+    await appendEvents(seed.b, [AUDIT_ACTION.ASSET_RETIRED]);
+
+    const page1 = await request(app)
+      .get('/api/audit?limit=2')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+
+    expect(page1.status).toBe(200);
+    expect(page1.body).toMatchObject({ total: 3, page: 1, limit: 2 });
+    expect(page1.body.items).toHaveLength(2);
+    // Newest first: the two appended above, most recent one leading.
+    expect(page1.body.items.map((e) => e.action)).toEqual([
+      AUDIT_ACTION.ASSET_UPDATED,
+      AUDIT_ACTION.ASSET_CREATED,
+    ]);
+
+    const page2 = await request(app)
+      .get('/api/audit?limit=2&page=2')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+
+    expect(page2.status).toBe(200);
+    expect(page2.body.items).toHaveLength(1);
+    expect(page2.body.items[0].action).toBe(AUDIT_ACTION.ORG_CREATED);
+
+    // SR-2: every row belongs to the caller's org, and B's event is nowhere in either page.
+    const returned = [...page1.body.items, ...page2.body.items];
+    expect(returned.every((e) => e.orgId === seed.a.orgId)).toBe(true);
+    expect(returned.some((e) => e.action === AUDIT_ACTION.ASSET_RETIRED)).toBe(false);
+
+    // And the same request as B sees only B's own two events.
+    const asB = await request(app).get('/api/audit').set('Cookie', accessCookieFor(seed.b.admin));
+    expect(asB.body.total).toBe(2);
+    expect(asB.body.items.every((e) => e.orgId === seed.b.orgId)).toBe(true);
+  });
+
+  it('narrows by action, actor and date range', async () => {
+    await appendEvents(seed.a, [AUDIT_ACTION.ASSET_CREATED, AUDIT_ACTION.ASSET_UPDATED]);
+
+    const byAction = await request(app)
+      .get(`/api/audit?action=${AUDIT_ACTION.ASSET_UPDATED}`)
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(byAction.body.total).toBe(1);
+    expect(byAction.body.items[0].action).toBe(AUDIT_ACTION.ASSET_UPDATED);
+
+    const byActor = await request(app)
+      .get(`/api/audit?actorId=${String(seed.a.member._id)}`)
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(byActor.body.total).toBe(0);
+
+    // Everything was written just now, so a window ending in the past matches nothing.
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const byRange = await request(app)
+      .get(`/api/audit?to=${encodeURIComponent(past)}`)
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(byRange.body.total).toBe(0);
+  });
+
+  it('there is no route that can update or delete an audit event (SR-8)', async () => {
+    // Read the live Express stack rather than a list we maintain: it is what will actually run.
+    const auditRoutes = listRoutes(app).filter((r) => r.path.startsWith('/api/audit'));
+    expect(auditRoutes).toHaveLength(1);
+    expect(auditRoutes[0]).toMatchObject({ method: 'GET', permission: 'audit:read' });
+
+    // Belt and braces: even bypassing routing, the model refuses to mutate or remove a row.
+    await expect(
+      AuditEvent.updateOne({ _id: seed.a.audit._id }, { $set: { action: 'X' } }).exec(),
+    ).rejects.toThrow();
+    await expect(AuditEvent.deleteOne({ _id: seed.a.audit._id }).exec()).rejects.toThrow();
+  });
+
+  it('a MEMBER cannot read the audit log (SR-1)', async () => {
+    const res = await request(app).get('/api/audit').set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an operator-injection attempt in a filter (SR-6)', async () => {
+    const res = await request(app)
+      .get('/api/audit?actorId[$ne]=null')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
 });
 
 describe.skip('SCRUM-users-*: user management', () => {
