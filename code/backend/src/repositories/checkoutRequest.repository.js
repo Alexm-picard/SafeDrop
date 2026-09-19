@@ -48,17 +48,20 @@ export async function findById(orgId, requestId, { session } = {}) {
 }
 
 /**
- * List one member's own requests, newest first — the "My requests" view.
+ * List one member's own requests, newest first, optionally filtered by state — the "My requests" view.
  *
  * Scoped by `requesterId` as well as tenant, which is how the `requests:read:own` permission is
  * honoured at the data layer rather than by filtering after the fact.
  * @param {string} orgId
  * @param {string} requesterId
- * @param {{ page?: number, limit?: number }} [options]
+ * @param {{ state?: string, page?: number, limit?: number }} [options]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function listForRequester(orgId, requesterId, { page = 1, limit = 50 } = {}) {
+export async function listForRequester(orgId, requesterId, { state, page = 1, limit = 50 } = {}) {
   const filter = { orgId, requesterId };
+  if (state) {
+    filter.state = state;
+  }
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     CheckoutRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),

@@ -44,7 +44,7 @@ const stubs = [
   { method: 'PATCH', path: '/api/assets/:asset', as: 'admin', body: { name: 'Camera 2' } },
   { method: 'POST', path: '/api/assets/:asset/retire', as: 'admin' },
   { method: 'POST', path: '/api/assets/:asset/units', as: 'admin', body: { tag: 'cam-001' } },
-  { method: 'GET', path: '/api/requests', as: 'member' },
+  // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
   {
     method: 'POST',
     path: '/api/requests',
