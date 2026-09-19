@@ -15,8 +15,8 @@
 # encrypted with AES-256 before it is uploaded, and the passphrase lives only in the secret store.
 # Do not remove that step, and do not add a step that prints the dump.
 #
-# Restoring is documented in doc/backups.md, which also records the restore test that proves the
-# procedure works.
+# Restoring is documented in code/docs/backups.md, which also records the restore test that
+# proves the procedure works.
 
 name: Backup (daily database export)
 
@@ -42,7 +42,7 @@ jobs:
       - name: Check the secrets exist
         # Deliberately a failure, not a skip. A nightly job that goes green without producing a
         # backup is the same trap as a health check that cannot see the database: reassuring and
-        # wrong. If this fails, set the two secrets (see doc/backups.md).
+        # wrong. If this fails, set the two secrets (see code/docs/backups.md).
         run: |
           missing=
           [ -z "$MONGODB_URI" ] && missing="$missing MONGODB_URI_STAGING"
@@ -54,7 +54,8 @@ jobs:
 
       - name: Dump the database
         # mongodump ships in the mongo image, so the tool version is pinned with the image and is
-        # the same one doc/backups.md tells you to restore with. --archive --gzip makes it one file.
+        # the same one code/docs/backups.md tells you to restore with. --archive --gzip makes it
+        # a single file.
         run: |
           mkdir -p backup
           stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -99,7 +100,7 @@ jobs:
           path: |
             backup/*.archive.gz.enc
             backup/*.sha256
-          retention-days: 30 # the agreed retention (doc/backups.md)
+          retention-days: 30 # the agreed retention (code/docs/backups.md)
           if-no-files-found: error
 
       - name: Summary

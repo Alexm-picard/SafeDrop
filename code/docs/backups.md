@@ -8,7 +8,7 @@ exists to keep. Ticket: SCRUM-127.
 
 **Atlas free tier plus a scheduled export job.** The free tier has no built-in backups (those start
 at M10), so the backup is a nightly `mongodump` run by GitHub Actions rather than an Atlas feature.
-Recorded in `doc/sdd-v0.2-changes.md` §10.1, still marked **[CONFIRM AT MEETING]** — this file
+Recorded in `code/docs/sdd-v0.2-changes.md` §10.1, still marked **[CONFIRM AT MEETING]** — this file
 describes what the code does; the team confirms the decision itself.
 
 ## What runs
