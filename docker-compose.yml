@@ -74,8 +74,6 @@ services:
       COOKIE_SECURE: 'false'
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
-      INVITE_TTL: ${INVITE_TTL:-72h}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
     volumes:
       - ./code/backend:/app # bind mount so `node --watch` reloads on edits
       - /app/node_modules # keep the container's node_modules, not the host's

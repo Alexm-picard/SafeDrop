@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: auth HTTP handlers: set/clear HttpOnly cookies, uniform responses (SCRUM-102); changePassword and acceptInvite handlers
+// AI-Assisted Areas: auth HTTP handlers: set/clear HttpOnly cookies, uniform responses (SCRUM-102); changePassword handler
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the member-lifecycle work. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * HTTP layer for `/api/auth`: translate requests into auth-service calls, and manage the session
@@ -17,7 +17,7 @@
  * receives only the user object and the browser handles the credential.
  *
  * Exports: `setSessionCookies`, `clearSessionCookies`, and the handlers `login`, `refresh`, `logout`,
- * `me`, `changePassword`, `acceptInvite`.
+ * `me`, `changePassword`.
  */
 import * as authService from '../services/auth.service.js';
 import { AuthError } from '../utils/errors.js';
@@ -140,19 +140,4 @@ export async function changePassword(req, res) {
   const { user, ...tokens } = await authService.changePassword(req.auth, req.body);
   setSessionCookies(res, tokens);
   res.status(200).json({ user });
-}
-
-/**
- * `POST /api/auth/accept-invite` — activate an invited account and sign the new member in.
- *
- * Public: the invitation token in the body is the credential. On success the response sets the same
- * session cookies as login and carries the user and their organisation, so the SPA can go straight into
- * the app and tell them the organisation code to use next time.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- */
-export async function acceptInvite(req, res) {
-  const { user, organization, ...tokens } = await authService.acceptInvite(req.body);
-  setSessionCookies(res, tokens);
-  res.status(200).json({ user, organization });
 }

@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: role → permission matrix from SDD §6.4 / SR-1; public-route allowlist; password:self permission
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the member-lifecycle work. Must be reviewed and tested by the owning team member before merge.
 //
 // This file is the single authorization policy. Routes declare a permission (never a role); the
 // authorize middleware answers "does this role hold this permission?". Deny by default: a permission
@@ -119,8 +119,6 @@ export const PUBLIC_ROUTES = Object.freeze([
   Object.freeze({ method: 'POST', path: '/api/auth/login' }),
   Object.freeze({ method: 'POST', path: '/api/auth/refresh' }),
   Object.freeze({ method: 'POST', path: '/api/organizations' }),
-  // The invitation token in the body is the credential: the invitee has no account yet (OD-3).
-  Object.freeze({ method: 'POST', path: '/api/auth/accept-invite' }),
 ]);
 
 /**
@@ -139,7 +137,7 @@ export function normalizePath(path) {
 }
 
 /**
- * Is this method + path one of the four routes that may be called without a session?
+ * Is this method + path one of the three routes that may be called without a session?
  *
  * The comparison is on the exact normalised path, not a prefix, so nothing under
  * `/api/auth/...` becomes public by accident.

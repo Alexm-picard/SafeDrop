@@ -73,41 +73,14 @@ describe('loadEnv', () => {
     expect(() => loadEnv({ ...base, NODE_ENV: 'production', COOKIE_SECURE: 'true' })).toThrow(
       /CORS_ORIGINS/,
     );
-    const prod = {
-      ...base,
-      NODE_ENV: 'production',
-      COOKIE_SECURE: 'true',
-      CORS_ORIGINS: 'https://app.test',
-    };
-    // The invitation link is built from APP_BASE_URL, so production needs the SPA's public https address:
-    // the default points at localhost and a plain-http link would carry a credential in the clear.
-    expect(() => loadEnv(prod)).toThrow(/APP_BASE_URL/);
-    expect(() => loadEnv({ ...prod, APP_BASE_URL: 'http://app.test' })).toThrow(/https/);
-    expect(loadEnv({ ...prod, APP_BASE_URL: 'https://app.test' }).isProduction).toBe(true);
-  });
-
-  describe('invitations', () => {
-    it('defaults to a 72-hour link and the dev SPA address', () => {
-      const e = loadEnv(base);
-      expect(e.INVITE_TTL).toBe('72h');
-      expect(e.APP_BASE_URL).toBe('http://localhost:5173');
-    });
-
-    it('has no mail settings: invitations are copied by the admin, never sent by the server', () => {
-      const e = loadEnv({ ...base, SMTP_HOST: 'smtp.test', EMAIL_FROM: 'x@y.test' });
-      expect(Object.keys(e).filter((k) => /SMTP|EMAIL/.test(k))).toEqual([]);
-    });
-
-    it('strips a trailing slash from APP_BASE_URL so the link has no double slash', () => {
-      expect(loadEnv({ ...base, APP_BASE_URL: 'https://app.test/' }).APP_BASE_URL).toBe(
-        'https://app.test',
-      );
-    });
-
-    it('rejects a malformed TTL or URL', () => {
-      expect(() => loadEnv({ ...base, INVITE_TTL: 'three days' })).toThrow(/INVITE_TTL/);
-      expect(() => loadEnv({ ...base, APP_BASE_URL: 'not a url' })).toThrow(/APP_BASE_URL/);
-    });
+    expect(
+      loadEnv({
+        ...base,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        CORS_ORIGINS: 'https://app.test',
+      }).isProduction,
+    ).toBe(true);
   });
 
   it('rejects origins that are not scheme://host', () => {

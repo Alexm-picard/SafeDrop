@@ -40,16 +40,6 @@ export const memberUser = {
   name: 'Max Member',
   role: 'MEMBER',
 };
-/** An invitation token the mock accepts, one it reports as expired, and (by elimination) any other is invalid. */
-export const VALID_TOKEN = 'valid-invitation-token-0123456789abcdefghij';
-export const EXPIRED_TOKEN = 'expired-invitation-token-0123456789abcdefgh';
-
-/** The one-time links the mock API hands back for an invitation and for a resend. */
-export const INVITE_LINK =
-  'http://localhost:5173/accept-invite?token=invite-token-0123456789abcdefghijklmnopqrs';
-export const RESENT_LINK =
-  'http://localhost:5173/accept-invite?token=resent-token-0123456789abcdefghijklmnopqrs';
-
 export const summary = {
   totalAssets: 12,
   checkedOut: 4,
@@ -277,21 +267,6 @@ export const handlers = [
     errorResponse(401, 'UNAUTHENTICATED', 'Invalid refresh token'),
   ),
   http.post('*/api/auth/logout', () => new HttpResponse(null, { status: 204 })),
-  http.post('*/api/auth/accept-invite', async ({ request }) => {
-    const body = await request.json();
-    if (body.token === EXPIRED_TOKEN) {
-      return errorResponse(400, 'INVITATION_EXPIRED', 'This invitation has expired');
-    }
-    if (body.token !== VALID_TOKEN) {
-      return errorResponse(400, 'INVITATION_INVALID', 'This invitation link is not valid');
-    }
-    if (!body.password || body.password.length < 10) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
-        { location: 'body', path: 'password', message: 'must be at least 10 characters' },
-      ]);
-    }
-    return HttpResponse.json({ user: { ...memberUser, invitation: null }, organization: org });
-  }),
   http.post('*/api/organizations', async ({ request }) => {
     const body = await request.json();
     if (!body.adminPassword || body.adminPassword.length < 10) {
@@ -331,32 +306,11 @@ export const handlers = [
           email: body.email,
           name: body.name,
           role: body.role ?? 'MEMBER',
-          invitation: {
-            status: 'PENDING',
-            expiresAt: new Date(Date.UTC(2026, 8, 13)).toISOString(),
-          },
           createdAt: new Date(Date.UTC(2026, 8, 10)).toISOString(),
         },
-        inviteLink: INVITE_LINK,
       },
       { status: 201 },
     );
-  }),
-  http.post('*/api/users/:id/resend-invite', ({ params }) => {
-    const target = members.find((m) => m.id === params.id);
-    if (!target) {
-      return errorResponse(404, 'NOT_FOUND', 'User not found');
-    }
-    return HttpResponse.json({
-      user: {
-        ...target,
-        invitation: {
-          status: 'PENDING',
-          expiresAt: new Date(Date.UTC(2026, 8, 16)).toISOString(),
-        },
-      },
-      inviteLink: RESENT_LINK,
-    });
   }),
   http.patch('*/api/users/:id/role', async ({ params, request }) => {
     const { role } = await request.json();

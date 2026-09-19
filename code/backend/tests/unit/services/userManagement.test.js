@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: unit tests for the member-lifecycle building blocks: role ordering, invite/role/change-password/accept-invite schemas, repository additions, service edge cases
+// AI-Assisted Areas: unit tests for the member-lifecycle building blocks: role ordering, invite/role/change-password schemas, repository additions, service edge cases
 // Human Contributions: pending team review
 // Notes: Complements tests/integration/routes/users.test.js, which covers the HTTP behaviour. Must be reviewed by the owning team member before merge.
 
@@ -18,7 +18,7 @@ import mongoose from 'mongoose';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as orgRepo from '../../../src/repositories/organization.repository.js';
 import * as userRepo from '../../../src/repositories/user.repository.js';
-import { acceptInviteBody, changePasswordBody } from '../../../src/routes/auth.routes.js';
+import { changePasswordBody } from '../../../src/routes/auth.routes.js';
 import { inviteBody, roleBody } from '../../../src/routes/users.routes.js';
 import * as organizationService from '../../../src/services/organization.service.js';
 import { ForbiddenError, NotFoundError } from '../../../src/utils/errors.js';
@@ -32,7 +32,7 @@ describe('ROLE_LIST ordering', () => {
 });
 
 describe('inviteBody', () => {
-  const base = { email: 'a@b.co', name: 'A' };
+  const base = { email: 'a@b.co', name: 'A', password: 'Long-Enough-Passw0rd' };
 
   it('defaults the role to MEMBER, the least privilege', () => {
     expect(inviteBody.parse(base).role).toBe(ROLES.MEMBER);
@@ -42,32 +42,17 @@ describe('inviteBody', () => {
     expect(inviteBody.parse({ ...base, email: '  A@B.Co ' }).email).toBe('a@b.co');
   });
 
-  it('has no field for a password or an organisation: an admin can choose neither', () => {
-    expect(Object.keys(inviteBody.shape).sort()).toEqual(['email', 'name', 'role']);
-  });
-});
-
-describe('acceptInviteBody', () => {
-  const ok = { token: 'a'.repeat(43), password: 'Long-Enough-Passw0rd' };
-
-  it('accepts a token-shaped string and a password that meets the rules', () => {
-    expect(acceptInviteBody.safeParse(ok).success).toBe(true);
+  it('has no field through which a request could name an organisation', () => {
+    expect(Object.keys(inviteBody.shape).sort()).toEqual(['email', 'name', 'password', 'role']);
   });
 
-  it('holds the password to the shared rules: 10 characters minimum, 72 bytes maximum', () => {
-    expect(acceptInviteBody.safeParse({ ...ok, password: 'short' }).success).toBe(false);
-    expect(acceptInviteBody.safeParse({ ...ok, password: 'a'.repeat(73) }).success).toBe(false);
-  });
-
-  it('bounds the token so an absurd body is refused before any hashing', () => {
-    expect(acceptInviteBody.safeParse({ ...ok, token: 'short' }).success).toBe(false);
-    expect(acceptInviteBody.safeParse({ ...ok, token: 'a'.repeat(201) }).success).toBe(false);
-    expect(acceptInviteBody.safeParse({ ...ok, token: { $ne: null } }).success).toBe(false);
-  });
-
-  it('requires both fields', () => {
-    expect(acceptInviteBody.safeParse({ password: ok.password }).success).toBe(false);
-    expect(acceptInviteBody.safeParse({ token: ok.token }).success).toBe(false);
+  it('requires the initial password and holds it to the shared rules', () => {
+    expect(inviteBody.safeParse({ ...base, password: undefined }).success).toBe(false);
+    expect(inviteBody.safeParse({ ...base, password: 'short' }).success).toBe(false);
+    expect(inviteBody.safeParse({ ...base, password: 'a'.repeat(73) }).success).toBe(false);
+    // Multi-byte characters count as bytes: 25 × 3 = 75 > 72.
+    expect(inviteBody.safeParse({ ...base, password: '€'.repeat(25) }).success).toBe(false);
+    expect(inviteBody.safeParse(base).success).toBe(true);
   });
 });
 
@@ -164,7 +149,11 @@ describe('member-lifecycle service edge cases', () => {
   it('inviteUser refuses a caller who no longer exists, and creates nothing', async () => {
     const ghost = { userId: String(new mongoose.Types.ObjectId()) };
     await expect(
-      organizationService.inviteUser(seed.a.orgId, ghost, { email: 'x@a.test', name: 'X' }),
+      organizationService.inviteUser(seed.a.orgId, ghost, {
+        email: 'x@a.test',
+        name: 'X',
+        password: 'Long-Enough-Passw0rd',
+      }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(await userRepo.findByEmail(seed.a.orgId, 'x@a.test')).toBeNull();
   });
@@ -175,7 +164,7 @@ describe('member-lifecycle service edge cases', () => {
       organizationService.inviteUser(
         seed.a.orgId,
         { userId: String(seed.b.admin._id) },
-        { email: 'x@a.test', name: 'X' },
+        { email: 'x@a.test', name: 'X', password: 'Long-Enough-Passw0rd' },
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
