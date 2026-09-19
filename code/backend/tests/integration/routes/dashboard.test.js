@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: SCRUM-103 dashboard summary: counts from AssetUnit.status, ORG_ADMIN only
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Integration tests for `GET /api/dashboard/summary` (SCRUM-103).

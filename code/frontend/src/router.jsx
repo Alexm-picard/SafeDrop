@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket.
 
 /**
  * The route table: every URL the SPA serves, and the guards wrapped around them.
@@ -58,7 +58,7 @@ export const routes = [
             element: <RequireRole roles={['ORG_ADMIN']} />,
             children: [
               { path: 'admin', element: <AdminDashboardPage /> },
-              { path: 'admin/members', element: <MembersPage /> },
+              { path: 'admin/users', element: <MembersPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
             ],
           },

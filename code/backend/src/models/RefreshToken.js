@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: RefreshToken ("Session") schema: hashed opaque token, idle + absolute expiry, rotation family (SDD §6.2, SR-4)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * The `refreshtokens` collection: one issued refresh token, stored only as a hash (SDD §6.2, SR-4).

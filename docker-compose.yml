@@ -2,8 +2,8 @@
 # Tools: Claude Code
 # Overall AI Contribution: ~90% (skeleton generated from team design documents)
 # AI-Assisted Areas: three-container local stack (mongo replica set + init sidecar, backend, frontend)
-# Human Contributions: pending team review (original two-service file by Alex Picard; mongo services added)
-# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+# Human Contributions: original two-service file by Alex Picard, mongo services added; reviewed by Amber Rastella (PR #7, 2026-09-18)
+# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 #
 # Local development stack for SafeDrop (SDD §2.3.4, kickoff SCRUM-111).
 #

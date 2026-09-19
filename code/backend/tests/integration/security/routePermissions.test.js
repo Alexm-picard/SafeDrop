@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: deny-by-default proof (SDD §6.4): walks the live Express stack, exercises every route per role, and proves rogue registrations are refused at boot and at runtime (SR-1)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Security tests for deny-by-default across the whole route table (SDD §6.4, SR-1).

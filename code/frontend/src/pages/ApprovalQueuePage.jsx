@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: approval queue wired to real GET/approve/deny endpoints (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list)
-// Human Contributions: pending team review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 
 /**
  * The approval queue: requests waiting on a decision, and a browsable history of the rest.

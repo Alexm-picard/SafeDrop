@@ -39,9 +39,37 @@ export const ROUTES = Object.freeze({
   myRequests: '/requests',
   admin: '/admin',
   approvals: '/admin/approvals',
-  members: '/admin/members',
+  users: '/admin/users',
   auditLog: '/admin/audit',
 });
+
+/**
+ * Where each role lands after signing in (SCRUM-21).
+ *
+ * Signing in should end on the screen the role exists for: a member on their own requests, so the
+ * first thing they see is the status of what they asked for; an approver on the queue waiting for
+ * them; an admin on the dashboard. The catalogue is a click away in the navigation for all of them.
+ *
+ * This is only the default. A visitor who was sent to the login page from a guarded URL returns to
+ * that URL instead, because what they asked for beats what their role usually wants.
+ */
+export const LANDING_BY_ROLE = Object.freeze({
+  [ROLES.MEMBER]: ROUTES.myRequests,
+  [ROLES.APPROVER]: ROUTES.approvals,
+  [ROLES.ORG_ADMIN]: ROUTES.admin,
+});
+
+/**
+ * The path to land on for a role, falling back to the catalogue.
+ *
+ * The fallback matters: a role added on the backend before this map is updated must still land
+ * somewhere every signed-in user may see, rather than on `undefined`.
+ * @param {string|null|undefined} role
+ * @returns {string}
+ */
+export function landingFor(role) {
+  return LANDING_BY_ROLE[role] ?? ROUTES.home;
+}
 
 /**
  * The audit actions the API will accept as a filter, mirroring the backend's `AUDIT_ACTION_LIST`.

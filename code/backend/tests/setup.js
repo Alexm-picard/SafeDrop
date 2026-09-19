@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: per-file Mongoose connection to a unique database with the index migration applied; wipe between tests
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Per-file test setup: a private database, the real indexes, and a clean slate between tests.

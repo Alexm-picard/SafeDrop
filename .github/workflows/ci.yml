@@ -2,8 +2,8 @@
 # Tools: Claude Code
 # Overall AI Contribution: ~90% (skeleton generated from team design documents)
 # AI-Assisted Areas: matrix test job, docker build job, staging deploy by mirroring main to Alexm-picard/SafeDrop (pinned to this repo), production deploy placeholder
-# Human Contributions: pending team review
-# Notes: Generated from SDD v0.1, SPPP §5c, NFR doc (NFR-10, SR-13), Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+# Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+# Notes: Generated from SDD v0.1, SPPP §5c, NFR doc (NFR-10, SR-13), Sprint 1 backlog.
 #
 # Lives at the repository root because GitHub only reads .github/ from the root (the old code/.github was never run).
 
