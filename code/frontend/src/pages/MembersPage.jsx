@@ -344,7 +344,7 @@ export function MembersPage() {
                     </select>
                   ),
               },
-              { key: 'joined', header: 'Added', render: (m) => formatDate(m.createdAt) },
+              { key: 'joined', header: 'Joined', render: (m) => formatDate(m.createdAt) },
             ]}
             rows={data.items}
             getRowId={(m) => m.id}
