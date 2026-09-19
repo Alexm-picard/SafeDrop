@@ -39,7 +39,7 @@ export const ROUTES = Object.freeze({
   myRequests: '/requests',
   admin: '/admin',
   approvals: '/admin/approvals',
-  members: '/admin/members',
+  users: '/admin/users',
   auditLog: '/admin/audit',
 });
 

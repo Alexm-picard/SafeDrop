@@ -69,7 +69,7 @@ export function Layout() {
             ) : null}
             {isAdmin ? (
               <li>
-                <NavLink to={ROUTES.members}>Members</NavLink>
+                <NavLink to={ROUTES.users}>Users</NavLink>
               </li>
             ) : null}
             {isAdmin ? (
