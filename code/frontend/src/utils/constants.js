@@ -34,11 +34,13 @@ export const ROUTES = Object.freeze({
   home: '/',
   login: '/login',
   setup: '/setup',
+  acceptInvite: '/accept-invite',
   catalog: '/',
   asset: (id) => `/assets/${id}`,
   myRequests: '/requests',
   admin: '/admin',
   approvals: '/admin/approvals',
+  members: '/admin/members',
   auditLog: '/admin/audit',
 });
 /**
@@ -93,3 +95,9 @@ export const AUDIT_TARGET_TYPES = Object.freeze([
  * that a page is scannable without scrolling on a laptop.
  */
 export const AUDIT_PAGE_SIZE = 25;
+/**
+ * Rows per page on the members list.
+ *
+ * Within the API's `limit` ceiling of 100. Organisations are small, so most will only ever see one page.
+ */
+export const MEMBERS_PAGE_SIZE = 25;
