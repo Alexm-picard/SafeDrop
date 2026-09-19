@@ -44,7 +44,9 @@ async function wipeOrg(slug) {
 }
 
 function printOrgSummary(key, org) {
-  console.log(`\nOrg ${key.toUpperCase()} — ${org.org.name} (slug: ${org.org.slug}, id: ${org.orgId})`);
+  console.log(
+    `\nOrg ${key.toUpperCase()} — ${org.org.name} (slug: ${org.org.slug}, id: ${org.orgId})`,
+  );
 
   console.log('  Users:');
   const roleUsers = { admin: org.admin, approver: org.approver, member: org.member };
@@ -85,7 +87,9 @@ async function main() {
     // clearly documented as destructive").
     const existing = await Organization.find({ slug: mongoose.trusted({ $in: SLUGS }) });
     if (existing.length > 0) {
-      console.log(`Existing seed orgs found (${existing.map((o) => o.slug).join(', ')}) — wiping and recreating.`);
+      console.log(
+        `Existing seed orgs found (${existing.map((o) => o.slug).join(', ')}) — wiping and recreating.`,
+      );
       for (const slug of SLUGS) {
         await wipeOrg(slug);
       }

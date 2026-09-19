@@ -52,7 +52,11 @@ export function testPasswordHash() {
 
 /** Two more assets per org, on top of the original "Laptop", for status/category variety. */
 const EXTRA_ASSET_DEFS = [
-  { name: 'Camera', category: 'camera', units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.AVAILABLE, UNIT_STATUS.RETIRED] },
+  {
+    name: 'Camera',
+    category: 'camera',
+    units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.AVAILABLE, UNIT_STATUS.RETIRED],
+  },
   { name: 'Projector', category: 'projector', units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.OUT] },
 ];
 
@@ -151,7 +155,18 @@ async function seedOrg(key) {
     extraAssets.push({ asset: extraAsset, units: extraUnits });
   }
 
-  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit, extraAssets };
+  return {
+    org,
+    orgId: String(orgId),
+    admin,
+    approver,
+    member,
+    asset,
+    units,
+    request,
+    audit,
+    extraAssets,
+  };
 }
 
 /**
