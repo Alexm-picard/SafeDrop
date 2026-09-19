@@ -9,7 +9,8 @@
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "format:check": "npm run format:check --prefix backend && npm run format:check --prefix frontend",
-    "test": "npm test --prefix backend && npm test --prefix frontend"
+    "test": "npm test --prefix backend && npm test --prefix frontend",
+    "seed": "npm run seed --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

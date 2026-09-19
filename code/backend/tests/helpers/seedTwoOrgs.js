@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: two fully populated tenants for isolation tests (SR-2)
+// AI-Assisted Areas: two fully populated tenants for isolation tests (SR-2) and for `npm run seed`
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -12,8 +12,9 @@
  * organisation that also has data — with a single tenant, a query missing its `orgId` filter would
  * pass every test. Every isolation test here asks whether org A can see or touch org B.
  *
- * Each organisation gets one user per role, one asset with three units in different statuses, a
- * pending checkout request and an audit event, so a test can exercise any layer without seeding more.
+ * Each organisation gets one user per role, three assets with units across every status (incl.
+ * retired), a pending checkout request and an audit event. This same function backs `npm run seed`
+ * (see scripts/seedDev.js) — it is the one place "seed two organisations" is implemented.
  */
 import bcrypt from 'bcryptjs';
 import * as assetRepo from '../../src/repositories/asset.repository.js';
@@ -50,7 +51,7 @@ export function testPasswordHash() {
 }
 
 /**
- * Seed one organisation with its users, asset, units, request and audit event.
+ * Seed one organisation with its users, assets, units, request and audit event.
  *
  * Names and emails are derived from `key` (`org-a`, `admin@a.test`), so the two organisations are
  * told apart at a glance in a failing assertion. The users are created concurrently since they are
@@ -120,13 +121,75 @@ async function seedOrg(key) {
     targetId: orgId,
     after: { name: org.name },
   });
-  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit };
+
+  const camera = await assetRepo.create(orgId, {
+    name: `Camera ${key.toUpperCase()}`,
+    category: 'camera',
+    description: '',
+    imageUrl: null,
+  });
+  const cameraUnits = [
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c01`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c02`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c03`,
+      status: UNIT_STATUS.RETIRED,
+    }),
+  ];
+
+  const projector = await assetRepo.create(orgId, {
+    name: `Projector ${key.toUpperCase()}`,
+    category: 'projector',
+    description: '',
+    imageUrl: null,
+  });
+  const projectorUnits = [
+    await assetUnitRepo.create(orgId, {
+      assetId: projector._id,
+      tag: `${key}-p01`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: projector._id,
+      tag: `${key}-p02`,
+      status: UNIT_STATUS.OUT,
+    }),
+  ];
+
+  const extraAssets = [
+    { asset: camera, units: cameraUnits },
+    { asset: projector, units: projectorUnits },
+  ];
+
+  return {
+    org,
+    orgId: String(orgId),
+    admin,
+    approver,
+    member,
+    asset,
+    units,
+    request,
+    audit,
+    extraAssets,
+  };
 }
 
 /**
  * Seed both organisations and return them as `{ a, b, password }`.
  *
- * Org A is conventionally the caller and org B the one that must remain invisible to it.
+ * Org A is conventionally the caller and org B the one that must remain invisible to it. The
+ * returned objects carry every created document (ids included), so a caller — a test or
+ * `scripts/seedDev.js` — has everything it needs without a second database read.
  * @returns {Promise<{ a: object, b: object, password: string }>}
  */
 export async function seedTwoOrgs() {

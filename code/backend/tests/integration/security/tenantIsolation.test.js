@@ -92,7 +92,7 @@ describe('repository layer: orgId is always the first argument and always scopes
       Array(users.items.length).fill(seed.a.orgId),
     );
     const assets = await assetRepo.list(seed.a.orgId);
-    expect(assets.total).toBe(1);
+    expect(assets.total).toBe(3);
     const units = await assetUnitRepo.listByAsset(seed.a.orgId, seed.b.asset._id);
     expect(units).toHaveLength(0);
     const requests = await checkoutRepo.list(seed.a.orgId);
@@ -101,7 +101,7 @@ describe('repository layer: orgId is always the first argument and always scopes
     expect(audit.total).toBe(1);
     expect(String(audit.items[0].orgId)).toBe(seed.a.orgId);
     const counts = await assetUnitRepo.countByStatus(seed.a.orgId);
-    expect(counts).toEqual({ AVAILABLE: 1, HELD: 1, OUT: 1, RETIRED: 0 });
+    expect(counts).toEqual({ AVAILABLE: 4, HELD: 1, OUT: 2, RETIRED: 1 });
   });
 });
 
@@ -117,13 +117,13 @@ describe('HTTP layer: org A addressing org B', () => {
     });
     const res = await asAdminA(request(app).get('/api/dashboard/summary'));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ totalAssets: 3, checkedOut: 1, available: 1, held: 1, retired: 0 });
+    expect(res.body).toEqual({ totalAssets: 7, checkedOut: 2, available: 4, held: 1, retired: 1 });
   });
 
   it('an orgId smuggled in the query string is ignored', async () => {
     const res = await asAdminA(request(app).get(`/api/dashboard/summary?orgId=${seed.b.orgId}`));
     expect(res.status).toBe(200);
-    expect(res.body.totalAssets).toBe(3);
+    expect(res.body.totalAssets).toBe(7);
   });
 
   it('an orgId smuggled in the body is stripped before validation', async () => {

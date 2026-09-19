@@ -104,3 +104,23 @@ If someone added a new dependency since your last pull, run `npm run install:all
 - **Port already in use:** something else is on 4000 or 5173. Kill it with `lsof -ti:4000 | xargs kill` (swap the port as needed).
 - **`Cannot use import statement outside a module`:** `backend/package.json` must have `"type": "module"`.
 - **Frontend can't reach backend:** make sure the backend is running and check the Vite proxy in `frontend/vite.config.ts`.
+
+
+## Seed dev data
+
+`npm run seed` (from `code/backend`, database already running) creates two demo organizations,
+each with 3 role users, 3 assets (laptop/camera/projector) with units across every status
+(incl. retired), and one pending checkout request.
+
+| Org | Slug | Admin | Approver | Member |
+|---|---|---|---|---|
+| Org A (Dev) | `org-a` | admin@a.test | approver@a.test | member@a.test |
+| Org B (Dev) | `org-b` | admin@b.test | approver@b.test | member@b.test |
+
+Shared password for every seeded user: `Correct-Horse-Battery-9`
+
+**Destructive every time it runs.** If `org-a`/`org-b` already exist, running `npm run seed` again
+drops and recreates them from scratch — no flag or confirmation needed. Refuses entirely when
+`NODE_ENV=production`.
+
+**`MONGODB_URI` must be set wherever you run this — inside the container or on your host machine.**

@@ -21,7 +21,8 @@
     "migrate": "migrate-mongo up",
     "migrate:down": "migrate-mongo down",
     "migrate:status": "migrate-mongo status",
-    "migrate:create": "migrate-mongo create"
+    "migrate:create": "migrate-mongo create",
+    "seed": "node scripts/seedDev.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
