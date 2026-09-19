@@ -1,4 +1,17 @@
 /* eslint-disable no-console */
+
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90%
+// AI-Assisted Areas: `npm run seed` CLI wrapper — connects, wipes/reseeds org-a and org-b, prints credentials
+// Human Contributions: pending team review
+
+/**
+ * `npm run seed`: wipes and reseeds the two demo organizations (see seedTwoOrgs), then prints
+ * everyone's login and every id created. Destructive on every run by design; refuses on
+ * NODE_ENV=production. Needs only MONGODB_URI — does not load the app's full env config.
+ */
+
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { AssetUnit } from '../src/models/AssetUnit.js';
@@ -25,7 +38,7 @@ async function wipeOrg(slug) {
     AssetUnit.deleteMany({ orgId }),
     Asset.deleteMany({ orgId }),
     User.deleteMany({ orgId }),
-    AuditEvent.collection.deleteMany({ orgId }), // native driver: model forbids Mongoose deletes (SR-8)
+    AuditEvent.collection.deleteMany({ orgId }),
   ]);
   await Organization.deleteOne({ _id: orgId });
 }
