@@ -170,7 +170,18 @@ async function seedOrg(key) {
     { asset: projector, units: projectorUnits },
   ];
 
-  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit, extraAssets };
+  return {
+    org,
+    orgId: String(orgId),
+    admin,
+    approver,
+    member,
+    asset,
+    units,
+    request,
+    audit,
+    extraAssets,
+  };
 }
 
 /**
