@@ -46,6 +46,25 @@ export const securityHeaders = helmet({
 });
 
 /**
+ * Forbid storing any response from this API.
+ *
+ * Every JSON body here is either a tenant's data or a health verdict, and neither should sit in a
+ * browser cache, a proxy or a CDN: the first is private, the second is only true at the moment it
+ * was asked. Found by the ZAP baseline scan of staging, which reported the responses as storable
+ * and cacheable because nothing said otherwise (SCRUM-126).
+ *
+ * `no-store` rather than `no-cache`: no-cache still permits a stored copy that is revalidated,
+ * which is exactly the copy we do not want written to disk on a shared machine.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export function noStore(_req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
+
+/**
  * Require `Content-Type: application/json` on POST, PUT, PATCH and DELETE.
  *
  * An HTML form can only send `application/x-www-form-urlencoded`, `multipart/form-data` or

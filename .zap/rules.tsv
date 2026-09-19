@@ -1,0 +1,26 @@
+# OWASP ZAP baseline rule configuration (SCRUM-126).
+#
+# Format: <rule id>	<IGNORE|WARN|FAIL>	<comment>    — tab separated, one rule per line.
+# A rule that is not listed defaults to WARN, so a new alert always shows up rather than passing
+# silently. IGNORE means the team has looked at the alert and accepted it; the reasoning lives in
+# doc/zap-triage.md, which must be updated in the same PR as any change here.
+#
+# Note the build does NOT pass or fail on these levels. The workflow fails on any High-severity
+# alert and reports the rest (see .github/workflows/zap.yml), so IGNORE only controls the noise in
+# the report.
+#
+# Accepted: caching alerts on the static SPA shell and its bundle, which are public files with
+# nothing private in them. The API side of the same alerts was fixed instead, not ignored: it now
+# sends Cache-Control: no-store on every response (middleware/security.js).
+10015	IGNORE	Re-examine Cache-control Directives — public SPA shell only
+10049	IGNORE	Storable but Non-Cacheable Content — static assets, nothing private
+10050	IGNORE	Retrieved from Cache — consequence of serving a static SPA from a CDN
+#
+# Accepted: informational fingerprinting of the stack. Knowing it is a single-page app tells an
+# attacker nothing that the bundle itself does not.
+10109	IGNORE	Modern Web Application — informational, by design
+#
+# Accepted: the "suspicious comments" matches are the AI-USAGE SUMMARY headers the course requires
+# in every file (matched on FROM/ADMIN) plus minified identifiers in the bundle. Re-check if this
+# rule ever flags a comment that is not one of those.
+10027	IGNORE	Information Disclosure - Suspicious Comments — AI-usage headers and minified code
