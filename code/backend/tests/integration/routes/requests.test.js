@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: SCRUM-requests-approve/deny (decide a pending request), SCRUM-requests-checkout/return (record a physical handoff, OD-4)
+// AI-Assisted Areas: SCRUM-requests-approve/deny/list — approve and deny a pending checkout request, list requests. SCRUM-requests-checkout/return (record a physical handoff, OD-4)
 // Human Contributions: pending team review
 
 /**
@@ -281,4 +281,97 @@ describe('POST /api/requests/:id/return (SCRUM-requests-return, OD-4)', () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('INVALID_STATE_TRANSITION');
   });
+describe('GET /api/requests (SCRUM-requests-list)', () => {
+  it("defaults to the caller's own requests for a MEMBER", async () => {
+    const res = await request(app)
+      .get('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+    expect(res.body.items.every((r) => r.requesterId === String(seed.a.member._id))).toBe(true);
+  });
+
+  it("defaults to the caller's own requests for an ORG_ADMIN too, even though the org has more", async () => {
+    const res = await request(app)
+      .get('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.items).toEqual([]);
+  });
+
+  it('scope=org is ignored for a MEMBER: they still get only their own requests', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
+
+  it('scope=org returns the whole organization for an APPROVER', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
+
+  it('scope=org returns the whole organization for an ORG_ADMIN', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
+
+  it('state=PENDING narrows the approval queue (scope=org) to the one pending request', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&state=PENDING')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].id).toBe(String(seed.a.request._id));
+    expect(res.body.items[0].state).toBe('PENDING');
+  });
+
+  it("state filters a MEMBER's own list too", async () => {
+    const res = await request(app)
+      .get('/api/requests?state=CHECKED_OUT')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    // checkedOutRequest and projectorRequest are both CHECKED_OUT, both requested by seed.a.member.
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.every((r) => r.state === 'CHECKED_OUT')).toBe(true);
+  });
+
+  it("never returns another organization's requests even with scope=org", async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((r) => r.id);
+    expect(ids).not.toContain(String(seed.b.request._id));
+  });
+
+  it('paginates with page and limit', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&limit=2&page=2')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 5, page: 2, limit: 2 });
+    expect(res.body.items).toHaveLength(2);
+  });
+
+  it('rejects an unknown state value with 400', async () => {
+    const res = await request(app)
+      .get('/api/requests?state=BOGUS')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(400);
+  });
+
+  it('unauthenticated gets 401', async () => {
+    const res = await request(app).get('/api/requests');
+    expect(res.status).toBe(401);
+  });
+});
 });

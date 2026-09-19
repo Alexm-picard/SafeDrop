@@ -14,19 +14,21 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from '../../../src/App';
 import { render } from '@testing-library/react';
-import { adminUser, assets, memberUser, meHandler } from '../../mocks/handlers';
+import { adminUser, approverUser, assets, memberUser, meHandler } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
   it.each([
-    // The catalogue and asset detail have no ticket: SCRUM-115 shipped both endpoints and both
-    // screens, so they render real data rather than a placeholder. CatalogPage.test.jsx and
-    // AssetDetailPage.test.jsx cover them properly.
+    // The catalogue, asset detail, my-requests and approval queue have no ticket: SCRUM-115 and
+    // SCRUM-119 shipped their endpoints and screens, so they render real data rather than a
+    // placeholder. CatalogPage.test.jsx, AssetDetailPage.test.jsx and ApprovalQueuePage.test.jsx
+    // cover them properly.
     ['/', 'Catalog', null],
     [`/assets/${assets[0].id}`, assets[0].name, null],
-    ['/requests', 'My requests', 'SCRUM-requests-list'],
+    ['/requests', 'My requests', null],
     ['/admin', 'Dashboard', null],
-    ['/admin/approvals', 'Approval queue', 'SCRUM-requests-approve'],
+    ['/admin/approvals', 'Approval queue', null],
+    ['/admin/members', 'Members', null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
@@ -47,6 +49,15 @@ describe('routes', () => {
       screen.getAllByRole('alert').some((a) => /do not have access/.test(a.textContent ?? '')),
     ).toBe(true);
   });
+  it.each([memberUser, approverUser])(
+    'a $role is bounced from /admin/members to the catalog',
+    async (person) => {
+      const { router } = renderApp('/admin/members', authenticatedState(person));
+      await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+      expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+    },
+  );
+
   it('unknown paths render the 404 page', async () => {
     renderApp('/definitely/not/here', authenticatedState(adminUser));
     expect(

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny()/checkout()/returnUnit() implemented (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-checkout, SCRUM-requests-return)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny()/checkout()/returnUnit()/list()  implemented 
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -42,6 +42,7 @@ import {
   NotImplementedError,
   StateTransitionError,
 } from '../utils/errors.js';
+import { PERMISSIONS, roleHasPermission } from '../utils/permissions.js';
 import * as auditService from './audit.service.js';
 import { policyFor } from './policies/approvalPolicy.js';
 
@@ -148,15 +149,32 @@ export async function submit(_orgId, _actor, _input) {
 }
 
 /**
- * List checkout requests (`GET /api/requests`) — not implemented yet.
+ * List checkout requests (`GET /api/requests`).
  *
- * TODO(SCRUM-requests-list): a MEMBER sees only their own requests
- * (`checkoutRequestRepo.listForRequester`), an APPROVER or ORG_ADMIN sees the whole organisation's.
- * The route declares `requests:read:own`, so the narrowing by role happens here.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * Every role holds `requests:read:own`, so nobody is blocked at the route — what differs is which
+ * requests come back. Whether the caller sees the whole organisation is decided by two things
+ * together, not by role alone: they must hold `requests:decide` (APPROVER, ORG_ADMIN) **and** have
+ * explicitly asked for it with `scope: 'org'`. Omitted or `scope: 'own'` always means "my own
+ * requests," for every role — that is what keeps an admin's "My requests" view showing their own
+ * requests rather than the whole organisation's, even though the same admin can ask this same
+ * endpoint for the organisation-wide view (the approval queue) by passing `scope: 'org'`.
+ *
+ * A caller who cannot decide requests but sends `scope: 'org'` anyway is not rejected — the flag is
+ * simply ignored and they get their own requests, the same way a smuggled `orgId` elsewhere in the
+ * API is ignored rather than treated as an error.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {{ state?: string, page?: number, limit?: number, scope?: 'own'|'org' }} [query] validated `listQuery`
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function list(_orgId, _actor, _query) {
-  throw new NotImplementedError('SCRUM-requests-list', 'Listing requests is not implemented yet');
+export async function list(orgId, actor, query = {}) {
+  const { state, page, limit, scope } = query;
+  const wantsOrgWide =
+    scope === 'org' && roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
+  if (wantsOrgWide) {
+    return checkoutRequestRepo.list(orgId, { state, page, limit });
+  }
+  return checkoutRequestRepo.listForRequester(orgId, actor.userId, { state, page, limit });
 }
 
 /**

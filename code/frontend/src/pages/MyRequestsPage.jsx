@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: my-requests placeholder wired to useRequests (SCRUM-requests-list)
+// AI-Assisted Areas: my-requests page wired to the real GET /api/requests endpoint (SCRUM-requests-list)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -9,14 +9,14 @@
  * A member's own checkout requests.
  *
  * Which requests come back is the API's decision, not this page's: the same endpoint returns only
- * what the caller may see (SR-1).
+ * what the caller may see (SR-1) — no `scope` is passed here, so this is always "my own," even for
+ * an approver or admin who could ask the same endpoint for the organisation-wide view elsewhere
+ * (see ApprovalQueuePage).
  */
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import { TicketPlaceholder } from '../components/TicketPlaceholder';
 import { useRequests } from '../hooks/useRequests';
-import { TICKETS } from '../utils/constants';
 import { formatDate, humanize } from '../utils/format';
 /**
  * Render the member's requests as a table.
@@ -30,7 +30,6 @@ export function MyRequestsPage() {
   return (
     <>
       <h1>My requests</h1>
-      <TicketPlaceholder ticket={TICKETS.myRequests} />
       {status === 'loading' ? <LoadingState label="Loading your requests…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load your requests" onRetry={reload} />

@@ -34,27 +34,16 @@ export const ROUTES = Object.freeze({
   home: '/',
   login: '/login',
   setup: '/setup',
+  acceptInvite: '/accept-invite',
   catalog: '/',
   asset: (id) => `/assets/${id}`,
   myRequests: '/requests',
   admin: '/admin',
   approvals: '/admin/approvals',
+  members: '/admin/members',
   auditLog: '/admin/audit',
 });
-/**
- * The ticket that owns each not-yet-implemented screen.
- *
- * Mirrors the `details.ticket` the backend's 501 responses carry, so a placeholder screen can name
- * the same ticket the API does, and the two stay recognisably about the same piece of work.
- *
- * The audit log and the catalogue are absent for the same reason: SCRUM-46/51 shipped the audit log,
- * and SCRUM-115 shipped `GET /api/assets` and `GET /api/assets/:id` plus CatalogPage and
- * AssetDetailPage. An entry removed from here is the signal that a feature actually landed.
- */
-export const TICKETS = Object.freeze({
-  myRequests: 'SCRUM-requests-list',
-  approvalQueue: 'SCRUM-requests-approve',
-});
+
 /**
  * The audit actions the API will accept as a filter, mirroring the backend's `AUDIT_ACTION_LIST`.
  *
@@ -87,9 +76,30 @@ export const AUDIT_TARGET_TYPES = Object.freeze([
   'CheckoutRequest',
 ]);
 /**
+ * Every checkout-request state, mirroring the backend's `REQUEST_STATE_LIST`.
+ *
+ * Drives the approval queue's state filter, in the same order as the backend for reviewability.
+ */
+export const REQUEST_STATES = Object.freeze([
+  'PENDING',
+  'APPROVED',
+  'DENIED',
+  'CANCELLED',
+  'CHECKED_OUT',
+  'OVERDUE',
+  'RETURNED',
+  'LOST',
+]);
+/**
  * Rows per page on the audit log.
  *
  * Below the API's `limit` ceiling of 100 (see the backend's `pagination` schema), and small enough
  * that a page is scannable without scrolling on a laptop.
  */
 export const AUDIT_PAGE_SIZE = 25;
+/**
+ * Rows per page on the members list.
+ *
+ * Within the API's `limit` ceiling of 100. Organisations are small, so most will only ever see one page.
+ */
+export const MEMBERS_PAGE_SIZE = 25;

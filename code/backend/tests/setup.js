@@ -25,7 +25,8 @@
 import { randomUUID } from 'node:crypto';
 import mongoose from 'mongoose';
 import { afterAll, afterEach, beforeAll, inject } from 'vitest';
-import { up } from '../migrations/20260916000000-initial-indexes.js';
+import { up as upInitial } from '../migrations/20260916000000-initial-indexes.js';
+import { up as upInviteIndex } from '../migrations/20260919000000-invite-token-index.js';
 import { configureMongoose } from '../src/config/db.js';
 
 beforeAll(async () => {
@@ -37,7 +38,8 @@ beforeAll(async () => {
   configureMongoose();
   await mongoose.connect(uri, { dbName });
   // Same indexes as production: unique constraints and TTL behave identically in tests.
-  await up(mongoose.connection.db);
+  await upInitial(mongoose.connection.db);
+  await upInviteIndex(mongoose.connection.db);
 });
 
 afterEach(async () => {

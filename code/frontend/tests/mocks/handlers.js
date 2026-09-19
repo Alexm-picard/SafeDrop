@@ -9,8 +9,9 @@
  * The fixture users cover all three roles from one organisation, so role-based rendering can be tested
  * without building a user per test.
  *
- * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`), the builders
- * (`errorResponse`, `notImplemented`, `meHandler`) and the default `handlers` array.
+ * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`, `members`), the
+ * builders (`errorResponse`, `notImplemented`, `meHandler`, `membersPage`) and the default `handlers`
+ * array.
  */
 import { http, HttpResponse } from 'msw';
 export const org = {
@@ -39,6 +40,16 @@ export const memberUser = {
   name: 'Max Member',
   role: 'MEMBER',
 };
+/** An invitation token the mock accepts, one it reports as expired, and (by elimination) any other is invalid. */
+export const VALID_TOKEN = 'valid-invitation-token-0123456789abcdefghij';
+export const EXPIRED_TOKEN = 'expired-invitation-token-0123456789abcdefgh';
+
+/** The one-time links the mock API hands back for an invitation and for a resend. */
+export const INVITE_LINK =
+  'http://localhost:5173/accept-invite?token=invite-token-0123456789abcdefghijklmnopqrs';
+export const RESENT_LINK =
+  'http://localhost:5173/accept-invite?token=resent-token-0123456789abcdefghijklmnopqrs';
+
 export const summary = {
   totalAssets: 12,
   checkedOut: 4,
@@ -182,6 +193,99 @@ export function auditPage(search) {
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
 }
 /**
+ * Three checkout requests for the caller's org, one per state the approval queue actually exercises.
+ */
+export const checkoutRequests = [
+  {
+    id: '6aab2a45c6e457e01ac0973a',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972a',
+    requesterId: memberUser.id,
+    state: 'PENDING',
+    neededFrom: '2026-10-01T00:00:00.000Z',
+    neededTo: '2026-10-15T00:00:00.000Z',
+    note: '',
+    decidedBy: null,
+    decidedAt: null,
+    decisionNote: '',
+    checkedOutAt: null,
+    dueAt: null,
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973b',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972b',
+    requesterId: memberUser.id,
+    state: 'APPROVED',
+    neededFrom: '2026-09-20T00:00:00.000Z',
+    neededTo: '2026-09-30T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-09-19T00:00:00.000Z',
+    decisionNote: '',
+    checkedOutAt: null,
+    dueAt: null,
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973c',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972c',
+    requesterId: memberUser.id,
+    state: 'CHECKED_OUT',
+    neededFrom: '2026-09-01T00:00:00.000Z',
+    neededTo: '2026-09-14T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-08-31T00:00:00.000Z',
+    decisionNote: '',
+    checkedOutAt: '2026-09-01T00:00:00.000Z',
+    dueAt: '2026-09-14T00:00:00.000Z',
+    returnedAt: null,
+  },
+];
+/**
+ * Apply the state filter and pagination the real `/api/requests` endpoint applies.
+ *
+ * `scope` isn't modeled here: the fixture has no per-role visibility rules to mirror, so every test
+ * sees the same organisation-wide list regardless of who is asking, the same simplification the
+ * assets and audit fixtures already make.
+ * @param {URLSearchParams} search
+ * @returns {{ items: object[], total: number, page: number, limit: number }}
+ */
+export function requestsPage(search) {
+  const state = search.get('state');
+  const filtered = state ? checkoutRequests.filter((r) => r.state === state) : checkoutRequests;
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
+
+/**
+ * The organisation's members as `GET /api/users` returns them: the three fixture users, oldest first,
+ * each with the `createdAt` the real `publicUser()` includes.
+ */
+export const members = [adminUser, approverUser, memberUser].map((u, i) => ({
+  ...u,
+  createdAt: new Date(Date.UTC(2026, 8, 1 + i)).toISOString(),
+}));
+
+/**
+ * Apply the pagination the real `/api/users` endpoint applies.
+ * @param {URLSearchParams} search
+ * @param {object[]} [all] the members to page over; defaults to the fixture
+ * @returns {{ items: object[], total: number, page: number, limit: number }}
+ */
+export function membersPage(search, all = members) {
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return { items: all.slice(start, start + limit), total: all.length, page, limit };
+}
+
+/**
  * Build an error response in the API's exact envelope.
  *
  * Including a `requestId`, so tests can assert that ErrorState surfaces it — that id is what a user
@@ -244,6 +348,21 @@ export const handlers = [
     errorResponse(401, 'UNAUTHENTICATED', 'Invalid refresh token'),
   ),
   http.post('*/api/auth/logout', () => new HttpResponse(null, { status: 204 })),
+  http.post('*/api/auth/accept-invite', async ({ request }) => {
+    const body = await request.json();
+    if (body.token === EXPIRED_TOKEN) {
+      return errorResponse(400, 'INVITATION_EXPIRED', 'This invitation has expired');
+    }
+    if (body.token !== VALID_TOKEN) {
+      return errorResponse(400, 'INVITATION_INVALID', 'This invitation link is not valid');
+    }
+    if (!body.password || body.password.length < 10) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'password', message: 'must be at least 10 characters' },
+      ]);
+    }
+    return HttpResponse.json({ user: { ...memberUser, invitation: null }, organization: org });
+  }),
   http.post('*/api/organizations', async ({ request }) => {
     const body = await request.json();
     if (!body.adminPassword || body.adminPassword.length < 10) {
@@ -270,7 +389,65 @@ export const handlers = [
     }
     return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
   }),
-  http.get('*/api/requests', () => notImplemented('SCRUM-requests-list')),
+  http.get('*/api/requests', ({ request }) =>
+    HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
+  ),
+  http.post('*/api/requests/:id/approve', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'APPROVED' });
+  }),
+  http.post('*/api/requests/:id/deny', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'DENIED' });
+  }),
+  http.get('*/api/users', ({ request }) =>
+    HttpResponse.json(membersPage(new URL(request.url).searchParams)),
+  ),
+  http.post('*/api/users/invite', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      {
+        user: {
+          id: '6aab2a45c6e457e01ac0968e',
+          orgId: org.id,
+          email: body.email,
+          name: body.name,
+          role: body.role ?? 'MEMBER',
+          invitation: {
+            status: 'PENDING',
+            expiresAt: new Date(Date.UTC(2026, 8, 13)).toISOString(),
+          },
+          createdAt: new Date(Date.UTC(2026, 8, 10)).toISOString(),
+        },
+        inviteLink: INVITE_LINK,
+      },
+      { status: 201 },
+    );
+  }),
+  http.post('*/api/users/:id/resend-invite', ({ params }) => {
+    const target = members.find((m) => m.id === params.id);
+    if (!target) {
+      return errorResponse(404, 'NOT_FOUND', 'User not found');
+    }
+    return HttpResponse.json({
+      user: {
+        ...target,
+        invitation: {
+          status: 'PENDING',
+          expiresAt: new Date(Date.UTC(2026, 8, 16)).toISOString(),
+        },
+      },
+      inviteLink: RESENT_LINK,
+    });
+  }),
+  http.patch('*/api/users/:id/role', async ({ params, request }) => {
+    const { role } = await request.json();
+    const target = members.find((m) => m.id === params.id);
+    if (!target) {
+      return errorResponse(404, 'NOT_FOUND', 'User not found');
+    }
+    return HttpResponse.json({ user: { ...target, role } });
+  }),
   http.get('*/api/audit', ({ request }) =>
     HttpResponse.json(auditPage(new URL(request.url).searchParams)),
   ),

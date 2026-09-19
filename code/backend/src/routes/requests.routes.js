@@ -65,12 +65,21 @@ export const returnBody = z.object({
   note: z.string().trim().max(1000).default(''),
 });
 /**
- * Query for listing requests: pagination plus an optional state filter.
+ * Query for listing requests: pagination, an optional state filter, and `scope`.
  *
- * `state=PENDING` is what the approval queue asks for. The filter is restricted to known states, so
- * an unknown value is a 400 rather than a query that silently matches nothing.
+ * `state=PENDING` is what the approval queue asks for. `scope` is how a caller who holds
+ * `requests:decide` (APPROVER, ORG_ADMIN) chooses between their own requests and the whole
+ * organisation's: omitted or `'own'` always means "my requests," for every role — that is what keeps
+ * an admin's "My requests" page showing their own requests instead of everyone's. Only an explicit
+ * `scope=org` asks for the organisation-wide view, and the service still ignores it for a caller who
+ * cannot decide requests, the same way a smuggled `orgId` is ignored elsewhere rather than rejected.
+ * The state filter is restricted to known states, so an unknown value is a 400 rather than a query
+ * that silently matches nothing.
  */
-export const listQuery = pagination.extend({ state: z.enum(REQUEST_STATE_LIST).optional() });
+export const listQuery = pagination.extend({
+  state: z.enum(REQUEST_STATE_LIST).optional(),
+  scope: z.enum(['own', 'org']).optional(),
+});
 
 export const requestsRouter = createRouter();
 
