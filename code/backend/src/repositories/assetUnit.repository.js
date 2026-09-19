@@ -99,3 +99,27 @@ export async function countByStatus(orgId) {
   }
   return counts;
 }
+
+
+/**
+ * Move a unit to a new status and, optionally, record a condition change in the same write.
+ *
+ * Used by the return handoff: the unit's status always changes (OUT -> AVAILABLE), and the condition
+ * changes only when the person returning it reports one.
+ * @param {string} orgId
+ * @param {string} unitId
+ * @param {{ status: string, condition?: string }} changes
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>}
+ */
+export async function updateStatusAndCondition(orgId, unitId, { status, condition }, { session } = {}) {
+  const set = { status };
+  if (condition) {
+    set.condition = condition;
+  }
+  return AssetUnit.findOneAndUpdate(
+    { _id: unitId, orgId },
+    { $set: set },
+    { returnDocument: 'after', runValidators: true, session },
+  );
+}
