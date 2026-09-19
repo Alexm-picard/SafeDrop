@@ -38,7 +38,7 @@ async function wipeOrg(slug) {
     AssetUnit.deleteMany({ orgId }),
     Asset.deleteMany({ orgId }),
     User.deleteMany({ orgId }),
-    AuditEvent.collection.deleteMany({ orgId }), // native driver: model forbids Mongoose deletes (SR-8)
+    AuditEvent.collection.deleteMany({ orgId }), 
   ]);
   await Organization.deleteOne({ _id: orgId });
 }

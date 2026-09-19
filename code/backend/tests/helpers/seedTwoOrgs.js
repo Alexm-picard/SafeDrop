@@ -14,7 +14,7 @@
  *
  * Each organisation gets one user per role, three assets with units across every status (incl.
  * retired), a pending checkout request and an audit event. This same function backs `npm run seed`
- * (see scripts/seed.js) — it is the one place "seed two organisations" is implemented.
+ * (see scripts/seedDev.js) — it is the one place "seed two organisations" is implemented.
  */
 import bcrypt from 'bcryptjs';
 import * as assetRepo from '../../src/repositories/asset.repository.js';
@@ -49,16 +49,6 @@ export function testPasswordHash() {
   hashPromise ??= bcrypt.hash(TEST_PASSWORD, BCRYPT_COST);
   return hashPromise;
 }
-
-/** Two more assets per org, on top of the original "Laptop", for status/category variety. */
-const EXTRA_ASSET_DEFS = [
-  {
-    name: 'Camera',
-    category: 'camera',
-    units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.AVAILABLE, UNIT_STATUS.RETIRED],
-  },
-  { name: 'Projector', category: 'projector', units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.OUT] },
-];
 
 /**
  * Seed one organisation with its users, assets, units, request and audit event.
@@ -132,41 +122,55 @@ async function seedOrg(key) {
     after: { name: org.name },
   });
 
-  // Two more assets with units across more statuses (incl. RETIRED). Additive: `asset`/`units`
-  // above still refer to the Laptop, unchanged, so existing single-asset assertions keep working.
-  const extraAssets = [];
-  for (const [ai, adef] of EXTRA_ASSET_DEFS.entries()) {
-    const extraAsset = await assetRepo.create(orgId, {
-      name: `${adef.name} ${key.toUpperCase()}`,
-      category: adef.category,
-      description: '',
-      imageUrl: null,
-    });
-    const extraUnits = [];
-    for (const [ui, status] of adef.units.entries()) {
-      extraUnits.push(
-        await assetUnitRepo.create(orgId, {
-          assetId: extraAsset._id,
-          tag: `${key}-x${ai + 1}-${ui + 1}`,
-          status,
-        }),
-      );
-    }
-    extraAssets.push({ asset: extraAsset, units: extraUnits });
-  }
+  const camera = await assetRepo.create(orgId, {
+    name: `Camera ${key.toUpperCase()}`,
+    category: 'camera',
+    description: '',
+    imageUrl: null,
+  });
+  const cameraUnits = [
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c01`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c02`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: camera._id,
+      tag: `${key}-c03`,
+      status: UNIT_STATUS.RETIRED,
+    }),
+  ];
 
-  return {
-    org,
-    orgId: String(orgId),
-    admin,
-    approver,
-    member,
-    asset,
-    units,
-    request,
-    audit,
-    extraAssets,
-  };
+  const projector = await assetRepo.create(orgId, {
+    name: `Projector ${key.toUpperCase()}`,
+    category: 'projector',
+    description: '',
+    imageUrl: null,
+  });
+  const projectorUnits = [
+    await assetUnitRepo.create(orgId, {
+      assetId: projector._id,
+      tag: `${key}-p01`,
+      status: UNIT_STATUS.AVAILABLE,
+    }),
+    await assetUnitRepo.create(orgId, {
+      assetId: projector._id,
+      tag: `${key}-p02`,
+      status: UNIT_STATUS.OUT,
+    }),
+  ];
+
+  const extraAssets = [
+    { asset: camera, units: cameraUnits },
+    { asset: projector, units: projectorUnits },
+  ];
+
+  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit, extraAssets };
 }
 
 /**
@@ -174,7 +178,7 @@ async function seedOrg(key) {
  *
  * Org A is conventionally the caller and org B the one that must remain invisible to it. The
  * returned objects carry every created document (ids included), so a caller — a test or
- * `scripts/seed.js` — has everything it needs without a second database read.
+ * `scripts/seedDev.js` — has everything it needs without a second database read.
  * @returns {Promise<{ a: object, b: object, password: string }>}
  */
 export async function seedTwoOrgs() {
