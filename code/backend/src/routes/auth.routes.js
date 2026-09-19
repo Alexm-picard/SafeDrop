@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: /api/auth routes with permissions and Zod schemas (SCRUM-102); POST /api/auth/change-password, POST /api/auth/accept-invite (public)
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the emailed-invitation work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * Routes for `/api/auth`: the session endpoints (SDD §6.2).
@@ -54,7 +54,7 @@ export const changePasswordBody = z.object({
 /**
  * Body schema for `POST /api/auth/accept-invite`.
  *
- * `token` is the raw value from the emailed link, bounded in length so an absurd body is refused before
+ * `token` is the raw value from the invitation link, bounded in length so an absurd body is refused before
  * any hashing; anything of the wrong shape simply fails to match a stored hash. `password` goes through
  * the shared schema, so the strength and 72-byte rules apply — this is a creation path.
  */

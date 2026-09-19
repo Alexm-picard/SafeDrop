@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
-// Overall AI Contribution: ~100% (written by Claude Code from the emailed-invitation request)
-// AI-Assisted Areas: public accept-invitation screen: choose a password from an emailed one-time link; distinct expired / invalid / success states; shows the organization code for next sign-in
+// Overall AI Contribution: ~100% (written by Claude Code from the invitation-link request)
+// AI-Assisted Areas: public accept-invitation screen: choose a password from a one-time link; distinct expired / invalid / success states; shows the organization code for next sign-in
 // Human Contributions: pending team review
 // Notes: Follows the form pattern in OrgSetupPage. Verified by tests/unit/components/AcceptInvitePage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -13,7 +13,7 @@
  *
  * **The token is taken out of the address bar.** It is read once into state and the URL is replaced with
  * a bare `/accept-invite`, so it does not sit in the browser's history, an autofill of the address, or
- * a screenshot of the page. It is still in the email, which is the intended place for it.
+ * a screenshot of the page. It is still wherever the admin sent the link, which is the intended place for it.
  *
  * **A dead link is not a form.** An expired link and an unknown or already-used one both make the form
  * pointless, and they call for different action — ask your admin to resend, versus "you may already have
@@ -24,7 +24,7 @@
  * API as field errors, so there is one definition of each rule.
  *
  * **Success shows the organization code.** Signing in later needs it, and a new member has no reason to
- * know it; the email says it too, but it is the moment they are looking at the screen. They are already
+ * know it; nobody else is going to tell them, and this is the moment they are looking at the screen. They are already
  * signed in (the API set the session), so continuing goes straight into the app.
  *
  * The password is held in component state only, goes to the API once, and is stored there only as a hash.

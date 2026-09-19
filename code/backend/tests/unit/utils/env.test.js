@@ -79,31 +79,23 @@ describe('loadEnv', () => {
       COOKIE_SECURE: 'true',
       CORS_ORIGINS: 'https://app.test',
     };
-    // Invitations are emailed in production, so it needs a mail server and a public https link base.
-    expect(() => loadEnv({ ...prod, APP_BASE_URL: 'https://app.test' })).toThrow(/SMTP_HOST/);
-    expect(() => loadEnv({ ...prod, SMTP_HOST: 'smtp.test' })).toThrow(/APP_BASE_URL/);
-    expect(() =>
-      loadEnv({ ...prod, SMTP_HOST: 'smtp.test', APP_BASE_URL: 'http://app.test' }),
-    ).toThrow(/https/);
-    expect(
-      loadEnv({ ...prod, SMTP_HOST: 'smtp.test', APP_BASE_URL: 'https://app.test' }).isProduction,
-    ).toBe(true);
+    // The invitation link is built from APP_BASE_URL, so production needs the SPA's public https address:
+    // the default points at localhost and a plain-http link would carry a credential in the clear.
+    expect(() => loadEnv(prod)).toThrow(/APP_BASE_URL/);
+    expect(() => loadEnv({ ...prod, APP_BASE_URL: 'http://app.test' })).toThrow(/https/);
+    expect(loadEnv({ ...prod, APP_BASE_URL: 'https://app.test' }).isProduction).toBe(true);
   });
 
   describe('invitations', () => {
-    it('defaults to a 72-hour link, the dev SPA address, and no SMTP', () => {
+    it('defaults to a 72-hour link and the dev SPA address', () => {
       const e = loadEnv(base);
       expect(e.INVITE_TTL).toBe('72h');
       expect(e.APP_BASE_URL).toBe('http://localhost:5173');
-      expect(e.SMTP_HOST).toBeUndefined();
-      expect(e.SMTP_PORT).toBe(587);
-      expect(e.SMTP_SECURE).toBe(false);
     });
 
-    it('treats a blank SMTP value, as .env and Compose produce, as not set', () => {
-      const e = loadEnv({ ...base, SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '' });
-      expect(e.SMTP_HOST).toBeUndefined();
-      expect(e.SMTP_USER).toBeUndefined();
+    it('has no mail settings: invitations are copied by the admin, never sent by the server', () => {
+      const e = loadEnv({ ...base, SMTP_HOST: 'smtp.test', EMAIL_FROM: 'x@y.test' });
+      expect(Object.keys(e).filter((k) => /SMTP|EMAIL/.test(k))).toEqual([]);
     });
 
     it('strips a trailing slash from APP_BASE_URL so the link has no double slash', () => {
@@ -112,10 +104,9 @@ describe('loadEnv', () => {
       );
     });
 
-    it('rejects a malformed TTL or URL, and a username without a password', () => {
+    it('rejects a malformed TTL or URL', () => {
       expect(() => loadEnv({ ...base, INVITE_TTL: 'three days' })).toThrow(/INVITE_TTL/);
       expect(() => loadEnv({ ...base, APP_BASE_URL: 'not a url' })).toThrow(/APP_BASE_URL/);
-      expect(() => loadEnv({ ...base, SMTP_USER: 'u' })).toThrow(/SMTP_PASS/);
     });
   });
 

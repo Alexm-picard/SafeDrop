@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: Members screen tests: list with invitation status, invite (delivery-aware notices, no password anywhere), resend invitation, field-level errors, role change, failure paths, pagination
+// AI-Assisted Areas: Members screen tests: list with invitation status, invite (copyable one-time link, no password anywhere), resend invitation, field-level errors, role change, failure paths, pagination
 // Human Contributions: pending team review
 // Notes: Runs against the MSW mock of the real API contract. Must be reviewed by the owning team member before merge.
 
@@ -13,23 +13,26 @@
  * choose a member's password, and a role change that never reaches the server would still look right on
  * screen until the next reload.
  *
- * The invitation tests are the ones to keep if any are trimmed. The admin must have no way to choose or
- * see a member's password, and nothing that would let them (the link, a token) may appear on the page.
- * What the page does report is how the email went, and the three outcomes need different wording: sent,
- * not sent because the server has no mail configured, and failed — where the way out is Resend.
+ * The invitation tests are the ones to keep if any are trimmed. There is no email: the API returns a
+ * one-time link and the page must let the admin copy it — through the Copy button, and through the
+ * read-only field when the Clipboard API is not available. Because the link is a credential that lets
+ * whoever opens it set the account's password, the page must say so beside it, must keep it only in
+ * component state, and must offer no way to choose a password.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MembersPage } from '../../../src/pages/MembersPage';
 import {
   adminUser,
   approverUser,
   errorResponse,
+  INVITE_LINK,
   memberUser,
   members,
   membersPage,
+  RESENT_LINK,
 } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
@@ -40,6 +43,9 @@ let listRequests = [];
 let inviteBodies = [];
 /** `{ id, role }` for each `PATCH /api/users/:id/role` the page has sent. */
 let roleChanges = [];
+
+// The clipboard test stubs a rejection; it must not leak into the next test.
+afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   listRequests = [];
@@ -65,7 +71,7 @@ beforeEach(() => {
             invitation: { status: 'PENDING', expiresAt: '2026-09-13T00:00:00.000Z' },
             createdAt: '2026-09-10T00:00:00.000Z',
           },
-          delivery: 'email',
+          inviteLink: INVITE_LINK,
         },
         { status: 201 },
       );
@@ -232,7 +238,7 @@ describe('MembersPage: the list', () => {
 });
 
 describe('MembersPage: inviting', () => {
-  it('sends only name, email and role, confirms the email, and refreshes the list', async () => {
+  it('sends only name, email and role, shows the link for the admin to send, and refreshes the list', async () => {
     const user = userEvent.setup();
     await renderLoaded();
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', role: 'APPROVER' });
@@ -242,11 +248,10 @@ describe('MembersPage: inviting', () => {
 
     const notice = await screen.findByRole('status');
     expect(notice).toHaveTextContent('Invited Nina New as Approver.');
-    expect(notice).toHaveTextContent('An invitation was emailed to nina@acme.test.');
-    expect(notice).toHaveTextContent(/works once and expires/i);
-    expect(notice).toHaveTextContent(/you will never see it/i);
+    expect(notice).toHaveTextContent(/send them the link below/i);
+    expect(screen.getByLabelText('Invitation link for Nina New')).toHaveValue(INVITE_LINK);
 
-    // No password of any kind goes up: the member chooses their own from the emailed link.
+    // No password of any kind goes up: the member chooses their own from the link.
     expect(inviteBodies).toEqual([{ name: 'Nina New', email: 'nina@acme.test', role: 'APPROVER' }]);
 
     // The list was reloaded, and the form is empty and ready for the next one.
@@ -256,36 +261,62 @@ describe('MembersPage: inviting', () => {
     expect(screen.getByLabelText('Role')).toHaveValue('MEMBER');
   });
 
-  it.each([
-    ['log', 'status', /no email was sent because this server has no mail configured/i],
-    ['failed', 'alert', /the email could not be sent.*Resend invitation/i],
-  ])('says so plainly when the delivery is "%s"', async (delivery, role, message) => {
-    server.use(
-      http.post('*/api/users/invite', async ({ request }) => {
-        const body = await request.json();
-        inviteBodies.push(body);
-        return HttpResponse.json(
-          {
-            user: {
-              id: '6aab2a45c6e457e01ac0968e',
-              orgId: adminUser.orgId,
-              ...body,
-              invitation: { status: 'PENDING', expiresAt: '2026-09-13T00:00:00.000Z' },
-              createdAt: '2026-09-10T00:00:00.000Z',
-            },
-            delivery,
-          },
-          { status: 201 },
-        );
-      }),
-    );
+  it('warns that the link is a credential, that it is shown only once, and when it expires', async () => {
     const user = userEvent.setup();
     await renderLoaded();
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    const notice = await screen.findByRole('status');
 
-    // A failed send is an alert, not a success: the member exists but was never told.
-    expect(await screen.findByRole(role)).toHaveTextContent(message);
+    expect(notice).toHaveTextContent(/send this only to Nina New/i);
+    expect(notice).toHaveTextContent(/anyone who opens it can set the password/i);
+    expect(notice).toHaveTextContent(/works once and expires/i);
+    expect(notice).toHaveTextContent(/shown only now/i);
+    expect(notice).toHaveTextContent(/Resend invitation/);
+  });
+
+  it('copies the link to the clipboard and says so', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+
+    await user.click(screen.getByRole('button', { name: 'Copy link' }));
+
+    expect(await screen.findByText('Copied to clipboard.')).toBeInTheDocument();
+    expect(await navigator.clipboard.readText()).toBe(INVITE_LINK);
+  });
+
+  it('tells the admin to copy it by hand when the clipboard is unavailable, and the text is there to select', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+    // The Clipboard API needs a secure context and can be refused; the link must never depend on it.
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+
+    await user.click(screen.getByRole('button', { name: 'Copy link' }));
+
+    expect(await screen.findByText(/could not copy automatically/i)).toBeInTheDocument();
+    const field = screen.getByLabelText('Invitation link for Nina New');
+    expect(field).toHaveValue(INVITE_LINK);
+    // Read-only, so it can be selected and copied but not edited into something else.
+    expect(field).toHaveAttribute('readonly');
+  });
+
+  it('selects the whole link when the field is focused, so copying by hand is one keystroke', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+
+    const field = screen.getByLabelText('Invitation link for Nina New');
+    await user.click(field);
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(INVITE_LINK.length);
   });
 
   it('defaults the new member’s role to the least privileged one', async () => {
@@ -305,19 +336,31 @@ describe('MembersPage: inviting', () => {
     expect(form.querySelector('input[type="password"]')).toBeNull();
   });
 
-  it('never shows a link, a token or a password, and stores nothing in the browser', async () => {
+  it('keeps the link in component state only, and it is gone when the notice is dismissed', async () => {
     const user = userEvent.setup();
     await renderLoaded();
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    const notice = await screen.findByRole('status');
+    await screen.findByLabelText('Invitation link for Nina New');
 
-    expect(notice.textContent).not.toMatch(/token|accept-invite|password:/i);
+    // A credential: nothing in browser storage.
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
 
     await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByLabelText('Invitation link for Nina New')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(INVITE_LINK)).not.toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('does not list the link among the members: it is not part of the list data', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+    // Only the notice shows it, never a table cell.
+    expect(within(screen.getByRole('table')).queryByText(/accept-invite/)).not.toBeInTheDocument();
   });
 
   it('shows a duplicate email beside the email field, not as a banner, and shows no success', async () => {
@@ -422,7 +465,7 @@ describe('MembersPage: resending an invitation', () => {
       }),
     );
 
-  it('resends to that member, confirms the new email, and refreshes the list', async () => {
+  it('resends to that member, shows the new link, and says the old one is dead', async () => {
     pendingList();
     const resent = [];
     server.use(
@@ -433,7 +476,7 @@ describe('MembersPage: resending an invitation', () => {
             ...memberUser,
             invitation: { status: 'PENDING', expiresAt: '2026-09-16T00:00:00.000Z' },
           },
-          delivery: 'email',
+          inviteLink: RESENT_LINK,
         });
       }),
     );
@@ -444,13 +487,14 @@ describe('MembersPage: resending an invitation', () => {
     await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
 
     const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent('A new invitation was emailed to max@acme.test.');
-    expect(notice).toHaveTextContent(/works once and expires/i);
+    expect(notice).toHaveTextContent('New invitation link for Max Member.');
+    expect(notice).toHaveTextContent(/previous link no longer works/i);
+    expect(screen.getByLabelText('Invitation link for Max Member')).toHaveValue(RESENT_LINK);
     expect(resent).toEqual([memberUser.id]);
     await waitFor(() => expect(listRequests.length).toBeGreaterThan(listCallsBefore));
   });
 
-  it('reports a failed send as an error that points at resending again', async () => {
+  it('can copy the new link too', async () => {
     pendingList();
     server.use(
       http.post('*/api/users/:id/resend-invite', () =>
@@ -459,14 +503,17 @@ describe('MembersPage: resending an invitation', () => {
             ...memberUser,
             invitation: { status: 'PENDING', expiresAt: '2026-09-16T00:00:00.000Z' },
           },
-          delivery: 'failed',
+          inviteLink: RESENT_LINK,
         }),
       ),
     );
     const user = userEvent.setup();
     await renderLoaded();
     await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be sent/i);
+    await screen.findByRole('status');
+    await user.click(screen.getByRole('button', { name: 'Copy link' }));
+    await screen.findByText('Copied to clipboard.');
+    expect(await navigator.clipboard.readText()).toBe(RESENT_LINK);
   });
 
   it('shows a refusal, such as the member having already accepted', async () => {

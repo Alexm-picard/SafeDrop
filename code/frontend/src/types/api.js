@@ -46,7 +46,7 @@
 /**
  * @typedef {object} InviteUserResult
  * @property {User} user
- * @property {'email' | 'log' | 'failed'} delivery how the invitation email went
+ * @property {string} inviteLink the one-time link to give the invitee; returned only once
  */
 
 /**

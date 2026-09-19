@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: auth HTTP handlers: set/clear HttpOnly cookies, uniform responses (SCRUM-102); changePassword and acceptInvite handlers
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the emailed-invitation work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * HTTP layer for `/api/auth`: translate requests into auth-service calls, and manage the session

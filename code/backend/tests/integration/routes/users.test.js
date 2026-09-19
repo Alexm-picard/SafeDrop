@@ -66,7 +66,7 @@ const auditFor = (orgId, action) => AuditEvent.find({ orgId, action }).lean();
 const adminCount = (orgId) => User.countDocuments({ orgId, role: ROLES.ORG_ADMIN });
 
 describe('POST /api/users/invite', () => {
-  it('creates a MEMBER in the admin’s organisation as a pending invitation, and returns no credential', async () => {
+  it('creates a MEMBER in the admin’s organisation as a pending invitation, and returns its one-time link', async () => {
     const before = Date.now();
     const res = await invite(newMember);
 
@@ -83,11 +83,12 @@ describe('POST /api/users/invite', () => {
     const expiresIn = new Date(res.body.user.invitation.expiresAt).getTime() - before;
     expect(expiresIn).toBeGreaterThan(72 * 3_600_000 - 60_000);
     expect(expiresIn).toBeLessThan(72 * 3_600_000 + 60_000);
-    // The response says how the email went, but never carries the link, a token or a password: any of
-    // those would let the admin choose the member's password.
-    expect(res.body.delivery).toBe('log');
-    expect(Object.keys(res.body).sort()).toEqual(['delivery', 'user']);
-    expect(JSON.stringify(res.body)).not.toMatch(/token|password|accept-invite/i);
+    // The response carries the one-time link for the admin to send, and no password: the invitee chooses
+    // their own. The link is a credential, so it must not be cacheable.
+    expect(Object.keys(res.body).sort()).toEqual(['inviteLink', 'user']);
+    expect(res.body.inviteLink).toContain('/accept-invite?token=');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(JSON.stringify(res.body)).not.toMatch(/password/i);
   });
 
   it('stores no usable password and only a hash of the token', async () => {

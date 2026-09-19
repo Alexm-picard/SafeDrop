@@ -26,7 +26,7 @@ import { email, emptyBody, idParams, pagination, personName } from './schemas.js
  * Body for `POST /api/users/invite`: the new member's email, name and role.
  *
  * The role defaults to MEMBER, so an invitation that says nothing about privileges grants the least
- * of them. There is deliberately no password field: the invitee chooses their own through the emailed
+ * of them. There is deliberately no password field: the invitee chooses their own through the invitation
  * link, so an admin can neither choose nor learn a member's password. There is no organisation field
  * either, so an invitation can only ever land in the caller's own organisation.
  */

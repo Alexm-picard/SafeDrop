@@ -44,6 +44,12 @@ export const memberUser = {
 export const VALID_TOKEN = 'valid-invitation-token-0123456789abcdefghij';
 export const EXPIRED_TOKEN = 'expired-invitation-token-0123456789abcdefgh';
 
+/** The one-time links the mock API hands back for an invitation and for a resend. */
+export const INVITE_LINK =
+  'http://localhost:5173/accept-invite?token=invite-token-0123456789abcdefghijklmnopqrs';
+export const RESENT_LINK =
+  'http://localhost:5173/accept-invite?token=resent-token-0123456789abcdefghijklmnopqrs';
+
 export const summary = {
   totalAssets: 12,
   checkedOut: 4,
@@ -331,7 +337,7 @@ export const handlers = [
           },
           createdAt: new Date(Date.UTC(2026, 8, 10)).toISOString(),
         },
-        delivery: 'email',
+        inviteLink: INVITE_LINK,
       },
       { status: 201 },
     );
@@ -349,7 +355,7 @@ export const handlers = [
           expiresAt: new Date(Date.UTC(2026, 8, 16)).toISOString(),
         },
       },
-      delivery: 'email',
+      inviteLink: RESENT_LINK,
     });
   }),
   http.patch('*/api/users/:id/role', async ({ params, request }) => {

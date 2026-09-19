@@ -244,6 +244,22 @@ button.secondary {
 .notice p {
   margin: 0 0 0.5rem;
 }
+.invite-link {
+  margin: 0.75rem 0;
+}
+.invite-link label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.invite-link__row {
+  display: flex;
+  gap: 0.5rem;
+}
+.invite-link__row input {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+}
 .notice code {
   font-size: 1rem;
   font-weight: 700;

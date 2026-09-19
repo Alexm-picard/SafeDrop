@@ -1,39 +1,36 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
-// Overall AI Contribution: ~100% (written by Claude Code from the emailed-invitation request)
-// AI-Assisted Areas: acceptance and security tests for the emailed one-time invitation link: email content, accept-invite, 72-hour expiry, single use, resend
+// Overall AI Contribution: ~100% (written by Claude Code from the invitation-link request)
+// AI-Assisted Areas: acceptance and security tests for the one-time invitation link: link issuing, accept-invite, 72-hour expiry, single use, resend
 // Human Contributions: pending team review
 // Notes: The single-use, expiry, resend-invalidation and rollback tests were checked to fail when the behaviour they guard is removed. Must be reviewed by the owning team member before merge.
 
 /**
- * Integration tests for the invitation flow: an admin invites someone, the invitee is emailed a
- * one-time link, opens it to choose their own password, and is signed in.
+ * Integration tests for the invitation flow: an admin invites someone and is handed a one-time link to
+ * copy and send; the invitee opens it to choose their own password and is signed in.
  *
- * Mail goes through nodemailer's real JSON transport, which builds the message exactly as SMTP would
- * and delivers it to memory — so what is asserted is what would actually have been sent, headers
- * included, with no mail server.
+ * There is no email, so the link comes straight back in the API response. `tokens` records each link the
+ * API issues, in order, so a test can act as the invitee — open the link — without any mail plumbing.
  *
  * The claims that matter, each with its own tests:
- *  - **The admin never learns the password.** Nothing in any response carries the link or a token; the
- *    invitee chooses the password themselves and only its hash is stored.
+ *  - **The link is a credential and is handled like one**: 256 random bits, returned only when issued,
+ *    stored only as a hash, absent from the audit trail, the member list and every later response, and
+ *    guesses at it count against the auth rate limit.
  *  - **The link is single-use**, enforced by the database, including when it is opened twice at once.
  *  - **It expires** after `INVITE_TTL` (72 hours), and an expired link is told apart from an unknown one.
  *  - **Resending replaces it**: the old link stops working the moment a new one is issued, and a
  *    resend to someone who has already accepted is refused.
- *  - **The token is a credential and is handled like one**: 256 random bits, stored only as a hash,
- *    absent from the audit trail, and guesses at it count against the auth rate limit.
+ *  - **The invitee chooses the password**: only its hash is ever stored.
  */
 import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';
 import { resetAuthRateLimiter } from '../../../src/middleware/rateLimit.js';
 import { AuditEvent } from '../../../src/models/AuditEvent.js';
 import { RefreshToken } from '../../../src/models/RefreshToken.js';
 import { User } from '../../../src/models/User.js';
 import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
-import { setMailTransport } from '../../../src/services/email.service.js';
 import { AUDIT_ACTION } from '../../../src/utils/constants.js';
 import { ROLES } from '../../../src/utils/permissions.js';
 import { hashToken } from '../../../src/utils/tokens.js';
@@ -50,38 +47,38 @@ vi.mock('../../../src/repositories/auditEvent.repository.js', async (importOrigi
   return { ...original, append: vi.fn(original.append) };
 });
 
-/** Messages "sent" so far: what was asked of the mailer, and what nodemailer built from it. */
-let mail;
+/** The raw token from each invitation link the API has issued so far, oldest first. */
+let tokens;
 let seed;
 
 beforeEach(async () => {
   resetAuthRateLimiter();
-  mail = [];
-  const transport = nodemailer.createTransport({ jsonTransport: true });
-  const send = transport.sendMail.bind(transport);
-  transport.sendMail = async (message) => {
-    const info = await send(message);
-    mail.push({ input: message, output: JSON.parse(info.message) });
-    return info;
-  };
-  setMailTransport(transport);
+  tokens = [];
   seed = await seedTwoOrgs();
 });
-afterEach(() => setMailTransport(undefined));
 
 const CHOSEN = 'My-Own-Chosen-Passw0rd';
 const asAdminA = () => accessCookieFor(seed.a.admin);
-const invite = (body, cookie = asAdminA()) =>
-  request(app).post('/api/users/invite').set('Cookie', cookie).send(body);
-const resend = (userId, cookie = asAdminA()) =>
-  request(app).post(`/api/users/${userId}/resend-invite`).set('Cookie', cookie).send({});
+/** The token in an invitation link: exactly what the invitee's browser would send back. */
+const tokenOf = (link) => new URL(link).searchParams.get('token');
+/** Record the link in a response, if it carries one, then hand the response back. */
+const remember = (res) => {
+  if (res.body?.inviteLink) {
+    tokens.push(tokenOf(res.body.inviteLink));
+  }
+  return res;
+};
+const invite = async (body, cookie = asAdminA()) =>
+  remember(await request(app).post('/api/users/invite').set('Cookie', cookie).send(body));
+const resend = async (userId, cookie = asAdminA()) =>
+  remember(
+    await request(app).post(`/api/users/${userId}/resend-invite`).set('Cookie', cookie).send({}),
+  );
 const accept = (token, password = CHOSEN) =>
   request(app).post('/api/auth/accept-invite').send({ token, password });
 const listUsers = () => request(app).get('/api/users?limit=100').set('Cookie', asAdminA());
 
-/** The raw token from the link in a sent message: exactly what the invitee would click. */
-const tokenIn = (message) => /accept-invite\?token=([\w-]+)/.exec(message.input.text)?.[1];
-const lastToken = () => tokenIn(mail.at(-1));
+const lastToken = () => tokens.at(-1);
 const newMember = { email: 'new.hire@a.test', name: 'New Hire' };
 const stored = (email) =>
   User.findOne({ orgId: seed.a.orgId, email }).select('+passwordHash +inviteTokenHash');
@@ -89,29 +86,18 @@ const stored = (email) =>
 const setExpiry = (email, when) =>
   User.updateOne({ orgId: seed.a.orgId, email }, { $set: { inviteExpiresAt: when } });
 
-describe('the invitation email', () => {
-  it('goes to the invitee with a one-time link, the expiry, and how to sign in next time', async () => {
+describe('the invitation link', () => {
+  it('comes back with the invitation, points at the SPA, and is not cacheable', async () => {
     const res = await invite(newMember);
 
     expect(res.status).toBe(201);
-    expect(res.body.delivery).toBe('email');
-    expect(mail).toHaveLength(1);
-    const { input, output } = mail[0];
-    expect(input.to).toEqual({ name: 'New Hire', address: 'new.hire@a.test' });
-    expect(input.subject).toBe('Admin a invited you to Org A on SafeDrop');
-    // The link: the SPA's address, the accept page, and a 256-bit token (43 base64url characters).
-    expect(input.text).toMatch(
-      /http:\/\/localhost:5173\/accept-invite\?token=[A-Za-z0-9_-]{43}(?=\s|$)/,
+    expect(Object.keys(res.body).sort()).toEqual(['inviteLink', 'user']);
+    // The SPA's accept page, carrying a 256-bit token (43 base64url characters).
+    expect(res.body.inviteLink).toMatch(
+      /^http:\/\/localhost:5173\/accept-invite\?token=[A-Za-z0-9_-]{43}$/,
     );
-    // When it stops working, and that it is single-use.
-    expect(input.text).toContain(new Date(res.body.user.invitation.expiresAt).toUTCString());
-    expect(input.text).toMatch(/works once/i);
-    // A new member has no reason to know the organisation code, and login needs it.
-    expect(input.text).toContain('organization code "org-a"');
-    expect(input.text).toContain('http://localhost:5173/login');
-    // The HTML alternative carries the same link.
-    expect(input.html).toContain(`accept-invite?token=${lastToken()}`);
-    expect(output.to[0].address).toBe('new.hire@a.test');
+    // A credential in the body must not be kept by a browser cache or a proxy.
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('carries a token that matches only the stored hash, never the token itself', async () => {
@@ -129,54 +115,56 @@ describe('the invitation email', () => {
   it('gives each invitation its own token', async () => {
     await invite(newMember);
     await invite({ email: 'second@a.test', name: 'Second' });
-    expect(tokenIn(mail[0])).not.toBe(tokenIn(mail[1]));
+    expect(tokens[0]).not.toBe(tokens[1]);
   });
 
-  it('escapes the invitee’s name in the HTML body', async () => {
-    await invite({ email: 'x@a.test', name: '<script>alert(1)</script>' });
-    const { html } = mail[0].input;
-    expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  it('is shown only when issued: nothing later returns it, so a lost link needs a resend', async () => {
+    await invite(newMember);
+    const token = lastToken();
+
+    const list = await listUsers();
+    expect(JSON.stringify(list.body)).not.toContain(token);
+    expect(JSON.stringify(list.body)).not.toMatch(/accept-invite|inviteLink|inviteTokenHash/);
+    // And no other member's or route's response can reveal it either: the list is the only read.
+    expect(list.body.items.find((u) => u.email === newMember.email).invitation.status).toBe(
+      'PENDING',
+    );
   });
 
-  it('cannot be used to add recipients through the invitee’s name', async () => {
-    await invite({ email: 'x@a.test', name: 'Eve\r\nBcc: attacker@evil.test' });
-
-    expect(mail).toHaveLength(1);
-    const built = JSON.stringify(mail[0].output);
-    expect(built).not.toContain('"bcc"');
-    expect(built).not.toContain('"cc"');
-    expect(mail[0].output.to).toHaveLength(1);
-    expect(mail[0].output.to[0].address).toBe('x@a.test');
-  });
-
-  it('still creates the invitation when the email cannot be sent, and says so', async () => {
-    setMailTransport({
-      sendMail: async () => {
-        throw new Error('SMTP connection refused');
-      },
-    });
-
+  it('is issued with no email, so nothing is sent anywhere', async () => {
+    // Guard against the old design creeping back: there is no mailer to call, and the response is the
+    // only place the link exists.
     const res = await invite(newMember);
-
-    expect(res.status).toBe(201);
-    expect(res.body.delivery).toBe('failed');
-    expect(res.body.user.invitation.status).toBe('PENDING');
-    expect(JSON.stringify(res.body)).not.toMatch(/SMTP|refused|token/i);
-    expect(await stored(newMember.email)).not.toBeNull();
+    expect(res.body).not.toHaveProperty('delivery');
   });
 
-  it('sends nothing when the invitation is refused', async () => {
-    await invite({ email: seed.a.member.email, name: 'Dup' });
-    await invite({ email: 'not-an-email', name: 'X' });
-    expect(mail).toHaveLength(0);
+  it('is not issued when the invitation is refused', async () => {
+    const dup = await invite({ email: seed.a.member.email, name: 'Dup' });
+    const bad = await invite({ email: 'not-an-email', name: 'X' });
+
+    expect(dup.status).toBe(409);
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify([dup.body, bad.body])).not.toMatch(/accept-invite|token/i);
+    expect(tokens).toHaveLength(0);
   });
 
-  it('sends nothing when the audit write fails and the invitation rolls back (OD-2)', async () => {
+  it('is not issued when the audit write fails and the invitation rolls back (OD-2)', async () => {
     auditRepo.append.mockRejectedValueOnce(new Error('simulated audit failure'));
     const res = await invite(newMember);
+
     expect(res.status).toBe(500);
-    expect(mail).toHaveLength(0);
+    expect(JSON.stringify(res.body)).not.toMatch(/accept-invite|token/i);
+    expect(tokens).toHaveLength(0);
+    // Nothing half-created blocks a retry, and the retry does yield a link.
+    expect((await invite(newMember)).status).toBe(201);
+    expect(tokens).toHaveLength(1);
+  });
+
+  it('is not written to the audit trail', async () => {
+    await invite(newMember);
+    const events = await AuditEvent.find({ orgId: seed.a.orgId }).lean();
+    expect(JSON.stringify(events)).not.toContain(lastToken());
+    expect(JSON.stringify(events)).not.toMatch(/accept-invite/);
   });
 });
 
@@ -231,8 +219,8 @@ describe('POST /api/auth/accept-invite', () => {
     await invite({ email: 'ann@a.test', name: 'Ann', role: ROLES.APPROVER });
     await invite({ email: 'root@a.test', name: 'Root', role: ROLES.ORG_ADMIN });
 
-    const ann = await accept(tokenIn(mail[0]));
-    const root = await accept(tokenIn(mail[1]));
+    const ann = await accept(tokens[0]);
+    const root = await accept(tokens[1]);
 
     expect(ann.body.user.role).toBe(ROLES.APPROVER);
     expect(root.body.user.role).toBe(ROLES.ORG_ADMIN);
@@ -376,8 +364,9 @@ describe('POST /api/users/:id/resend-invite', () => {
     const res = await resend(first.body.user.id);
 
     expect(res.status).toBe(200);
-    expect(res.body.delivery).toBe('email');
-    expect(mail).toHaveLength(2);
+    // The new link is a credential too, so it must not be cacheable either.
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(tokens).toHaveLength(2);
     const newToken = lastToken();
     expect(newToken).not.toBe(oldToken);
     expect(new Date(res.body.user.invitation.expiresAt).getTime()).toBeGreaterThanOrEqual(
@@ -407,19 +396,19 @@ describe('POST /api/users/:id/resend-invite', () => {
   it('refuses a member who has already accepted, and sends nothing', async () => {
     const first = await invite(newMember);
     await accept(lastToken());
-    mail.length = 0;
+    tokens.length = 0;
 
     const res = await resend(first.body.user.id);
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
   });
 
   it('refuses a member who never had an invitation, such as one of the seeded users', async () => {
     const res = await resend(seed.a.member._id);
     expect(res.status).toBe(409);
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
   });
 
   it('appends a second USER_INVITED marked as a resend, with the old expiry as before and no token', async () => {
@@ -445,39 +434,21 @@ describe('POST /api/users/:id/resend-invite', () => {
   it('leaves the old link working, and sends nothing, when the audit write fails (OD-2)', async () => {
     const first = await invite(newMember);
     const oldToken = lastToken();
-    mail.length = 0;
+    tokens.length = 0;
     auditRepo.append.mockRejectedValueOnce(new Error('simulated audit failure'));
 
     const res = await resend(first.body.user.id);
 
     expect(res.status).toBe(500);
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
     // The token swap was rolled back with everything else: the original link is still the live one.
     expect((await accept(oldToken)).status).toBe(200);
-  });
-
-  it('reports a failed send but keeps the new link, and the old one stays dead', async () => {
-    const first = await invite(newMember);
-    const oldToken = lastToken();
-    setMailTransport({
-      sendMail: async () => {
-        throw new Error('SMTP connection refused');
-      },
-    });
-
-    const res = await resend(first.body.user.id);
-
-    expect(res.status).toBe(200);
-    expect(res.body.delivery).toBe('failed');
-    // Nobody received the new link, and the old one is gone: the admin's next step is to resend again.
-    expect((await accept(oldToken)).body.error.code).toBe('INVITATION_INVALID');
-    setMailTransport(undefined);
   });
 
   it('answers 404, not 403, for a user in another organisation (SR-2)', async () => {
     const res = await resend(seed.b.member._id);
     expect(res.status).toBe(404);
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
   });
 
   it('answers 404 for an id that exists nowhere and 400 for something that is not an id', async () => {
@@ -490,10 +461,10 @@ describe('POST /api/users/:id/resend-invite', () => {
     ['a MEMBER', () => accessCookieFor(seed.a.member)],
   ])('is forbidden to %s (users:manage)', async (_label, cookie) => {
     const first = await invite(newMember);
-    mail.length = 0;
+    tokens.length = 0;
     const res = await resend(first.body.user.id, cookie());
     expect(res.status).toBe(403);
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
   });
 
   it('requires authentication', async () => {
@@ -505,12 +476,12 @@ describe('POST /api/users/:id/resend-invite', () => {
   it('refuses an admin who has been demoted since their token was issued (SDD §6.2)', async () => {
     const first = await invite(newMember);
     await User.updateOne({ _id: seed.a.admin._id }, { $set: { role: ROLES.MEMBER } });
-    mail.length = 0;
+    tokens.length = 0;
 
     const res = await resend(first.body.user.id, accessCookieFor(seed.a.admin));
 
     expect(res.status).toBe(403);
-    expect(mail).toHaveLength(0);
+    expect(tokens).toHaveLength(0);
   });
 
   it('takes no body fields', async () => {
@@ -532,7 +503,7 @@ describe('how invitations show in the member list', () => {
     await invite({ email: 'expired@a.test', name: 'Expired' });
     await invite({ email: 'done@a.test', name: 'Done' });
     await setExpiry('expired@a.test', new Date(Date.now() - 1_000));
-    await accept(tokenIn(mail[2]));
+    await accept(tokens[2]);
 
     expect((await invitationOf('pending@a.test')).status).toBe('PENDING');
     expect((await invitationOf('expired@a.test')).status).toBe('EXPIRED');
@@ -550,13 +521,13 @@ describe('how invitations show in the member list', () => {
 });
 
 describe('the whole flow, end to end (what SCRUM-58 and SCRUM-45 need to demo)', () => {
-  it('an admin invites an approver and a member; both accept by email and have the access their role implies', async () => {
+  it('an admin invites an approver and a member; both accept from their links and have the access their role implies', async () => {
     // The founding admin invites two people.
     const annInvite = await invite({ email: 'ann@a.test', name: 'Ann', role: ROLES.APPROVER });
     const maxInvite = await invite({ email: 'max@a.test', name: 'Max' });
     expect(annInvite.status).toBe(201);
     expect(maxInvite.status).toBe(201);
-    expect(mail.map((m) => m.input.to.address)).toEqual(['ann@a.test', 'max@a.test']);
+    expect(tokens).toHaveLength(2);
 
     // Until they open their links they cannot get in at all.
     for (const email of ['ann@a.test', 'max@a.test']) {
@@ -565,8 +536,8 @@ describe('the whole flow, end to end (what SCRUM-58 and SCRUM-45 need to demo)',
     }
 
     // Each opens their link, chooses a password, and lands signed in.
-    const ann = await accept(tokenIn(mail[0]), 'Ann-Chose-This-1');
-    const max = await accept(tokenIn(mail[1]), 'Max-Chose-This-1');
+    const ann = await accept(tokens[0], 'Ann-Chose-This-1');
+    const max = await accept(tokens[1], 'Max-Chose-This-1');
     expect(ann.body.user).toMatchObject({ role: ROLES.APPROVER, invitation: null });
     expect(max.body.user).toMatchObject({ role: ROLES.MEMBER, invitation: null });
 

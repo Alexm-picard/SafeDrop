@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; member lifecycle implemented from the ticket)
-// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (emailed one-time link), resend, change role (SCRUM-users-list / -invite / -role)
+// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (one-time link for the admin to send), resend, change role (SCRUM-users-list / -invite / -role)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
 
@@ -26,11 +26,9 @@ import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../utils/constants.js';
 import { durationToMs } from '../utils/duration.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { PERMISSIONS, ROLE_LIST, ROLES, roleHasPermission } from '../utils/permissions.js';
-import { logger } from '../utils/logger.js';
 import { slugify } from '../utils/slug.js';
 import { generateOpaqueToken, hashToken } from '../utils/tokens.js';
 import { record as recordAudit } from './audit.service.js';
-import { sendInvitation } from './email.service.js';
 import { hashPassword, publicUser, startSession } from './auth.service.js';
 
 export { slugify };
@@ -174,8 +172,8 @@ export async function listUsers(orgId, query = {}) {
 /**
  * Mint an invitation: a random one-time token, its stored hash, and when it stops working.
  *
- * The raw token exists only long enough to be put in the email; the database gets the SHA-256 hash, so
- * a leaked copy of it cannot be turned back into a working link. Expiry is `INVITE_TTL` from now.
+ * The raw token exists only long enough to be put in the link handed to the admin; the database gets
+ * the SHA-256 hash, so a leaked copy of it cannot be turned back into a working link. Expiry is `INVITE_TTL` from now.
  * @param {Date} [now]
  * @returns {{ raw: string, tokenHash: string, expiresAt: Date }}
  */
@@ -189,41 +187,20 @@ function newInvitation(now = new Date()) {
 }
 
 /**
- * Email the invitation, after its transaction has committed, and report how it went.
+ * Build the link an invitee opens to choose their password.
  *
- * A failure here must not undo the invitation: the account exists and the admin can resend, which is
- * a better outcome than a 500 that leaves them unsure whether the person was invited. So the error is
- * logged (never the link) and reported as `'failed'` for the SPA to say so.
- * @param {string} orgId
- * @param {{ userId: string }} actor the inviting admin
- * @param {{ _id: unknown, name: string, email: string, inviteExpiresAt: Date }} user the invited member
+ * It points at the SPA (`APP_BASE_URL`), not the API, because the invitee needs a page to type into. The
+ * token is base64url, so it needs no escaping in a URL.
  * @param {string} rawToken
- * @returns {Promise<'email'|'log'|'failed'>}
+ * @returns {string}
  */
-async function deliverInvitation(orgId, actor, user, rawToken) {
-  try {
-    const [org, inviter] = await Promise.all([
-      orgRepo.findById(orgId),
-      userRepo.findById(orgId, actor.userId),
-    ]);
-    return await sendInvitation({
-      to: { name: user.name, address: user.email },
-      inviterName: inviter?.name ?? 'An administrator',
-      organization: { name: org.name, slug: org.slug },
-      link: `${env.APP_BASE_URL}/accept-invite?token=${rawToken}`,
-      expiresAt: user.inviteExpiresAt,
-    });
-  } catch (err) {
-    logger.error({ err, orgId, userId: String(user._id) }, 'invitation email failed to send');
-    return 'failed';
-  }
-}
+const inviteLink = (rawToken) => `${env.APP_BASE_URL}/accept-invite?token=${rawToken}`;
 
 // AI-ASSISTED: YES
 //   Tool: Claude Code
 //   Prompt Summary: "Implement invite: create a user in the admin's own org and append USER_INVITED in
-//   the same transaction." Revised: "email a one-time link that expires after 72 hours; the invitee
-//   chooses their own password; there is no default password."
+//   the same transaction." Revised: "a one-time link that expires after 72 hours, shown to the admin
+//   to copy and send; the invitee chooses their own password; no default password, no email."
 //   AI Contribution: Initial draft and tests (~100% of the first version).
 //   Modifications: none yet — pending review by the owning team member.
 //   Verification:
@@ -236,12 +213,17 @@ async function deliverInvitation(orgId, actor, user, rawToken) {
  * The user is created in the *admin's own* organisation — `orgId` is the token's, and the body schema
  * has no organisation field, so a request cannot name another tenant (SR-2).
  *
- * The invitee is created with **no usable password** and an emailed one-time link. Their account holds
- * a bcrypt hash of a random value that nobody — not the admin, not the server after this call — knows,
- * so no one can sign in as them; the link lets *them* choose a password (`acceptInvite`). The admin
- * therefore can neither choose nor learn it, and nothing guessable ever exists. The link stops working
- * after `INVITE_TTL` (72 hours by default) or once used, and the admin can send a new one
- * (`resendInvite`).
+ * The invitee is created with **no usable password** and a one-time link. Their account holds a bcrypt
+ * hash of a random value that nobody knows, so no one can sign in as them; the link lets whoever opens it
+ * choose a password (`acceptInvite`). The link is returned to the admin to copy and send however they
+ * like — there is no email — and it is **shown only in this response**: the database keeps just its
+ * hash, so it cannot be displayed again. It stops working after `INVITE_TTL` (72 hours by default) or
+ * once used, and the admin can issue a replacement (`resendInvite`), which kills the old one.
+ *
+ * **Trade-off, deliberately accepted:** because the admin holds the link, the admin *could* open it and
+ * choose the member's password themselves. The flow guarantees the member can pick their own, not that
+ * nobody else could. The link is a credential; the SPA says so beside it. Nothing here logs it, audits
+ * it, or stores it.
  *
  * Order of work, and why:
  *  1. A duplicate email is refused with 409 *before* any bcrypt work — hashing at cost 12 is slow, and
@@ -252,8 +234,7 @@ async function deliverInvitation(orgId, actor, user, rawToken) {
  *  3. Inside the transaction the caller's role is re-read from the database (see
  *     `currentManagerRole`), the user is created, and USER_INVITED is appended, so the account and
  *     the evidence of who created it commit together or not at all (OD-2).
- *  4. Only after the commit is the email sent, and a failure to send is reported, not fatal — see
- *     `deliverInvitation`.
+ *  4. Only after the commit is the link built from the raw token, which exists nowhere else.
  *
  * The check in step 1 is a courtesy; the `orgId_email_unique` index is the real guarantee. Two
  * concurrent invitations for one address both pass step 1, and the loser of the race hits the index —
@@ -262,13 +243,11 @@ async function deliverInvitation(orgId, actor, user, rawToken) {
  * The invitee can hold any role, including ORG_ADMIN: `users:manage` is what gates this, and until
  * they open the link they cannot sign in at all, whatever the role.
  *
- * The raw token is never returned to the caller. Returning it would let the admin open the link
- * themselves and choose the member's password, which is exactly what the flow exists to prevent.
  * @param {string} orgId the caller's organisation, from the token
  * @param {{ userId: string }} actor the verified caller (`req.auth`)
  * @param {{ email: string, name: string, role?: string }} input validated by `inviteBody`
  * @param {{ requestId?: string }} [context]
- * @returns {Promise<{ user: object, delivery: 'email'|'log'|'failed' }>} the new member, and whether the email went out (`log`: no SMTP configured, link written to the server log)
+ * @returns {Promise<{ user: object, inviteLink: string }>} the new member, and the one-time link to give them
  * @throws {ConflictError} (409) when the email is already a member of this organisation
  * @throws {ForbiddenError} (403) when the caller has been demoted since their token was issued
  */
@@ -322,8 +301,7 @@ export async function inviteUser(orgId, actor, input, { requestId } = {}) {
     }
     throw err;
   }
-  const delivery = await deliverInvitation(orgId, actor, user, invitation.raw);
-  return { user: publicUser(user), delivery };
+  return { user: publicUser(user), inviteLink: inviteLink(invitation.raw) };
 }
 
 // AI-ASSISTED: YES
@@ -336,22 +314,24 @@ export async function inviteUser(orgId, actor, input, { requestId } = {}) {
 //   - Integration tests (tests/integration/routes/invitations.test.js)
 //   Confidence: Medium-High.
 /**
- * Send a member a fresh invitation (`POST /api/users/:id/resend-invite`).
+ * Issue a member a fresh invitation link (`POST /api/users/:id/resend-invite`).
  *
- * For an invitee whose link expired, was lost, or never arrived. It replaces the stored token and expiry,
- * so **the old link stops working the moment this succeeds** and only the newest email is live. It applies
- * only to a member who has not yet accepted: someone already active is a 409, because "resending" to
- * them would be a way to email an existing account a link that does nothing.
+ * For an invitee whose link expired or was lost — the admin cannot be shown the old one again, since only
+ * its hash is stored. It replaces the stored token and expiry, so **the old link stops working the
+ * moment this succeeds** and only the newest one is live. It applies only to a member who has not yet
+ * accepted: someone already active is a 409, because a fresh link for an existing account would be
+ * a way to take it over.
  *
  * Same discipline as `inviteUser`: the caller's role is re-read from the database inside the
  * transaction, the target is looked up in the caller's own organisation (another tenant's user is a
  * 404), and the audit event — a second USER_INVITED, distinguishable by carrying `resent: true` and the
- * previous expiry as `before` — commits with the change. The email goes out after the commit.
+ * previous expiry as `before` — commits with the change. Like `inviteUser`, the link is returned once
+ * and stored nowhere.
  * @param {string} orgId the caller's organisation, from the token
  * @param {{ userId: string }} actor the verified caller (`req.auth`)
  * @param {string} userId the member to re-invite, from the URL
  * @param {{ requestId?: string }} [context]
- * @returns {Promise<{ user: object, delivery: 'email'|'log'|'failed' }>}
+ * @returns {Promise<{ user: object, inviteLink: string }>}
  * @throws {ForbiddenError} (403) when the caller has been demoted since their token was issued
  * @throws {NotFoundError} (404) when the user is not in the caller's organisation
  * @throws {ConflictError} (409) when the member has already accepted their invitation
@@ -402,8 +382,7 @@ export async function resendInvite(orgId, actor, userId, { requestId } = {}) {
     );
     return updated;
   });
-  const delivery = await deliverInvitation(orgId, actor, user, invitation.raw);
-  return { user: publicUser(user), delivery };
+  return { user: publicUser(user), inviteLink: inviteLink(invitation.raw) };
 }
 
 // AI-ASSISTED: YES

@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: role → permission matrix from SDD §6.4 / SR-1; public-route allowlist; password:self permission
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the emailed-invitation work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
 //
 // This file is the single authorization policy. Routes declare a permission (never a role); the
 // authorize middleware answers "does this role hold this permission?". Deny by default: a permission

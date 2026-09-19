@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: Members screen: list with invitation status, invite form with field-level API errors, delivery-aware notices, resend invitation, per-row role change
+// AI-Assisted Areas: Members screen: list with invitation status, invite form with field-level API errors, copyable one-time invitation link, resend invitation, per-row role change
 // Human Contributions: pending team review
 // Notes: Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -13,14 +13,16 @@
  *
  * Three decisions worth knowing:
  *
- * **The admin never sees, or chooses, anyone's password.** Inviting emails the member a one-time link
- * (valid for 72 hours) to choose their own. There is no password field here and none in the API's
- * response — not even the link, which would let the admin open it and choose for them. What the page can
- * report is how the email went (`delivery`): sent, not sent because no mail server is configured, or
- * failed, in which case the row offers "Resend invitation".
+ * **Inviting gives the admin a link to copy and send.** There is no email: the API returns a one-time
+ * link (valid for 72 hours) and this page shows it with a Copy button, for the admin to pass to the member
+ * however they like — a message, an email of their own, or pasted into a browser. The member opens it and
+ * chooses their own password, so there is no password field here. The link is a credential: whoever opens
+ * it can set the password for that account, and the page says so beside it.
  *
- * **Resend is offered for anyone who has not yet accepted**, expired or not: it replaces the link, so
- * the old one stops working, and restarts the 72 hours.
+ * **The link is shown once.** The server keeps only a hash of it, so it cannot be displayed again, and
+ * here it lives in component state only — never in storage or the URL — and goes when the notice is
+ * dismissed or the page is left. That is what "Resend invitation" is for: offered for anyone who has not
+ * yet accepted, expired or not, it issues a new link, the old one stops working, and the 72 hours restart.
  *
  * **You cannot change your own role here.** The API allows it (and refuses only to demote the last
  * admin), but a mis-click that demotes yourself ends your own access to this very screen. Another admin
@@ -69,46 +71,82 @@ function fieldErrorsOf(err) {
 }
 
 /**
- * Turn an invitation result into the message the admin sees.
+ * Build the notice for a freshly issued invitation link.
  *
- * The three `delivery` outcomes deserve different wording because they call for different action:
- * `email` needs nothing, `log` means this server has no mail configured (a setup matter, not a failure of
- * the invitation), and `failed` means the member exists but was never told, so it is shown as an error
- * with the way out — resend — spelled out.
- * @param {{ name: string, email: string, role: string, invitation: { expiresAt: string }|null }} user
- * @param {'email'|'log'|'failed'} delivery
+ * Both a first invitation and a resend end up here, since the admin's next step is identical: copy the
+ * link and send it. Only the wording differs, and a resend says the previous link is dead because that is
+ * the thing an admin re-sending one most needs to hear.
+ * @param {{ name: string, role: string, invitation: { expiresAt: string }|null }} user
+ * @param {string} link the one-time link
  * @param {boolean} [resent] whether this was a resend rather than a first invitation
- * @returns {{ tone: 'success'|'error', message: string }}
+ * @returns {{ tone: 'success', message: string, link: string, forName: string, expiresAt: string|null }}
  */
-function deliveryNotice(user, delivery, resent = false) {
-  if (delivery === 'failed') {
-    return {
-      tone: 'error',
-      message: `${user.name} ${resent ? 'has a new invitation' : `was invited as ${ROLE_LABELS[user.role]}`}, but the email could not be sent. Use “Resend invitation” to try again.`,
-    };
-  }
-  const until = user.invitation
-    ? ` The link works once and expires ${formatDate(user.invitation.expiresAt)}.`
-    : '';
-  if (delivery === 'log') {
-    return {
-      tone: 'success',
-      message: `${user.name} (${user.email}) was ${resent ? 'sent a new invitation' : `invited as ${ROLE_LABELS[user.role]}`}, but no email was sent because this server has no mail configured. The link was written to the server log instead.${until}`,
-    };
-  }
+function linkNotice(user, link, resent = false) {
   return {
     tone: 'success',
-    message: `${resent ? 'A new invitation was emailed to' : `Invited ${user.name} as ${ROLE_LABELS[user.role]}. An invitation was emailed to`} ${user.email}.${until} They choose their own password; you will never see it.`,
+    message: resent
+      ? `New invitation link for ${user.name}. The previous link no longer works.`
+      : `Invited ${user.name} as ${ROLE_LABELS[user.role]}. Send them the link below so they can choose their own password.`,
+    link,
+    forName: user.name,
+    expiresAt: user.invitation?.expiresAt ?? null,
   };
+}
+
+/**
+ * The invitation link, with a way to copy it and a warning about what it is.
+ *
+ * The link is in a read-only field as well as behind the button, because the Clipboard API is not
+ * available everywhere (it needs a secure context) and copying must never depend on it: if the button
+ * fails, the admin is told to select the text, which is already there. Focusing the field selects it, so
+ * that is one click and Ctrl/Cmd-C. The confirmation is announced through an `aria-live` region rather
+ * than another `role="status"`, so the page keeps a single status message.
+ * @param {{ link: string, forName: string, expiresAt: string|null }} props
+ * @returns {JSX.Element}
+ */
+function InviteLink({ link, forName, expiresAt }) {
+  const [copyState, setCopyState] = useState('');
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopyState('Copied to clipboard.');
+    } catch {
+      setCopyState('Could not copy automatically. Select the link and copy it.');
+    }
+  };
+  return (
+    <div className="invite-link">
+      <label htmlFor="invite-link">Invitation link for {forName}</label>
+      <div className="invite-link__row">
+        <input
+          id="invite-link"
+          type="text"
+          readOnly
+          value={link}
+          onFocus={(e) => e.target.select()}
+        />
+        <button type="button" onClick={copy}>
+          Copy link
+        </button>
+      </div>
+      <span className="hint" aria-live="polite">
+        {copyState}
+      </span>
+      <p className="hint">
+        Send this only to {forName}: anyone who opens it can set the password for this account. It
+        works once{expiresAt ? ` and expires ${formatDate(expiresAt)}` : ''}. It is shown only now,
+        so if you lose it, use “Resend invitation” to make a new one (which cancels this one).
+      </p>
+    </div>
+  );
 }
 
 /**
  * The invite form.
  *
  * Reports success upward rather than rendering it, because the confirmation — and above all the
- * and whether the email went out — belongs in the page-level notice, which must outlive the form's own
- * state.
- * @param {{ onInvited: (result: { user: object, delivery: string }) => void }} props
+ * and above all the link — belongs in the page-level notice, which must outlive the form's own state.
+ * @param {{ onInvited: (result: { user: object, inviteLink: string }) => void }} props
  * @returns {JSX.Element}
  */
 function InviteForm({ onInvited }) {
@@ -225,7 +263,7 @@ function InviteForm({ onInvited }) {
 /**
  * Render the members screen.
  *
- * `notice` is the single message area for the page — an invite or resend confirmation, a role-change
+ * `notice` is the single message area for the page — an invite or resend (with its link), a role-change
  * confirmation, or a failed role change — so there is never more than one live region competing for a
  * screen reader's attention. A success is announced politely (`role="status"`), a failure assertively
  * (`role="alert"`).
@@ -241,8 +279,8 @@ export function MembersPage() {
   const { status, data, error, reload } = useMembers(params);
 
   const onInvited = useCallback(
-    ({ user, delivery }) => {
-      setNotice(deliveryNotice(user, delivery));
+    ({ user, inviteLink }) => {
+      setNotice(linkNotice(user, inviteLink));
       reload();
     },
     [reload],
@@ -274,7 +312,7 @@ export function MembersPage() {
       setNotice(null);
       try {
         const result = await usersApi.resendInvite(member.id);
-        setNotice(deliveryNotice(result.user, result.delivery, true));
+        setNotice(linkNotice(result.user, result.inviteLink, true));
         reload();
       } catch (err) {
         setNotice({ tone: 'error', message: errorMessage(err) });
@@ -304,6 +342,9 @@ export function MembersPage() {
           className={notice.tone === 'error' ? 'alert' : 'notice'}
         >
           <p>{notice.message}</p>
+          {notice.link ? (
+            <InviteLink link={notice.link} forName={notice.forName} expiresAt={notice.expiresAt} />
+          ) : null}
           <button type="button" className="secondary" onClick={() => setNotice(null)}>
             Dismiss
           </button>

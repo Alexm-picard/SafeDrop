@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
-// Overall AI Contribution: ~100% (written by Claude Code from the emailed-invitation request)
-// AI-Assisted Areas: tests for the public accept-invitation screen: choosing a password from the emailed link, expired / invalid / missing-token states, success with the organization code
+// Overall AI Contribution: ~100% (written by Claude Code from the invitation-link request)
+// AI-Assisted Areas: tests for the public accept-invitation screen: choosing a password from the invitation link, expired / invalid / missing-token states, success with the organization code
 // Human Contributions: pending team review
 // Notes: Mounts the real route table and AuthProvider. Must be reviewed by the owning team member before merge.
 

@@ -38,7 +38,7 @@
  * takes effect at the next refresh instead of lingering for the life of a token.
  *
  * **An invited member has no password until they choose one.** They are created with a hash of a random
- * value nobody holds, so `login` cannot succeed for them, and an emailed one-time link lets them set a
+ * value nobody holds, so `login` cannot succeed for them, and a one-time link lets them set a
  * real one (`acceptInvite`), which signs them in. The link is a 256-bit random token stored only as a
  * hash, valid once and for `INVITE_TTL`.
  *

@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: typed calls for /api/auth/* (SCRUM-102); acceptInvite
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; acceptInvite added for the emailed-invitation work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; acceptInvite added for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * Session endpoints: login, logout, refresh and "who am I".
@@ -49,7 +49,7 @@ export const refresh = () =>
  */
 export const me = (signal) => apiRequest('/api/auth/me', { signal });
 /**
- * Accept an invitation: choose a password using the token from the emailed link.
+ * Accept an invitation: choose a password using the token from the invitation link.
  *
  * Public — the token is the credential. On success the API signs the new member in (cookies) and returns
  * their user and organisation. A used or unknown token and an expired one are different errors

@@ -42,7 +42,7 @@ import { OrgSetupPage } from './pages/OrgSetupPage';
 export const routes = [
   { path: '/login', element: <LoginPage /> },
   { path: '/setup', element: <OrgSetupPage /> },
-  // Public: the invitee has no account yet, and the token in the emailed link is their credential.
+  // Public: the invitee has no account yet, and the token in the invitation link is their credential.
   { path: '/accept-invite', element: <AcceptInvitePage /> },
   {
     element: <RequireAuth />,

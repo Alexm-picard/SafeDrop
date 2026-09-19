@@ -34,21 +34,21 @@ export const list = (params = {}, signal) => {
 };
 
 /**
- * Invite someone into the organisation. They are emailed a one-time link to choose their own password.
+ * Invite someone into the organisation. The result carries a one-time link for the admin to send them.
  *
- * There is no password in the request, and none in the response: the admin can neither choose nor learn
- * it. `delivery` says how the email went — `email` (sent), `log` (no mail server configured; the link
- * went to the server log, development only) or `failed` (the invitation exists but the email did not
- * go out, so resend it).
+ * There is no password in the request, and no email: the member opens the link and chooses their own
+ * password. The link is a credential and is returned **only here** — the server keeps just a hash — so a
+ * caller must show it now or issue a new one with `resendInvite`.
  * @param {{ email: string, name: string, role?: string }} input
- * @returns {Promise<{ user: import('../types/api').User, delivery: 'email'|'log'|'failed' }>}
+ * @returns {Promise<{ user: import('../types/api').User, inviteLink: string }>}
  */
 export const invite = (input) => apiRequest('/api/users/invite', { method: 'POST', body: input });
 
 /**
- * Send a member a fresh invitation link, replacing the old one and restarting the 72-hour window.
+ * Issue a member a fresh invitation link, replacing the old one (which stops working) and restarting the
+ * 72-hour window. Like `invite`, the link is returned only here.
  * @param {string} userId
- * @returns {Promise<{ user: import('../types/api').User, delivery: 'email'|'log'|'failed' }>}
+ * @returns {Promise<{ user: import('../types/api').User, inviteLink: string }>}
  */
 export const resendInvite = (userId) =>
   apiRequest(`/api/users/${userId}/resend-invite`, { method: 'POST', body: {} });

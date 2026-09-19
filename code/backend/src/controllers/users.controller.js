@@ -30,8 +30,8 @@ export async function list(req, res) {
 /**
  * `POST /api/users/invite` — invite someone into the caller's organisation. Answers 201.
  *
- * The response says how the email went (`delivery`) but never contains the link or its token: that
- * would let the admin choose the member's password.
+ * The response carries the one-time invitation link, so it is marked `no-store`: a credential must not be
+ * kept by a browser cache or an intermediary. It is shown only here — the database keeps just a hash.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
@@ -39,7 +39,7 @@ export async function invite(req, res) {
   const result = await organizationService.inviteUser(req.orgId, req.auth, req.body, {
     requestId: req.id,
   });
-  res.status(201).json(result);
+  res.set('Cache-Control', 'no-store').status(201).json(result);
 }
 
 /**
@@ -62,7 +62,8 @@ export async function changeRole(req, res) {
 }
 
 /**
- * `POST /api/users/:id/resend-invite` — send a member a fresh invitation link. Answers 200.
+ * `POST /api/users/:id/resend-invite` — issue a member a fresh invitation link, killing the old one.
+ * Answers 200 with the new link, `no-store` like `invite`.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
@@ -70,5 +71,5 @@ export async function resendInvite(req, res) {
   const result = await organizationService.resendInvite(req.orgId, req.auth, req.params.id, {
     requestId: req.id,
   });
-  res.status(200).json(result);
+  res.set('Cache-Control', 'no-store').status(200).json(result);
 }

@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: typed error hierarchy mapped to HTTP status + { error: { code, message } } (SDD §6.5); InvitationError
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the emailed-invitation work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * The typed error hierarchy the API answers with (SDD §6.5).
