@@ -169,7 +169,8 @@ export async function submit(_orgId, _actor, _input) {
  */
 export async function list(orgId, actor, query = {}) {
   const { state, page, limit, scope } = query;
-  const wantsOrgWide = scope === 'org' && roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
+  const wantsOrgWide =
+    scope === 'org' && roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
   if (wantsOrgWide) {
     return checkoutRequestRepo.list(orgId, { state, page, limit });
   }
