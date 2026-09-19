@@ -1,17 +1,4 @@
 /* eslint-disable no-console */
-
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90%
-// AI-Assisted Areas: `npm run seed` CLI wrapper — connects, wipes/reseeds org-a and org-b, prints credentials
-// Human Contributions: pending team review
-
-/**
- * `npm run seed`: wipes and reseeds the two demo organizations (see seedTwoOrgs), then prints
- * everyone's login and every id created. Destructive on every run by design; refuses on
- * NODE_ENV=production. Needs only MONGODB_URI — does not load the app's full env config.
- */
-
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { AssetUnit } from '../src/models/AssetUnit.js';
@@ -38,7 +25,7 @@ async function wipeOrg(slug) {
     AssetUnit.deleteMany({ orgId }),
     Asset.deleteMany({ orgId }),
     User.deleteMany({ orgId }),
-    AuditEvent.collection.deleteMany({ orgId }),
+    AuditEvent.collection.deleteMany({ orgId }), // native driver: model forbids Mongoose deletes (SR-8)
   ]);
   await Organization.deleteOne({ _id: orgId });
 }
@@ -63,8 +50,19 @@ function printOrgSummary(key, org) {
     }
   }
 
-  console.log('  Request:');
-  console.log(`    ${org.request.state}  unit=${org.request.unitId}  (id: ${org.request._id})`);
+  console.log('  Requests:');
+  const requests = [
+    org.request,
+    org.heldRequest,
+    org.checkedOutRequest,
+    org.projectorRequest,
+    org.lostRequest,
+  ];
+  for (const req of requests) {
+    console.log(
+      `    ${req.state}  unit=${req.unitId}  requester=${req.requesterId}  (id: ${req._id})`,
+    );
+  }
 
   console.log('  Audit event:');
   console.log(`    ${org.audit.action}  (id: ${org.audit._id})`);
@@ -82,9 +80,6 @@ async function main() {
 
   await connectDb(process.env.MONGODB_URI);
   try {
-    // Always destructive: wipe org-a/org-b if they exist, then reseed fresh. No flag, no prompt —
-    // documented in the README instead (SDD seed-script acceptance criteria: "idempotent, or
-    // clearly documented as destructive").
     const existing = await Organization.find({ slug: mongoose.trusted({ $in: SLUGS }) });
     if (existing.length > 0) {
       console.log(

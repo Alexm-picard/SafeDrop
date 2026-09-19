@@ -13,8 +13,10 @@
  * pass every test. Every isolation test here asks whether org A can see or touch org B.
  *
  * Each organisation gets one user per role, three assets with units across every status (incl.
- * retired), a pending checkout request and an audit event. This same function backs `npm run seed`
- * (see scripts/seedDev.js) — it is the one place "seed two organisations" is implemented.
+ * retired), and a request behind every unit whose status a request produces (HELD, OUT, RETIRED) so
+ * the fixture reflects a state the app's own checkout flow could actually reach. This same function
+ * backs `npm run seed` (see scripts/seedDev.js) — it is the one place "seed two organisations" is
+ * implemented.
  */
 import bcrypt from 'bcryptjs';
 import * as assetRepo from '../../src/repositories/asset.repository.js';
@@ -51,7 +53,7 @@ export function testPasswordHash() {
 }
 
 /**
- * Seed one organisation with its users, assets, units, request and audit event.
+ * Seed one organisation with its users, assets, units, requests and audit event.
  *
  * Names and emails are derived from `key` (`org-a`, `admin@a.test`), so the two organisations are
  * told apart at a glance in a failing assertion. The users are created concurrently since they are
@@ -170,6 +172,102 @@ async function seedOrg(key) {
     { asset: projector, units: projectorUnits },
   ];
 
+  let heldRequest = await checkoutRepo.create(orgId, {
+    unitId: units[2]._id,
+    requesterId: member._id,
+    neededFrom: new Date('2026-09-25T00:00:00Z'),
+    neededTo: new Date('2026-10-05T00:00:00Z'),
+    note: '',
+  });
+  heldRequest = await checkoutRepo.transition(orgId, heldRequest._id, {
+    expectedState: 'PENDING',
+    patch: {
+      state: 'APPROVED',
+      decidedBy: approver._id,
+      decidedAt: new Date('2026-09-20T00:00:00Z'),
+      decisionNote: '',
+    },
+  });
+
+  let checkedOutRequest = await checkoutRepo.create(orgId, {
+    unitId: units[1]._id,
+    requesterId: member._id,
+    neededFrom: new Date('2026-09-10T00:00:00Z'),
+    neededTo: new Date('2026-09-24T00:00:00Z'),
+    note: '',
+  });
+  checkedOutRequest = await checkoutRepo.transition(orgId, checkedOutRequest._id, {
+    expectedState: 'PENDING',
+    patch: {
+      state: 'APPROVED',
+      decidedBy: approver._id,
+      decidedAt: new Date('2026-09-09T00:00:00Z'),
+      decisionNote: '',
+    },
+  });
+  checkedOutRequest = await checkoutRepo.transition(orgId, checkedOutRequest._id, {
+    expectedState: 'APPROVED',
+    patch: {
+      state: 'CHECKED_OUT',
+      checkedOutAt: new Date('2026-09-10T00:00:00Z'),
+      dueAt: new Date('2026-09-24T00:00:00Z'),
+    },
+  });
+
+  let projectorRequest = await checkoutRepo.create(orgId, {
+    unitId: projectorUnits[1]._id,
+    requesterId: member._id,
+    neededFrom: new Date('2026-09-12T00:00:00Z'),
+    neededTo: new Date('2026-09-26T00:00:00Z'),
+    note: '',
+  });
+  projectorRequest = await checkoutRepo.transition(orgId, projectorRequest._id, {
+    expectedState: 'PENDING',
+    patch: {
+      state: 'APPROVED',
+      decidedBy: approver._id,
+      decidedAt: new Date('2026-09-11T00:00:00Z'),
+      decisionNote: '',
+    },
+  });
+  projectorRequest = await checkoutRepo.transition(orgId, projectorRequest._id, {
+    expectedState: 'APPROVED',
+    patch: {
+      state: 'CHECKED_OUT',
+      checkedOutAt: new Date('2026-09-12T00:00:00Z'),
+      dueAt: new Date('2026-09-26T00:00:00Z'),
+    },
+  });
+
+  let lostRequest = await checkoutRepo.create(orgId, {
+    unitId: cameraUnits[2]._id,
+    requesterId: member._id,
+    neededFrom: new Date('2026-08-01T00:00:00Z'),
+    neededTo: new Date('2026-08-15T00:00:00Z'),
+    note: '',
+  });
+  lostRequest = await checkoutRepo.transition(orgId, lostRequest._id, {
+    expectedState: 'PENDING',
+    patch: {
+      state: 'APPROVED',
+      decidedBy: approver._id,
+      decidedAt: new Date('2026-07-30T00:00:00Z'),
+      decisionNote: '',
+    },
+  });
+  lostRequest = await checkoutRepo.transition(orgId, lostRequest._id, {
+    expectedState: 'APPROVED',
+    patch: {
+      state: 'CHECKED_OUT',
+      checkedOutAt: new Date('2026-08-01T00:00:00Z'),
+      dueAt: new Date('2026-08-15T00:00:00Z'),
+    },
+  });
+  lostRequest = await checkoutRepo.transition(orgId, lostRequest._id, {
+    expectedState: 'CHECKED_OUT',
+    patch: { state: 'LOST' },
+  });
+
   return {
     org,
     orgId: String(orgId),
@@ -181,6 +279,10 @@ async function seedOrg(key) {
     request,
     audit,
     extraAssets,
+    heldRequest,
+    checkedOutRequest,
+    projectorRequest,
+    lostRequest,
   };
 }
 
