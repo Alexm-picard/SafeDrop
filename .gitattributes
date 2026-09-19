@@ -1,0 +1,7 @@
+# Normalise line endings so the repository stores LF for every text file, whatever the developer's
+# platform. Without this, Git for Windows (core.autocrlf=true) checks files out as CRLF while
+# .prettierrc pins endOfLine: "lf", so `npm run format:check` fails on every file for a Windows
+# teammate while passing in CI on ubuntu-latest (SCRUM-113).
+#
+# `text=auto` lets Git decide what is text and leaves binary files (PDFs, images) untouched.
+* text=auto eol=lf

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members for ORG_ADMIN), sign-out (NFR-9, NFR-12)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket.
 
 /**
  * The application shell: header, primary navigation, session bar and footer around every signed-in
