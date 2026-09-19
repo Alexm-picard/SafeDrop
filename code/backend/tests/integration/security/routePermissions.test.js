@@ -9,7 +9,7 @@
  * Security tests for deny-by-default across the whole route table (SDD §6.4, SR-1).
  *
  * This suite proves the invariant rather than sampling it. It walks the *live* Express router stack,
- * asserts that every `/api` route declares a permission and that exactly three routes are public, then
+ * asserts that every `/api` route declares a permission and that exactly four routes are public, then
  * exercises each protected route to confirm it actually refuses an unauthorized caller.
  *
  * It also attacks the mechanism itself: routes registered without `defineRoute()`, a plain
@@ -85,7 +85,7 @@ describe('deny by default: every /api route declares a permission (SDD §6.4)', 
     },
   );
 
-  it('exactly the three documented public routes skip authentication', () => {
+  it('exactly the four documented public routes skip authentication', () => {
     const actual = apiRoutes
       .filter((r) => r.public)
       .map((r) => `${r.method} ${r.path}`)

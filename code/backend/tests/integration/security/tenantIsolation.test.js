@@ -210,7 +210,7 @@ describe('HTTP layer: org A addressing org B', () => {
       path: '/api/users/:id/role',
       body: { role: 'APPROVER' },
       target: (s) => s.member._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-users-role',
     },
   ];

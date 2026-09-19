@@ -14,7 +14,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from '../../../src/App';
 import { render } from '@testing-library/react';
-import { adminUser, assets, memberUser, meHandler } from '../../mocks/handlers';
+import { adminUser, approverUser, assets, memberUser, meHandler } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
@@ -27,6 +27,9 @@ describe('routes', () => {
     ['/requests', 'My requests', 'SCRUM-requests-list'],
     ['/admin', 'Dashboard', null],
     ['/admin/approvals', 'Approval queue', 'SCRUM-requests-approve'],
+    // Members has no ticket: the member-lifecycle work shipped the endpoints and the screen.
+    // MembersPage.test.jsx covers it properly.
+    ['/admin/members', 'Members', null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
@@ -47,6 +50,15 @@ describe('routes', () => {
       screen.getAllByRole('alert').some((a) => /do not have access/.test(a.textContent ?? '')),
     ).toBe(true);
   });
+  it.each([memberUser, approverUser])(
+    'a $role is bounced from /admin/members to the catalog',
+    async (person) => {
+      const { router } = renderApp('/admin/members', authenticatedState(person));
+      await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+      expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+    },
+  );
+
   it('unknown paths render the 404 page', async () => {
     renderApp('/definitely/not/here', authenticatedState(adminUser));
     expect(

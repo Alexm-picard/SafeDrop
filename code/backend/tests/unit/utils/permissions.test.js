@@ -12,7 +12,7 @@
  * silently added to or removed from a role fails the build rather than changing the system quietly.
  *
  * It also pins deny-by-default from both directions: unknown roles and unknown permissions answer
- * false, exactly three routes are public, and `authorize()` refuses at build time to create middleware
+ * false, exactly four routes are public, and `authorize()` refuses at build time to create middleware
  * for a permission nobody declared.
  */
 import { describe, expect, it } from 'vitest';
@@ -30,6 +30,7 @@ const matrix = {
   'requests:create': ['MEMBER', 'APPROVER', 'ORG_ADMIN'],
   'requests:read:own': ['MEMBER', 'APPROVER', 'ORG_ADMIN'],
   'session:self': ['MEMBER', 'APPROVER', 'ORG_ADMIN'],
+  'password:self': ['MEMBER', 'APPROVER', 'ORG_ADMIN'],
   'requests:decide': ['APPROVER', 'ORG_ADMIN'],
   'requests:handoff': ['APPROVER', 'ORG_ADMIN'],
   'assets:write': ['ORG_ADMIN'],
@@ -55,10 +56,12 @@ describe('permission matrix (SDD §6.4)', () => {
     expect(roleHasPermission(undefined, undefined)).toBe(false);
   });
 
-  it('recognises exactly the three public routes', () => {
+  it('recognises exactly the four public routes', () => {
     expect(isPublicRoute('POST', '/api/auth/login')).toBe(true);
     expect(isPublicRoute('post', '/api/auth/refresh/')).toBe(true);
     expect(isPublicRoute('POST', '/api/organizations?x=1')).toBe(true);
+    expect(isPublicRoute('POST', '/api/auth/accept-invite')).toBe(true);
+    expect(isPublicRoute('GET', '/api/auth/accept-invite')).toBe(false);
     expect(isPublicRoute('GET', '/api/organizations')).toBe(false);
     expect(isPublicRoute('POST', '/api/auth/logout')).toBe(false);
   });
