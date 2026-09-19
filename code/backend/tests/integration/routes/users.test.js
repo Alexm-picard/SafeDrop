@@ -37,7 +37,7 @@ import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
 import * as userRepo from '../../../src/repositories/user.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../../../src/utils/constants.js';
 import { ROLES } from '../../../src/utils/permissions.js';
-import { accessCookieFor, loginAs } from '../../helpers/authAs.js';
+import { accessCookieFor, cookieHeaderFrom, loginAs } from '../../helpers/authAs.js';
 import { seedTwoOrgs } from '../../helpers/seedTwoOrgs.js';
 
 vi.mock('../../../src/repositories/auditEvent.repository.js', async (importOriginal) => {
@@ -67,7 +67,15 @@ const listUsers = (query = '', cookie = asAdminA()) =>
 
 const newMember = { email: 'new.hire@a.test', name: 'New Hire' };
 /** The exact set of fields a member may be shown as: no hash, nothing internal. */
-const PUBLIC_USER_FIELDS = ['createdAt', 'email', 'id', 'name', 'orgId', 'role'];
+const PUBLIC_USER_FIELDS = [
+  'createdAt',
+  'email',
+  'id',
+  'mustChangePassword',
+  'name',
+  'orgId',
+  'role',
+];
 
 const auditFor = (orgId, action) => AuditEvent.find({ orgId, action }).lean();
 const adminCount = (orgId) => User.countDocuments({ orgId, role: ROLES.ORG_ADMIN });
@@ -85,8 +93,12 @@ describe('POST /api/users/invite', () => {
       role: ROLES.MEMBER,
       orgId: seed.a.orgId,
     });
-    // The password the admin set is not echoed back, in any form.
-    expect(JSON.stringify(res.body)).not.toMatch(/password|\$2[aby]\$/i);
+    // The password the admin set is not echoed back, in any form. Checked against the value and
+    // against anything bcrypt-shaped — `mustChangePassword` is a flag, and its name is not a leak.
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain(INITIAL_PASSWORD);
+    expect(body).not.toMatch(/\$2[aby]\$/);
+    expect(body).not.toMatch(/"password"|passwordHash/i);
   });
 
   it('stores only a bcrypt hash of the initial password the admin set', async () => {
@@ -622,8 +634,27 @@ describe('the member lifecycle end to end (what SCRUM-58 and SCRUM-45 need to de
     expect(annSession.res.body.user.role).toBe(ROLES.APPROVER);
     expect(maxSession.res.body.user.role).toBe(ROLES.MEMBER);
 
+    // Both are still on a password the admin chose, so both are told to replace it and can reach
+    // nothing else meanwhile (SCRUM-22).
+    expect(maxSession.res.body.user.mustChangePassword).toBe(true);
+    const confined = await request(app).get('/api/assets').set('Cookie', maxSession.accessCookie);
+    expect(confined.status).toBe(403);
+    expect(confined.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // Choosing their own password lifts the restriction, for both of them.
+    const choosePassword = async (session, currentPassword, newPassword) => {
+      const res = await request(app)
+        .post('/api/auth/change-password')
+        .set('Cookie', session.cookieHeader)
+        .send({ currentPassword, newPassword });
+      expect(res.status).toBe(200);
+      expect(res.body.user.mustChangePassword).toBe(false);
+      return cookieHeaderFrom(res);
+    };
+    const maxCookie = await choosePassword(maxSession, 'Max-Initial-Passw0rd', 'Max-Own-Passw0rd');
+    const annCookie = await choosePassword(annSession, 'Ann-Initial-Passw0rd', 'Ann-Own-Passw0rd');
+
     // A member can browse the catalogue but cannot manage people or read the audit log.
-    const maxCookie = maxSession.accessCookie;
     expect((await request(app).get('/api/assets').set('Cookie', maxCookie)).status).toBe(200);
     expect((await request(app).get('/api/users').set('Cookie', maxCookie)).status).toBe(403);
     expect(
@@ -637,9 +668,7 @@ describe('the member lifecycle end to end (what SCRUM-58 and SCRUM-45 need to de
     ).toBe(403);
     expect((await request(app).get('/api/audit').set('Cookie', maxCookie)).status).toBe(403);
     // An approver has more than a member but still cannot manage people.
-    expect(
-      (await request(app).get('/api/users').set('Cookie', annSession.accessCookie)).status,
-    ).toBe(403);
+    expect((await request(app).get('/api/users').set('Cookie', annCookie)).status).toBe(403);
 
     // The admin sees everyone, and the trail shows who was added.
     const members = await listUsers();

@@ -37,11 +37,23 @@ const run = (req) =>
   });
 
 describe('authenticate', () => {
-  it('attaches frozen req.auth = { userId, orgId, role } for a valid token', async () => {
+  it('attaches frozen req.auth = { userId, orgId, role, mustChangePassword } for a valid token', async () => {
     const req = { cookies: { [ACCESS_COOKIE]: signAccessToken({ ...ids, role: 'APPROVER' }) } };
     expect(await run(req)).toBeUndefined();
-    expect(req.auth).toEqual({ userId: ids.userId, orgId: ids.orgId, role: 'APPROVER' });
+    expect(req.auth).toEqual({
+      userId: ids.userId,
+      orgId: ids.orgId,
+      role: 'APPROVER',
+      mustChangePassword: false,
+    });
     expect(Object.isFrozen(req.auth)).toBe(true);
+  });
+
+  it('carries mustChangePassword through from the token (SCRUM-22)', async () => {
+    const token = signAccessToken({ ...ids, role: 'MEMBER', mustChangePassword: true });
+    const req = { cookies: { [ACCESS_COOKIE]: token } };
+    expect(await run(req)).toBeUndefined();
+    expect(req.auth.mustChangePassword).toBe(true);
   });
 
   it('lets the three public routes through without a cookie, including trailing slashes and query strings', async () => {

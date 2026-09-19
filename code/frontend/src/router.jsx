@@ -28,11 +28,14 @@ import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AssetDetailPage } from './pages/AssetDetailPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { CatalogPage } from './pages/CatalogPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { OrgSetupPage } from './pages/OrgSetupPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 /**
  * The route tree, from public pages down to role-gated admin areas.
  *
@@ -40,10 +43,16 @@ import { OrgSetupPage } from './pages/OrgSetupPage';
  */
 export const routes = [
   { path: '/login', element: <LoginPage /> },
+  // Outside RequireAuth, like login: someone who cannot sign in has no session to guard (SCRUM-22).
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/setup', element: <OrgSetupPage /> },
   {
     element: <RequireAuth />,
     children: [
+      // Outside Layout on purpose: a session that may not browse should not be shown the
+      // navigation for it (SCRUM-22).
+      { path: 'change-password', element: <ChangePasswordPage /> },
       {
         element: <Layout />,
         children: [

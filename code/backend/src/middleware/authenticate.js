@@ -50,7 +50,12 @@ export function createAuthenticate({ verify = verifyAccessToken } = {}) {
     } catch (err) {
       return next(err instanceof AuthError ? err : new AuthError('Invalid access token', err));
     }
-    req.auth = Object.freeze({ userId: claims.userId, orgId: claims.orgId, role: claims.role });
+    req.auth = Object.freeze({
+      userId: claims.userId,
+      orgId: claims.orgId,
+      role: claims.role,
+      mustChangePassword: claims.mustChangePassword === true,
+    });
     return next();
   };
 }

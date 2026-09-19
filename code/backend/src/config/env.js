@@ -58,6 +58,22 @@ export const envSchema = z
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
     // Number of reverse-proxy hops to trust for req.ip (Render: 1). Default: 1 in production, 0 otherwise.
     TRUST_PROXY: z.coerce.number().int().min(0).optional(),
+    // The SPA's public origin. The password-reset link is built on it, so a wrong value here sends
+    // people somewhere that cannot complete the reset. No trailing slash; https in production.
+    // (Re-introduced for SCRUM-22; the invite-link flow that first added it was replaced.)
+    APP_BASE_URL: z
+      .url()
+      .default('http://localhost:5173')
+      .transform((value) => value.replace(/\/+$/, '')),
+    // How outgoing mail is delivered. `console` sends nothing and writes the message to the log,
+    // which is the right default for local development and the only sane one for tests.
+    MAIL_PROVIDER: z.enum(['console', 'resend', 'brevo']).default('console'),
+    // API key for that provider. Unused, and left unset, when MAIL_PROVIDER is `console`.
+    MAIL_API_KEY: z.string().default(''),
+    // The From address, which the provider must have verified. `Name <address>` is accepted.
+    MAIL_FROM: z.string().default('SafeDrop <no-reply@safedrop.local>'),
+    // How long a password-reset link stays usable (SCRUM-22 asks for ten minutes).
+    PASSWORD_RESET_TTL: duration.default('10m'),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
@@ -72,6 +88,28 @@ export const envSchema = z
         code: 'custom',
         path: ['CORS_ORIGINS'],
         message: 'must list the SPA origin(s) in production (SR-14)',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.APP_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['APP_BASE_URL'],
+        message:
+          "must be the SPA's public https:// URL in production: it is the base of reset links",
+      });
+    }
+    if (value.MAIL_PROVIDER !== 'console' && value.MAIL_API_KEY.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MAIL_API_KEY'],
+        message: `is required when MAIL_PROVIDER is "${value.MAIL_PROVIDER}"`,
+      });
+    }
+    if (value.MAIL_PROVIDER !== 'console' && !value.MAIL_FROM.includes('@')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MAIL_FROM'],
+        message: 'must be an email address the provider has verified',
       });
     }
     for (const origin of value.CORS_ORIGINS) {

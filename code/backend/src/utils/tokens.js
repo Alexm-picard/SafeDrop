@@ -59,19 +59,25 @@ export const ACCESS_COOKIE_PATH = '/api';
  * @throws {TypeError} when any of userId, orgId or role is missing
  */
 export function signAccessToken(
-  { userId, orgId, role },
+  { userId, orgId, role, mustChangePassword = false },
   { secret = env.JWT_ACCESS_SECRET, ttl = env.JWT_ACCESS_TTL } = {},
 ) {
   if (!userId || !orgId || !role) {
     throw new TypeError('signAccessToken requires userId, orgId and role');
   }
-  return jwt.sign({ org: String(orgId), role }, secret, {
-    algorithm: JWT_ALGORITHM,
-    subject: String(userId),
-    expiresIn: ttl,
-    issuer: JWT_ISSUER,
-    audience: JWT_AUDIENCE,
-  });
+  // `pwd` is present only while a password somebody else chose is still in use, so an ordinary
+  // token stays the size it was. Its absence means "nothing to change" (SCRUM-22).
+  return jwt.sign(
+    { org: String(orgId), role, ...(mustChangePassword ? { pwd: 'must-change' } : {}) },
+    secret,
+    {
+      algorithm: JWT_ALGORITHM,
+      subject: String(userId),
+      expiresIn: ttl,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    },
+  );
 }
 
 /**
@@ -116,6 +122,7 @@ export function verifyAccessToken(token, { secret = env.JWT_ACCESS_SECRET } = {}
     userId: payload.sub,
     orgId: payload.org,
     role: payload.role,
+    mustChangePassword: payload.pwd === 'must-change',
     expiresAt: new Date(payload.exp * 1000),
   };
 }

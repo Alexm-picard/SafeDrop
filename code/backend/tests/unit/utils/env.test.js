@@ -79,8 +79,38 @@ describe('loadEnv', () => {
         NODE_ENV: 'production',
         COOKIE_SECURE: 'true',
         CORS_ORIGINS: 'https://app.test',
+        APP_BASE_URL: 'https://app.test',
       }).isProduction,
     ).toBe(true);
+  });
+
+  it('refuses a non-https APP_BASE_URL in production, since reset links are built on it', () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      COOKIE_SECURE: 'true',
+      CORS_ORIGINS: 'https://app.test',
+    };
+    // The default is the local dev origin, which would mail people a link to their own machine.
+    expect(() => loadEnv(production)).toThrow(/APP_BASE_URL/);
+    expect(() => loadEnv({ ...production, APP_BASE_URL: 'http://app.test' })).toThrow(
+      /APP_BASE_URL/,
+    );
+    expect(loadEnv({ ...production, APP_BASE_URL: 'https://app.test/' }).APP_BASE_URL).toBe(
+      'https://app.test',
+    );
+  });
+
+  it('requires a key and a sender once a real mail provider is configured', () => {
+    expect(loadEnv(base).MAIL_PROVIDER).toBe('console');
+    expect(() => loadEnv({ ...base, MAIL_PROVIDER: 'resend' })).toThrow(/MAIL_API_KEY/);
+    expect(() => loadEnv({ ...base, MAIL_PROVIDER: 'brevo' })).toThrow(/MAIL_API_KEY/);
+    expect(() =>
+      loadEnv({ ...base, MAIL_PROVIDER: 'brevo', MAIL_API_KEY: 'k', MAIL_FROM: 'not-an-address' }),
+    ).toThrow(/MAIL_FROM/);
+    expect(() => loadEnv({ ...base, MAIL_PROVIDER: 'pigeon' })).toThrow(/MAIL_PROVIDER/);
+    // console needs neither, which is what keeps local development and tests key-free.
+    expect(loadEnv({ ...base, MAIL_PROVIDER: 'console' }).MAIL_API_KEY).toBe('');
   });
 
   it('rejects origins that are not scheme://host', () => {

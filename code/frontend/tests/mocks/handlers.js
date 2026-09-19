@@ -286,6 +286,16 @@ export function membersPage(search, all = members) {
  * @param {unknown} [details] validation issues, or `{ ticket }` for a 501
  * @returns {Response}
  */
+/**
+ * The one reset token the mocked API accepts; anything else is treated as expired or already used.
+ */
+export const VALID_RESET_TOKEN = 'valid-reset-token';
+
+/**
+ * The password the mocked change-password endpoint treats as the caller's current one.
+ */
+export const CURRENT_PASSWORD = 'Correct-Horse-Battery-9';
+
 export function errorResponse(status, code, message, details) {
   return HttpResponse.json(
     { error: { code, message, details, requestId: 'req-test' } },
@@ -338,6 +348,55 @@ export const handlers = [
     errorResponse(401, 'UNAUTHENTICATED', 'Invalid refresh token'),
   ),
   http.post('*/api/auth/logout', () => new HttpResponse(null, { status: 204 })),
+  // Password reset (SCRUM-22). The real API answers 202 to every forgot-password request, whether
+  // or not the account exists, so this mock does the same — a test that could tell them apart here
+  // would be testing something the backend deliberately does not do.
+  http.post('*/api/auth/change-password', async ({ request }) => {
+    const body = await request.json();
+    if (String(body.newPassword ?? '').length < 10) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'newPassword', message: 'must be at least 10 characters' },
+      ]);
+    }
+    if (body.currentPassword !== CURRENT_PASSWORD) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'currentPassword', message: 'is incorrect' },
+      ]);
+    }
+    // The real API clears mustChangePassword and issues a fresh session here.
+    return HttpResponse.json({ user: { ...adminUser, mustChangePassword: false } });
+  }),
+  http.post('*/api/users/:id/password', async ({ request, params }) => {
+    const body = await request.json();
+    if (String(body.password ?? '').length < 10) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'password', message: 'must be at least 10 characters' },
+      ]);
+    }
+    return HttpResponse.json({
+      user: { ...memberUser, id: params.id, mustChangePassword: true },
+    });
+  }),
+  http.post('*/api/auth/forgot-password', () =>
+    HttpResponse.json(
+      { message: 'If that account exists, a reset link is on its way.' },
+      { status: 202 },
+    ),
+  ),
+  http.post('*/api/auth/reset-password', async ({ request }) => {
+    const body = await request.json();
+    if (String(body.newPassword ?? '').length < 10) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'newPassword', message: 'must be at least 10 characters' },
+      ]);
+    }
+    if (body.token !== VALID_RESET_TOKEN) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+        { location: 'body', path: 'token', message: 'this reset link is no longer valid' },
+      ]);
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post('*/api/organizations', async ({ request }) => {
     const body = await request.json();
     if (!body.adminPassword || body.adminPassword.length < 10) {

@@ -233,11 +233,81 @@ function InviteForm({ onInvited }) {
  * (`role="alert"`).
  * @returns {JSX.Element}
  */
+/**
+ * Set one member's password, as an admin (SCRUM-36).
+ *
+ * Separate from the row so the password has a real field — labelled, with the same show-password
+ * option as the invite form, because a typo in a credential nobody can read back is unrecoverable.
+ * The value lives here only until it is sent.
+ * @param {{ member: object, pending: boolean, onCancel: () => void, onSubmit: (member: object, password: string) => Promise<unknown> }} props
+ * @returns {JSX.Element}
+ */
+function ResetPasswordForm({ member, pending, onCancel, onSubmit }) {
+  const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
+  const [fieldError, setFieldError] = useState(null);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setFieldError(null);
+    const err = await onSubmit(member, password);
+    if (err) {
+      const perField = isApiError(err) ? fieldErrorsOf(err) : {};
+      setFieldError(perField.password ?? errorMessage(err));
+      return;
+    }
+    setPassword('');
+    setShow(false);
+  };
+
+  return (
+    <form className="card" onSubmit={submit} noValidate aria-labelledby="reset-title">
+      <h2 id="reset-title">Set a password for {member.name}</h2>
+      <p className="hint">
+        Use this when someone cannot use the emailed link. They must choose their own password the
+        next time they sign in, and every session they have now ends.
+      </p>
+      <div className="field">
+        <label htmlFor="reset-password">Temporary password</label>
+        <input
+          id="reset-password"
+          name="password"
+          type={show ? 'text' : 'password'}
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          aria-invalid={fieldError ? 'true' : undefined}
+          aria-describedby={fieldError ? 'reset-password-error' : undefined}
+        />
+        <label className="checkbox">
+          <input type="checkbox" checked={show} onChange={() => setShow((v) => !v)} />
+          Show password
+        </label>
+        {fieldError ? (
+          <span id="reset-password-error" className="field-error">
+            {fieldError}
+          </span>
+        ) : null}
+      </div>
+      <div className="actions">
+        <button type="submit" disabled={pending}>
+          {pending ? 'Setting…' : 'Set password'}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel} disabled={pending}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function MembersPage() {
   const { user: me, organization } = useAuth();
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState(null);
   const [changingId, setChangingId] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
   const params = useMemo(() => ({ page, limit: MEMBERS_PAGE_SIZE }), [page]);
   const { status, data, error, reload } = useMembers(params);
 
@@ -255,6 +325,38 @@ export function MembersPage() {
       reload();
     },
     [organization, reload],
+  );
+
+  /**
+   * Finish setting a member's password (SCRUM-36).
+   *
+   * The password is shown back to nobody and kept nowhere: the admin types it, sends it on through
+   * a channel they trust, and the member is forced to replace it at their next sign-in, so what is
+   * handed over is a way in rather than a lasting credential.
+   */
+  const onResetPassword = useCallback(
+    async (member, password) => {
+      setChangingId(member.id);
+      setNotice(null);
+      try {
+        await usersApi.setPassword(member.id, password);
+        setResetTarget(null);
+        setNotice({
+          tone: 'success',
+          message:
+            `Set a new password for ${member.name}. Give it to them through a channel you trust — ` +
+            'they must choose their own as soon as they sign in, and any session they had is now ' +
+            'signed out.',
+        });
+        reload();
+        return null;
+      } catch (err) {
+        return err;
+      } finally {
+        setChangingId(null);
+      }
+    },
+    [reload],
   );
 
   const onChangeRole = useCallback(
@@ -345,11 +447,39 @@ export function MembersPage() {
                   ),
               },
               { key: 'joined', header: 'Added', render: (m) => formatDate(m.createdAt) },
+              {
+                key: 'password',
+                header: 'Password',
+                render: (m) =>
+                  m.id === me?.id ? (
+                    // An admin resets their own password through the change-password screen; the
+                    // API refuses this route aimed at yourself.
+                    <span className="hint">—</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={changingId === m.id}
+                      aria-expanded={resetTarget?.id === m.id}
+                      onClick={() => setResetTarget(resetTarget?.id === m.id ? null : m)}
+                    >
+                      {m.mustChangePassword ? 'Set again' : 'Reset password'}
+                    </button>
+                  ),
+              },
             ]}
             rows={data.items}
             getRowId={(m) => m.id}
             emptyMessage="There are no members yet."
           />
+          {resetTarget ? (
+            <ResetPasswordForm
+              member={resetTarget}
+              pending={changingId === resetTarget.id}
+              onCancel={() => setResetTarget(null)}
+              onSubmit={onResetPassword}
+            />
+          ) : null}
           {lastPage > 1 ? (
             <nav className="pagination" aria-label="Members pages">
               <button

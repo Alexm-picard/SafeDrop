@@ -57,6 +57,45 @@ export function createAuthRateLimiter({
 export const authRateLimiter = createAuthRateLimiter();
 
 /**
+ * How many password-reset requests one caller may make per window.
+ *
+ * Much tighter than the login limit, and it counts *every* request rather than only the failures:
+ * `POST /api/auth/forgot-password` answers 202 whatever happens, by design, so there are no
+ * failures to count. Without this, the endpoint would be an unmetered way to send mail to any
+ * address someone cares to type, and an unmetered way to burn the provider's free tier.
+ */
+export const PASSWORD_RESET_RATE_LIMIT = 5;
+
+/**
+ * Build the limiter for the two password-reset routes (SCRUM-22).
+ *
+ * Shared by both: minting links and spending them are the same budget, so guessing tokens is
+ * bounded by the same small number as asking for mail.
+ * @param {{ limit?: number, windowMs?: number }} [options]
+ * @returns {import('express').RequestHandler & { reset: () => void }}
+ */
+export function createPasswordResetRateLimiter({
+  limit = PASSWORD_RESET_RATE_LIMIT,
+  windowMs = AUTH_RATE_LIMIT_WINDOW_MS,
+} = {}) {
+  const store = new MemoryStore();
+  const limiter = rateLimit({
+    windowMs,
+    limit,
+    store,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skipSuccessfulRequests: false,
+    handler: (_req, _res, next) => next(new RateLimitError()),
+    validate: env.isTest ? false : { trustProxy: false },
+  });
+  limiter.reset = () => store.resetAll();
+  return limiter;
+}
+
+export const passwordResetRateLimiter = createPasswordResetRateLimiter();
+
+/**
  * Clear every counter of the shared limiter.
  *
  * Test-only helper. Without it, a test that exercises failed logins would leave the limiter tripped
@@ -65,4 +104,5 @@ export const authRateLimiter = createAuthRateLimiter();
  */
 export function resetAuthRateLimiter() {
   authRateLimiter.reset();
+  passwordResetRateLimiter.reset();
 }

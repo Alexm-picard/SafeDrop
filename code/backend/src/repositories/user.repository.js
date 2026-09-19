@@ -44,9 +44,13 @@ const normalizeEmail = (email) => String(email).trim().toLowerCase();
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>}
  */
-export async function create(orgId, { email, name, role, passwordHash }, { session } = {}) {
+export async function create(
+  orgId,
+  { email, name, role, passwordHash, mustChangePassword = false },
+  { session } = {},
+) {
   const [doc] = await User.create(
-    [{ orgId, email: normalizeEmail(email), name, role, passwordHash }],
+    [{ orgId, email: normalizeEmail(email), name, role, passwordHash, mustChangePassword }],
     {
       session,
     },
@@ -193,10 +197,63 @@ export async function findByIdWithPassword(orgId, userId) {
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document|null>} the updated user (no hash selected), or null when not in this tenant
  */
-export async function setPassword(orgId, userId, passwordHash, { session } = {}) {
+export async function setPassword(
+  orgId,
+  userId,
+  passwordHash,
+  { session, mustChangePassword = false } = {},
+) {
   return User.findOneAndUpdate(
     { _id: userId, orgId },
-    { $set: { passwordHash } },
+    { $set: { passwordHash, mustChangePassword } },
+    { returnDocument: 'after', runValidators: true, session },
+  );
+}
+
+/**
+ * Store the hash of a password-reset token and when it stops working (SCRUM-22).
+ *
+ * Writing a new token replaces any previous one, so asking for a second link silently invalidates
+ * the first — the usual expectation, and it keeps at most one live link per account.
+ * @param {string} orgId
+ * @param {string} userId
+ * @param {{ tokenHash: string, expiresAt: Date }} reset
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<object|null>}
+ */
+export async function setResetToken(orgId, userId, { tokenHash, expiresAt }, { session } = {}) {
+  return User.findOneAndUpdate(
+    { _id: userId, orgId },
+    { $set: { resetTokenHash: tokenHash, resetTokenExpiresAt: expiresAt } },
+    { returnDocument: 'after', runValidators: true, session },
+  );
+}
+
+/**
+ * Find the account a reset token belongs to.
+ *
+ * Deliberately **not** scoped by organisation: completing a reset is a public request whose only
+ * credential is the token, so there is no tenant context to scope by yet. The unique index on
+ * `resetTokenHash` is what keeps this to at most one account, and the caller must still check the
+ * expiry. The token hash and expiry are selected explicitly because both are `select: false`.
+ * @param {string} tokenHash SHA-256 of the raw token
+ * @returns {Promise<object|null>}
+ */
+export async function findByResetTokenHash(tokenHash) {
+  return User.findOne({ resetTokenHash: tokenHash }).select('+resetTokenHash +resetTokenExpiresAt');
+}
+
+/**
+ * Clear the reset token, which is what makes a link single-use.
+ * @param {string} orgId
+ * @param {string} userId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<object|null>}
+ */
+export async function clearResetToken(orgId, userId, { session } = {}) {
+  return User.findOneAndUpdate(
+    { _id: userId, orgId },
+    { $set: { resetTokenHash: null, resetTokenExpiresAt: null } },
     { returnDocument: 'after', runValidators: true, session },
   );
 }
