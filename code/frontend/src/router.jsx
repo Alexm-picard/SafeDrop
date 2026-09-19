@@ -58,7 +58,7 @@ export const routes = [
             element: <RequireRole roles={['ORG_ADMIN']} />,
             children: [
               { path: 'admin', element: <AdminDashboardPage /> },
-              { path: 'admin/members', element: <MembersPage /> },
+              { path: 'admin/users', element: <MembersPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
             ],
           },

@@ -50,7 +50,7 @@ describe('Layout', () => {
   it.each([
     [memberUser, ['Catalog', 'My requests']],
     [approverUser, ['Catalog', 'My requests', 'Approvals']],
-    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Members', 'Audit log']],
+    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Users', 'Audit log']],
   ])('shows navigation by role', (user, expected) => {
     renderLayout(user);
     const nav = screen.getByRole('navigation', { name: 'Primary' });
@@ -60,6 +60,17 @@ describe('Layout', () => {
         .map((a) => a.textContent),
     ).toEqual(expected);
   });
+  it('links the Users entry to /admin/users, and only an ORG_ADMIN is offered it', () => {
+    const { unmount } = renderLayout(adminUser);
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/admin/users');
+    unmount();
+    for (const person of [memberUser, approverUser]) {
+      const view = renderLayout(person);
+      expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
   it('signs out and goes to /login', async () => {
     const user = userEvent.setup();
     const { router, value } = renderLayout(adminUser);

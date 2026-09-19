@@ -282,7 +282,7 @@ export function MembersPage() {
 
   return (
     <>
-      <h1>Members</h1>
+      <h1>Users</h1>
       <p className="hint">
         The people in your organization and what they can do. Every invitation and role change is
         recorded in the audit log.
