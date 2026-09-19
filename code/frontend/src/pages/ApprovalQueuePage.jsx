@@ -194,9 +194,7 @@ export function ApprovalQueuePage() {
                       <button
                         type="button"
                         disabled={busyId === r.id}
-                        onClick={() =>
-                          decide(r.id, 'return', condition ? { condition } : {})
-                        }
+                        onClick={() => decide(r.id, 'return', condition ? { condition } : {})}
                       >
                         Return
                       </button>
