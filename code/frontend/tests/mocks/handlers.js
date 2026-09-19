@@ -182,6 +182,77 @@ export function auditPage(search) {
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
 }
 /**
+ * Three checkout requests for the caller's org, one per state the approval queue actually exercises.
+ */
+export const checkoutRequests = [
+  {
+    id: '6aab2a45c6e457e01ac0973a',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972a',
+    requesterId: memberUser.id,
+    state: 'PENDING',
+    neededFrom: '2026-10-01T00:00:00.000Z',
+    neededTo: '2026-10-15T00:00:00.000Z',
+    note: '',
+    decidedBy: null,
+    decidedAt: null,
+    decisionNote: '',
+    checkedOutAt: null,
+    dueAt: null,
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973b',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972b',
+    requesterId: memberUser.id,
+    state: 'APPROVED',
+    neededFrom: '2026-09-20T00:00:00.000Z',
+    neededTo: '2026-09-30T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-09-19T00:00:00.000Z',
+    decisionNote: '',
+    checkedOutAt: null,
+    dueAt: null,
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973c',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972c',
+    requesterId: memberUser.id,
+    state: 'CHECKED_OUT',
+    neededFrom: '2026-09-01T00:00:00.000Z',
+    neededTo: '2026-09-14T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-08-31T00:00:00.000Z',
+    decisionNote: '',
+    checkedOutAt: '2026-09-01T00:00:00.000Z',
+    dueAt: '2026-09-14T00:00:00.000Z',
+    returnedAt: null,
+  },
+];
+/**
+ * Apply the state filter and pagination the real `/api/requests` endpoint applies.
+ *
+ * `scope` isn't modeled here: the fixture has no per-role visibility rules to mirror, so every test
+ * sees the same organisation-wide list regardless of who is asking, the same simplification the
+ * assets and audit fixtures already make.
+ * @param {URLSearchParams} search
+ * @returns {{ items: object[], total: number, page: number, limit: number }}
+ */
+export function requestsPage(search) {
+  const state = search.get('state');
+  const filtered = state ? checkoutRequests.filter((r) => r.state === state) : checkoutRequests;
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
+
+/**
  * Build an error response in the API's exact envelope.
  *
  * Including a `requestId`, so tests can assert that ErrorState surfaces it — that id is what a user
@@ -270,7 +341,17 @@ export const handlers = [
     }
     return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
   }),
-  http.get('*/api/requests', () => notImplemented('SCRUM-requests-list')),
+  http.get('*/api/requests', ({ request }) =>
+    HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
+  ),
+  http.post('*/api/requests/:id/approve', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'APPROVED' });
+  }),
+  http.post('*/api/requests/:id/deny', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'DENIED' });
+  }),
   http.get('*/api/audit', ({ request }) =>
     HttpResponse.json(auditPage(new URL(request.url).searchParams)),
   ),

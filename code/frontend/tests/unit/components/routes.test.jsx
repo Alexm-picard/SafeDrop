@@ -19,14 +19,15 @@ import { server } from '../../mocks/server';
 import { authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
   it.each([
-    // The catalogue and asset detail have no ticket: SCRUM-115 shipped both endpoints and both
-    // screens, so they render real data rather than a placeholder. CatalogPage.test.jsx and
-    // AssetDetailPage.test.jsx cover them properly.
+    // The catalogue, asset detail, my-requests and approval queue have no ticket: SCRUM-115 and
+    // SCRUM-119 shipped their endpoints and screens, so they render real data rather than a
+    // placeholder. CatalogPage.test.jsx, AssetDetailPage.test.jsx and ApprovalQueuePage.test.jsx
+    // cover them properly.
     ['/', 'Catalog', null],
     [`/assets/${assets[0].id}`, assets[0].name, null],
-    ['/requests', 'My requests', 'SCRUM-requests-list'],
+    ['/requests', 'My requests', null],
     ['/admin', 'Dashboard', null],
-    ['/admin/approvals', 'Approval queue', 'SCRUM-requests-approve'],
+    ['/admin/approvals', 'Approval queue', null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
