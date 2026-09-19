@@ -75,12 +75,9 @@ describe('checkout state machine (F4)', () => {
     ]);
   });
 
-  it.each(['submit', 'get', 'cancel'])(
-    'handler %s is a Sprint 1 stub (501)',
-    async (name) => {
-      await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
-    },
-  );
+  it.each(['submit', 'get', 'cancel'])('handler %s is a Sprint 1 stub (501)', async (name) => {
+    await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
+  });
 });
 
 describe('checkout state machine: prototype keys are not states', () => {
