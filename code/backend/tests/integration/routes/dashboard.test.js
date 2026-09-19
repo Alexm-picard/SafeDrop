@@ -34,7 +34,7 @@ describe('GET /api/dashboard/summary (SCRUM-103)', () => {
       .get('/api/dashboard/summary')
       .set('Cookie', accessCookieFor(seed.a.admin));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ totalAssets: 3, checkedOut: 1, available: 1, held: 1, retired: 0 });
+    expect(res.body).toEqual({ totalAssets: 7, checkedOut: 2, available: 4, held: 1, retired: 1 });
   });
 
   it('excludes retired units from totalAssets', async () => {
@@ -46,7 +46,7 @@ describe('GET /api/dashboard/summary (SCRUM-103)', () => {
     const res = await request(app)
       .get('/api/dashboard/summary')
       .set('Cookie', accessCookieFor(seed.a.admin));
-    expect(res.body).toMatchObject({ totalAssets: 3, retired: 1 });
+    expect(res.body).toMatchObject({ totalAssets: 7, retired: 2 });
   });
 
   it('returns zeros for an organisation without units', async () => {

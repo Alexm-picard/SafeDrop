@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: two fully populated tenants for isolation tests (SR-2)
+// AI-Assisted Areas: two fully populated tenants for isolation tests (SR-2) and for `npm run seed`
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -12,8 +12,9 @@
  * organisation that also has data — with a single tenant, a query missing its `orgId` filter would
  * pass every test. Every isolation test here asks whether org A can see or touch org B.
  *
- * Each organisation gets one user per role, one asset with three units in different statuses, a
- * pending checkout request and an audit event, so a test can exercise any layer without seeding more.
+ * Each organisation gets one user per role, three assets with units across every status (incl.
+ * retired), a pending checkout request and an audit event. This same function backs `npm run seed`
+ * (see scripts/seed.js) — it is the one place "seed two organisations" is implemented.
  */
 import bcrypt from 'bcryptjs';
 import * as assetRepo from '../../src/repositories/asset.repository.js';
@@ -49,8 +50,14 @@ export function testPasswordHash() {
   return hashPromise;
 }
 
+/** Two more assets per org, on top of the original "Laptop", for status/category variety. */
+const EXTRA_ASSET_DEFS = [
+  { name: 'Camera', category: 'camera', units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.AVAILABLE, UNIT_STATUS.RETIRED] },
+  { name: 'Projector', category: 'projector', units: [UNIT_STATUS.AVAILABLE, UNIT_STATUS.OUT] },
+];
+
 /**
- * Seed one organisation with its users, asset, units, request and audit event.
+ * Seed one organisation with its users, assets, units, request and audit event.
  *
  * Names and emails are derived from `key` (`org-a`, `admin@a.test`), so the two organisations are
  * told apart at a glance in a failing assertion. The users are created concurrently since they are
@@ -120,13 +127,39 @@ async function seedOrg(key) {
     targetId: orgId,
     after: { name: org.name },
   });
-  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit };
+
+  // Two more assets with units across more statuses (incl. RETIRED). Additive: `asset`/`units`
+  // above still refer to the Laptop, unchanged, so existing single-asset assertions keep working.
+  const extraAssets = [];
+  for (const [ai, adef] of EXTRA_ASSET_DEFS.entries()) {
+    const extraAsset = await assetRepo.create(orgId, {
+      name: `${adef.name} ${key.toUpperCase()}`,
+      category: adef.category,
+      description: '',
+      imageUrl: null,
+    });
+    const extraUnits = [];
+    for (const [ui, status] of adef.units.entries()) {
+      extraUnits.push(
+        await assetUnitRepo.create(orgId, {
+          assetId: extraAsset._id,
+          tag: `${key}-x${ai + 1}-${ui + 1}`,
+          status,
+        }),
+      );
+    }
+    extraAssets.push({ asset: extraAsset, units: extraUnits });
+  }
+
+  return { org, orgId: String(orgId), admin, approver, member, asset, units, request, audit, extraAssets };
 }
 
 /**
  * Seed both organisations and return them as `{ a, b, password }`.
  *
- * Org A is conventionally the caller and org B the one that must remain invisible to it.
+ * Org A is conventionally the caller and org B the one that must remain invisible to it. The
+ * returned objects carry every created document (ids included), so a caller — a test or
+ * `scripts/seed.js` — has everything it needs without a second database read.
  * @returns {Promise<{ a: object, b: object, password: string }>}
  */
 export async function seedTwoOrgs() {
