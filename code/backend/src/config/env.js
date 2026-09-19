@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11)
+// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11); invitation email + link settings
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -35,6 +35,12 @@ const boolString = (fallback) =>
     .default(fallback)
     .transform((value) => value === 'true');
 
+// A blank value in .env (`SMTP_HOST=`) or from Compose (`${SMTP_HOST:-}`) means "not set", not "set to empty".
+const optionalString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -58,6 +64,20 @@ export const envSchema = z
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
     // Number of reverse-proxy hops to trust for req.ip (Render: 1). Default: 1 in production, 0 otherwise.
     TRUST_PROXY: z.coerce.number().int().min(0).optional(),
+    // Invitations (SDD OD-3): how long a link stays valid, where it points, and how it is emailed.
+    INVITE_TTL: duration.default('72h'),
+    // The SPA's public origin, used to build the emailed link. No trailing slash.
+    APP_BASE_URL: z
+      .url()
+      .default('http://localhost:5173')
+      .transform((value) => value.replace(/\/+$/, '')),
+    // SMTP. Unset SMTP_HOST means "do not send": the link is logged instead (development and tests only).
+    SMTP_HOST: optionalString,
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+    SMTP_SECURE: boolString('false'),
+    SMTP_USER: optionalString,
+    SMTP_PASS: optionalString,
+    EMAIL_FROM: z.string().min(3).default('SafeDrop <no-reply@safedrop.local>'),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
@@ -72,6 +92,29 @@ export const envSchema = z
         code: 'custom',
         path: ['CORS_ORIGINS'],
         message: 'must list the SPA origin(s) in production (SR-14)',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.SMTP_HOST) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SMTP_HOST'],
+        message:
+          'must be set in production: invitations are emailed, and the fallback logs the link',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.APP_BASE_URL.startsWith('https://')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['APP_BASE_URL'],
+        message:
+          "must be the SPA's public https:// URL in production: it is the base of the emailed link",
+      });
+    }
+    if (Boolean(value.SMTP_USER) !== Boolean(value.SMTP_PASS)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SMTP_PASS'],
+        message: 'SMTP_USER and SMTP_PASS must be set together',
       });
     }
     for (const origin of value.CORS_ORIGINS) {

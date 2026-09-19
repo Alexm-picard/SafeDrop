@@ -59,21 +59,12 @@ const stubs = [
   { method: 'POST', path: '/api/requests/:request/return', as: 'approver' },
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
   // criteria live in the un-skipped describe block below.
-  { method: 'GET', path: '/api/users', as: 'admin' },
-  {
-    method: 'POST',
-    path: '/api/users/invite',
-    as: 'admin',
-    body: { email: 'new@a.test', name: 'New' },
-  },
-  { method: 'PATCH', path: '/api/users/:member/role', as: 'admin', body: { role: 'APPROVER' } },
+  // GET /api/users, POST /api/users/invite and PATCH /api/users/:id/role are no longer here: the
+  // member-lifecycle ticket implemented them. Their acceptance criteria live in users.test.js.
 ];
 
 const resolvePath = (path, s) =>
-  path
-    .replace(':asset', String(s.asset._id))
-    .replace(':request', String(s.request._id))
-    .replace(':member', String(s.member._id));
+  path.replace(':asset', String(s.asset._id)).replace(':request', String(s.request._id));
 
 describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
   it.each(stubs)('$method $path', async ({ method, path, as, body }) => {
@@ -233,12 +224,4 @@ describe('SCRUM-46: GET /api/audit', () => {
   });
 });
 
-describe.skip('SCRUM-users-*: user management', () => {
-  it('POST /api/users/invite creates a user in the admin’s org and appends USER_INVITED');
-  it(
-    'PATCH /api/users/:id/role re-reads the actor’s role from the database before allowing the change',
-  );
-  it(
-    'PATCH /api/users/:id/role appends USER_ROLE_CHANGED with before/after and refuses to demote the last ORG_ADMIN',
-  );
-});
+// The SCRUM-users-* acceptance criteria that used to be todos here are now real tests in users.test.js.
