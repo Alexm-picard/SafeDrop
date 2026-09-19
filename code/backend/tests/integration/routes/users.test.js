@@ -26,6 +26,7 @@
  *    never returned, logged or audited.
  */
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';
@@ -303,6 +304,85 @@ describe('GET /api/users', () => {
       'member@a.test',
     ]);
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|@b\.test/);
+  });
+
+  it('never exposes a password hash: not as a field, and not as a bcrypt hash anywhere in the body', async () => {
+    // The seeded users all have real bcrypt hashes, so this is a meaningful check rather than a vacuous one.
+    const withHashes = await User.find({ orgId: seed.a.orgId }).select('+passwordHash');
+    expect(withHashes.every((u) => /^\$2[aby]\$12\$/.test(u.passwordHash))).toBe(true);
+
+    const res = await listUsers();
+
+    expect(res.status).toBe(200);
+    for (const item of res.body.items) {
+      expect(item).not.toHaveProperty('passwordHash');
+      expect(item).not.toHaveProperty('password');
+    }
+    expect(JSON.stringify(res.body)).not.toMatch(/\$2[aby]\$/);
+    for (const u of withHashes) {
+      expect(JSON.stringify(res.body)).not.toContain(u.passwordHash);
+    }
+  });
+
+  it('lists members oldest first, by when they joined', async () => {
+    // Give the three seeded members known join dates that are the *opposite* of their id order, so an
+    // ordering that fell back to insertion order would come out wrong.
+    const byId = [...(await User.find({ orgId: seed.a.orgId }))].sort((a, b) =>
+      String(b._id).localeCompare(String(a._id)),
+    );
+    const days = [1, 2, 3];
+    for (const [i, user] of byId.entries()) {
+      await User.collection.updateOne(
+        { _id: user._id },
+        { $set: { createdAt: new Date(Date.UTC(2026, 0, days[i])) } },
+      );
+    }
+
+    const res = await listUsers();
+
+    expect(res.body.items.map((u) => u.id)).toEqual(byId.map((u) => String(u._id)));
+    // And a member added now is the newest, so it goes last.
+    const invited = await invite(newMember);
+    expect((await listUsers()).body.items.at(-1).id).toBe(invited.body.user.id);
+  });
+
+  it('exposes each member’s join date as createdAt', async () => {
+    const joined = new Date(Date.UTC(2026, 2, 14, 9, 30));
+    await User.collection.updateOne({ _id: seed.a.member._id }, { $set: { createdAt: joined } });
+
+    const res = await listUsers();
+
+    const member = res.body.items.find((u) => u.id === String(seed.a.member._id));
+    expect(member.createdAt).toBe(joined.toISOString());
+  });
+
+  it('keeps pages stable when members share a join time: every member appears exactly once, in id order', async () => {
+    // Same createdAt for everyone, as happens when accounts are created in one millisecond.
+    const sameInstant = new Date(Date.UTC(2026, 0, 1));
+    await User.collection.updateMany(
+      { orgId: new mongoose.Types.ObjectId(seed.a.orgId) },
+      { $set: { createdAt: sameInstant } },
+    );
+
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      pages.push(...(await listUsers(`?limit=1&page=${page}`)).body.items.map((u) => u.id));
+    }
+
+    expect(new Set(pages).size).toBe(3);
+    // Ties are broken by _id, so the order is the same on every request.
+    expect(pages).toEqual([...pages].sort());
+    const again = [];
+    for (const page of [1, 2, 3]) {
+      again.push(...(await listUsers(`?limit=1&page=${page}`)).body.items.map((u) => u.id));
+    }
+    expect(again).toEqual(pages);
+  });
+
+  it('returns an empty page, not an error, past the last one', async () => {
+    const res = await listUsers('?page=9&limit=25');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 3, page: 9, limit: 25, items: [] });
   });
 
   it('shows a newly invited member, after the existing ones (oldest first)', async () => {
