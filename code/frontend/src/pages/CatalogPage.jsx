@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: catalogue page wired to useAssets; renders ErrorState while the API answers 501 (SCRUM-assets-list)
+// Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
+// AI-Assisted Areas: catalogue page wired to useAssets, with loading, error and empty states
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -11,16 +11,15 @@
  * Also the destination `RequireRole` redirects to, so it is where a user arrives after trying to open
  * an admin page they cannot see — hence the denial notice.
  *
- * The browsing and requesting behaviour belongs to a later ticket, so the page shows a
- * `TicketPlaceholder` above a table driven by the live API response.
+ * SCRUM-115: lists the caller's organisation's non-retired assets. Requesting a unit belongs to a
+ * later ticket (SCRUM-58, checkout/return), so a row links only to the asset's detail page for now.
  */
 import { Link, useLocation } from 'react-router';
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import { TicketPlaceholder } from '../components/TicketPlaceholder';
 import { useAssets } from '../hooks/useAssets';
-import { ROUTES, TICKETS } from '../utils/constants';
+import { ROUTES } from '../utils/constants';
 /**
  * Render the catalogue, with loading, error and empty states.
  *
@@ -44,10 +43,6 @@ export function CatalogPage() {
           You do not have access to that page.
         </div>
       ) : null}
-      <TicketPlaceholder ticket={TICKETS.catalog}>
-        Browsing and requesting assets arrives with that ticket; the list below shows the live API
-        response.
-      </TicketPlaceholder>
       {status === 'loading' ? <LoadingState label="Loading assets…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load the catalog" onRetry={reload} />

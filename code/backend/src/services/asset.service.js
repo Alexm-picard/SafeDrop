@@ -1,41 +1,60 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: asset catalogue service stubs with the acceptance criteria each must satisfy
+// Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
+// AI-Assisted Areas: asset catalogue read path (list + get); create/update/retire/addUnit remain Sprint 1 stubs
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
 /**
- * Asset and unit management — Sprint 1 stubs.
+ * Asset and unit management.
  *
- * The routes, permissions and validation for `/api/assets` are in place and tested; the behaviour
- * behind them belongs to later tickets. Each function below records what its ticket must do, so the
- * obligations agreed during design (audit events, tenant scoping, conflict handling) are not
- * re-derived when someone picks the ticket up.
+ * The routes, permissions and validation for `/api/assets` are in place and tested. `list()` and
+ * `get()` (SCRUM-115) are the catalogue's read path — the first feature domino, since nothing can be
+ * requested, approved or checked out before it can be listed. The remaining handlers are still Sprint
+ * 1 stubs; each records what its own ticket must do, so the obligations agreed during design (audit
+ * events, tenant scoping, conflict handling) are not re-derived when someone picks it up.
  *
- * Every handler will follow the same shape: resolve by (orgId, id) → 404 if absent, then write the
- * change and its audit event inside one `withTransaction()`.
+ * Every write handler will follow the same shape: resolve by (orgId, id) → 404 if absent, then write
+ * the change and its audit event inside one `withTransaction()`.
  */
-import { NotImplementedError } from '../utils/errors.js';
+import * as assetRepo from '../repositories/asset.repository.js';
+import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
+import { NotFoundError, NotImplementedError } from '../utils/errors.js';
 
 /**
- * List the asset catalogue (`GET /api/assets`) — not implemented yet.
+ * List the asset catalogue (`GET /api/assets`, SCRUM-115).
  *
- * TODO(SCRUM-assets-list): paginated; retired assets hidden unless `?includeRetired=true`.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * A thin pass-through to the repository: pagination, the category filter and `includeRetired` are
+ * already validated and coerced by the route's `listQuery` schema, and `orgId` is the caller's own
+ * from `scopeTenant` — never from the request — so the tenant boundary is structural rather than a
+ * check that could be forgotten (SR-2).
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {{ page?: number, limit?: number, category?: string, includeRetired?: boolean }} [query]
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function list(_orgId, _query) {
-  throw new NotImplementedError('SCRUM-assets-list', 'Asset listing is not implemented yet');
+export async function list(orgId, query = {}) {
+  return assetRepo.list(orgId, query);
 }
 
 /**
- * Read one asset with its units (`GET /api/assets/:id`) — not implemented yet.
+ * Read one asset with its units (`GET /api/assets/:id`, SCRUM-115).
  *
- * TODO(SCRUM-assets-read): an id belonging to another organisation must answer 404, never 403.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * `assetRepo.findById` scopes its lookup by `orgId`, so an id belonging to another organisation is
+ * indistinguishable from one that does not exist at all — both come back `null` and both answer 404,
+ * never 403. Confirming existence to a caller who cannot see the record would itself leak across the
+ * tenant boundary (SR-2).
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {string} assetId validated as an object id by the route's `idParams` schema
+ * @returns {Promise<object>} the asset's fields plus its `units`
+ * @throws {NotFoundError} (404) when absent, retired-or-not, from this or any other organisation
  */
-export async function get(_orgId, _assetId) {
-  throw new NotImplementedError('SCRUM-assets-read', 'Reading an asset is not implemented yet');
+export async function get(orgId, assetId) {
+  const asset = await assetRepo.findById(orgId, assetId);
+  if (!asset) {
+    throw new NotFoundError('Asset not found');
+  }
+  const units = await assetUnitRepo.listByAsset(orgId, assetId);
+  return { ...asset.toJSON(), units };
 }
 
 /**

@@ -47,12 +47,11 @@ export const ROUTES = Object.freeze({
  * Mirrors the `details.ticket` the backend's 501 responses carry, so a placeholder screen can name
  * the same ticket the API does, and the two stay recognisably about the same piece of work.
  *
- * The audit log is absent because it is no longer a placeholder: SCRUM-46 shipped the endpoint and
- * SCRUM-51 the screen. An entry removed from here is the signal that a feature actually landed.
+ * The audit log and the catalogue are absent for the same reason: SCRUM-46/51 shipped the audit log,
+ * and SCRUM-115 shipped `GET /api/assets` and `GET /api/assets/:id` plus CatalogPage and
+ * AssetDetailPage. An entry removed from here is the signal that a feature actually landed.
  */
 export const TICKETS = Object.freeze({
-  catalog: 'SCRUM-assets-list',
-  assetDetail: 'SCRUM-assets-read',
   myRequests: 'SCRUM-requests-list',
   approvalQueue: 'SCRUM-requests-approve',
 });
