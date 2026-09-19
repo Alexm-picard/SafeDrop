@@ -63,8 +63,19 @@ function printOrgSummary(key, org) {
     }
   }
 
-  console.log('  Request:');
-  console.log(`    ${org.request.state}  unit=${org.request.unitId}  (id: ${org.request._id})`);
+  console.log('  Requests:');
+  const requests = [
+    org.request,
+    org.heldRequest,
+    org.checkedOutRequest,
+    org.projectorRequest,
+    org.lostRequest,
+  ];
+  for (const req of requests) {
+    console.log(
+      `    ${req.state}  unit=${req.unitId}  requester=${req.requesterId}  (id: ${req._id})`,
+    );
+  }
 
   console.log('  Audit event:');
   console.log(`    ${org.audit.action}  (id: ${org.audit._id})`);
@@ -82,9 +93,6 @@ async function main() {
 
   await connectDb(process.env.MONGODB_URI);
   try {
-    // Always destructive: wipe org-a/org-b if they exist, then reseed fresh. No flag, no prompt —
-    // documented in the README instead (SDD seed-script acceptance criteria: "idempotent, or
-    // clearly documented as destructive").
     const existing = await Organization.find({ slug: mongoose.trusted({ $in: SLUGS }) });
     if (existing.length > 0) {
       console.log(

@@ -96,7 +96,7 @@ describe('repository layer: orgId is always the first argument and always scopes
     const units = await assetUnitRepo.listByAsset(seed.a.orgId, seed.b.asset._id);
     expect(units).toHaveLength(0);
     const requests = await checkoutRepo.list(seed.a.orgId);
-    expect(requests.total).toBe(1);
+    expect(requests.total).toBe(5);
     const audit = await auditRepo.query(seed.a.orgId);
     expect(audit.total).toBe(1);
     expect(String(audit.items[0].orgId)).toBe(seed.a.orgId);
