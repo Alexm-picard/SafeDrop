@@ -132,7 +132,11 @@ export async function updateRole(orgId, userId, role, { session } = {}) {
  * List the organisation's users, oldest first, paginated.
  *
  * Sorted by `createdAt` so the founding admin stays at the top and the order does not shift as
- * people are renamed. Backs the admin user-management view (`users:manage`).
+ * people are renamed, with `_id` as the tiebreak. The tiebreak is not decoration: two members created in
+ * the same millisecond (a seeded organisation, a bulk import) have equal `createdAt`, and with `skip`
+ * and `limit` an order that is undefined among equals can repeat one member and drop another between
+ * pages. `_id` is unique and rises over time, so every page boundary falls in the same place every time.
+ * Backs the admin user-management view (`users:manage`).
  * @param {string} orgId
  * @param {{ page?: number, limit?: number }} [options]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
@@ -140,7 +144,7 @@ export async function updateRole(orgId, userId, role, { session } = {}) {
 export async function list(orgId, { page = 1, limit = 50 } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
-    User.find({ orgId }).sort({ createdAt: 1 }).skip(skip).limit(limit),
+    User.find({ orgId }).sort({ createdAt: 1, _id: 1 }).skip(skip).limit(limit),
     User.countDocuments({ orgId }),
   ]);
   return { items, total, page, limit };
