@@ -26,6 +26,13 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.js'],
     css: false,
+    // Generous for the same reason the backend's is (see its vitest.config.js): the first test in a
+    // file absorbs that file's module loading and jsdom construction, and under `--coverage` the v8
+    // instrumentation roughly doubles the run. At the 5s default that combination intermittently
+    // times out the opening test of a file on a loaded machine — a failure that says nothing about
+    // the code and has already cost real debugging time. Raising the ceiling costs nothing when
+    // tests pass, because a passing test never waits for it.
+    testTimeout: 15_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

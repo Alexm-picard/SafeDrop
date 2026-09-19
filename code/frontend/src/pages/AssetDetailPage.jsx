@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses
+// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-122 added the admin actions (edit, retire, add unit)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -11,24 +11,77 @@
  * Reached from the catalogue. SCRUM-115: shows every unit's tag, status and condition, so a member
  * can see what is actually available before requesting one — requesting itself belongs to a later
  * ticket (SCRUM-58, checkout/return).
+ *
+ * SCRUM-122 hangs the admin actions off this page: edit, retire, and add a unit. They are rendered
+ * only for an ORG_ADMIN, which is a usability choice and not a security control — `assets:write` is
+ * enforced by the API on every one of those routes (SR-1), so a member who reaches them another way
+ * gets a 403 rather than an effect.
+ *
+ * Retiring is a soft delete: the asset keeps its units and its history, and the page stays readable
+ * afterwards with a banner saying it is retired. That is why the action is "Retire" and not "Delete",
+ * and why the page does not navigate away when it succeeds.
  */
-import { useParams } from 'react-router';
+import { useCallback, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router';
+import { AddUnitForm } from '../components/AddUnitForm';
+import { ConfirmAction } from '../components/ConfirmAction';
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
+import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
-import { humanize } from '../utils/format';
+import { errorMessage } from '../services/api';
+import * as assetsApi from '../services/assets.api';
+import { ROLES, ROUTES } from '../utils/constants';
+import { formatDate, humanize } from '../utils/format';
 /**
  * Render one asset's details, keyed by the `:id` route parameter.
  *
  * The id defaults to an empty string so a malformed URL produces an ordinary failed request with an
  * error state, rather than a crash on an undefined parameter. The heading falls back to "Asset" until
  * the data arrives, so the page does not shift its title as it loads.
+ *
+ * `notice` is the page's single message area, carrying both what this page did (retired, unit added)
+ * and what the form page did before redirecting here (created, updated) via the router's location
+ * state. One area means one live region competing for a screen reader's attention.
  * @returns {JSX.Element}
  */
 export function AssetDetailPage() {
   const { id = '' } = useParams();
+  const location = useLocation();
+  const { role } = useAuth();
   const { status, data, error, reload } = useAsset(id);
+  const [notice, setNotice] = useState(
+    location.state?.notice ? { tone: 'success', message: location.state.notice } : null,
+  );
+
+  const isAdmin = role === ROLES.ORG_ADMIN;
+  const isRetired = Boolean(data?.retiredAt);
+
+  const onRetire = useCallback(async () => {
+    setNotice(null);
+    try {
+      await assetsApi.retire(id);
+      setNotice({
+        tone: 'success',
+        message: 'Asset retired. It no longer appears in the catalog.',
+      });
+      reload();
+    } catch (err) {
+      // The backend refuses while a unit is OUT or HELD. `errorMessage` surfaces that refusal's own
+      // wording, which explains the reason, rather than the bare status code.
+      setNotice({ tone: 'error', message: errorMessage(err) });
+    }
+  }, [id, reload]);
+
+  const onUnitAdded = useCallback(
+    (unit) => {
+      setNotice({ tone: 'success', message: `Added unit ${unit?.tag ?? ''}.`.trim() });
+      reload();
+    },
+    [reload],
+  );
+
   return (
     <>
       <h1>{status === 'success' && data ? data.name : 'Asset'}</h1>
@@ -36,8 +89,41 @@ export function AssetDetailPage() {
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load this asset" onRetry={reload} />
       ) : null}
+      {notice ? (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          className={notice.tone === 'error' ? 'alert' : 'notice'}
+        >
+          <p>{notice.message}</p>
+          <button type="button" className="secondary" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       {status === 'success' && data ? (
         <>
+          {isRetired ? (
+            <p className="notice">
+              This asset was retired {formatDate(data.retiredAt)} and no longer appears in the
+              catalog.
+            </p>
+          ) : null}
+          {isAdmin ? (
+            <div className="actions">
+              <Link className="button" to={ROUTES.assetEdit(id)}>
+                Edit asset
+              </Link>
+              {isRetired ? null : (
+                <ConfirmAction
+                  label="Retire asset"
+                  prompt={`Retire ${data.name}? It will stop appearing in the catalog. Its units and history are kept.`}
+                  confirmLabel="Yes, retire it"
+                  pendingLabel="Retiring…"
+                  onConfirm={onRetire}
+                />
+              )}
+            </div>
+          ) : null}
           <dl>
             <dt>Category</dt>
             <dd>{data.category}</dd>
@@ -59,6 +145,7 @@ export function AssetDetailPage() {
             getRowId={(u) => u.id}
             emptyMessage="This asset has no units yet."
           />
+          {isAdmin && !isRetired ? <AddUnitForm assetId={id} onAdded={onUnitAdded} /> : null}
         </>
       ) : null}
     </>

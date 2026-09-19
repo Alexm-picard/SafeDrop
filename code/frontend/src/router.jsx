@@ -27,6 +27,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { AssetDetailPage } from './pages/AssetDetailPage';
+import { AssetFormPage } from './pages/AssetFormPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { LoginPage } from './pages/LoginPage';
@@ -63,6 +64,10 @@ export const routes = [
               { path: 'admin', element: <AdminDashboardPage /> },
               { path: 'admin/members', element: <MembersPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
+              // Asset writing is ORG_ADMIN-only (`assets:write`), so both forms sit inside this
+              // guard. Edit keeps the asset's own URL prefix so the page it edits is obvious.
+              { path: 'admin/assets/new', element: <AssetFormPage /> },
+              { path: 'assets/:id/edit', element: <AssetFormPage /> },
             ],
           },
         ],

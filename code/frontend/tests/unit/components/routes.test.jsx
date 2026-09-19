@@ -29,6 +29,10 @@ describe('routes', () => {
     ['/admin', 'Dashboard', null],
     ['/admin/approvals', 'Approval queue', null],
     ['/admin/members', 'Members', null],
+    // SCRUM-122's two write screens. Both are ORG_ADMIN-only; the bounce tests below cover the
+    // other two roles.
+    ['/admin/assets/new', 'New asset', null],
+    [`/assets/${assets[0].id}/edit`, 'Edit asset', null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
@@ -57,6 +61,18 @@ describe('routes', () => {
       expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
     },
   );
+  // `assets:write` is ORG_ADMIN-only in the permission matrix, so neither of the other two roles
+  // reaches either asset form. This is the usability guard; the API refuses them regardless (SR-1).
+  it.each([
+    { role: 'MEMBER', person: memberUser, route: '/admin/assets/new' },
+    { role: 'APPROVER', person: approverUser, route: '/admin/assets/new' },
+    { role: 'MEMBER', person: memberUser, route: `/assets/${assets[0].id}/edit` },
+    { role: 'APPROVER', person: approverUser, route: `/assets/${assets[0].id}/edit` },
+  ])('a $role is bounced from $route to the catalog', async ({ person, route }) => {
+    const { router } = renderApp(route, authenticatedState(person));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+  });
 
   it('unknown paths render the 404 page', async () => {
     renderApp('/definitely/not/here', authenticatedState(adminUser));
