@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Organization persistence (the tenant itself, so no orgId scoping parameter)
+// AI-Assisted Areas: Organization persistence (the tenant itself, so no orgId scoping parameter); touch() serialisation write for role changes
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; touch() added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * Data access for the `organizations` collection.
@@ -50,4 +50,28 @@ export async function findById(orgId) {
  */
 export async function findBySlug(slug, { session } = {}) {
   return Organization.findOne({ slug: String(slug).toLowerCase() }).session(session ?? null);
+}
+
+/**
+ * Write to the organisation document so that concurrent transactions touching it conflict.
+ *
+ * MongoDB transactions use snapshot isolation, which lets two transactions read the same state and
+ * each write a *different* document — write skew. "Never demote the last ORG_ADMIN" is exactly such a
+ * rule: two admins demoting each other would each see two admins and both succeed. Having every role
+ * change write to this one shared document first turns that into a write conflict on the same
+ * document, which MongoDB resolves by aborting one transaction and `withTransaction` retrying it
+ * against the new state.
+ *
+ * The write itself is incidental (it bumps `updatedAt`); the conflict is the point.
+ * @param {string} orgId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<boolean>} whether the organisation exists
+ */
+export async function touch(orgId, { session } = {}) {
+  const result = await Organization.updateOne(
+    { _id: orgId },
+    { $set: { updatedAt: new Date() } },
+    { session },
+  );
+  return result.matchedCount === 1;
 }

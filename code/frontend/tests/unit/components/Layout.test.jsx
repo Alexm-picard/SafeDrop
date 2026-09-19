@@ -50,7 +50,7 @@ describe('Layout', () => {
   it.each([
     [memberUser, ['Catalog', 'My requests']],
     [approverUser, ['Catalog', 'My requests', 'Approvals']],
-    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Audit log']],
+    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Members', 'Audit log']],
   ])('shows navigation by role', (user, expected) => {
     renderLayout(user);
     const nav = screen.getByRole('navigation', { name: 'Primary' });
