@@ -17,6 +17,7 @@
  *  - `configureMongoose()` — apply the global settings once (idempotent).
  *  - `connectDb(uri, options)` — configure, then connect, and return the connection.
  *  - `disconnectDb()` — close the connection.
+ *  - `pingDb(options)` — prove the database answers right now; throws if it does not.
  *  - `withTransaction(fn)` — run `fn` inside a MongoDB transaction.
  */
 import mongoose from 'mongoose';
@@ -61,6 +62,27 @@ export async function connectDb(uri, options = {}) {
  */
 export async function disconnectDb() {
   await mongoose.disconnect();
+}
+
+/**
+ * Prove the database can answer right now, for GET /health. Resolves if it can, throws if not.
+ *
+ * Two checks, because neither is enough alone. `readyState` is read first so a connection Mongoose
+ * already knows is down fails instantly, without a round trip. But `readyState` lags: it still reads
+ * connected for a moment after mongod goes away, until the driver notices. The `ping` closes that
+ * gap — it is the cheapest command the server has, and touches no collection.
+ *
+ * `timeoutMS` bounds the ping. Without it a ping against a dead server waits out the full
+ * `serverSelectionTimeoutMS` (30 s), far longer than a health probe waits for an answer.
+ * @param {{ timeoutMS?: number }} [options]
+ * @returns {Promise<void>}
+ */
+export async function pingDb({ timeoutMS = 2_000 } = {}) {
+  const { readyState } = mongoose.connection;
+  if (readyState !== mongoose.ConnectionStates.connected) {
+    throw new Error(`database not connected (readyState ${readyState})`);
+  }
+  await mongoose.connection.db.command({ ping: 1 }, { timeoutMS });
 }
 
 /**

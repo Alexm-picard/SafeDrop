@@ -20,6 +20,7 @@
  */
 import cookieParser from 'cookie-parser';
 import express from 'express';
+import { pingDb } from './config/db.js';
 import { env } from './config/env.js';
 import { authenticate } from './middleware/authenticate.js';
 import { denyByDefault } from './middleware/authorize.js';
@@ -35,6 +36,7 @@ import {
 } from './middleware/security.js';
 import { assertRoutesDeclarePermission } from './routes/define.js';
 import { registerRoutes } from './routes/index.js';
+import { ServiceUnavailableError } from './utils/errors.js';
 
 /**
  * Maximum accepted JSON body size. Small on purpose: no endpoint in this API takes bulk data, and a
@@ -57,8 +59,9 @@ export const JSON_BODY_LIMIT = '100kb';
  *  2. `securityHeaders`, `createCors` — helmet (including HSTS) and the origin allowlist.
  *  3. `requireJsonForStateChanges`, `createOriginCheck`, `express.json`, `cookieParser` — JSON-only
  *     body handling and the CSRF defences.
- *     `/health` is registered here, deliberately outside `/api`: a liveness probe needs no session
- *     and belongs to no tenant.
+ *     `/health` is registered here, deliberately outside `/api`: a health probe needs no session
+ *     and belongs to no tenant. It pings the database, so it answers 503 when the process is up
+ *     but could not serve a real request.
  *  4. `authRateLimiter` on `/api/auth` only — brute-force protection where credentials are checked.
  *  5. `authenticate` on `/api` — the access cookie becomes `req.auth`, or the request is refused.
  *  6. `scopeTenant` on `/api` — `req.orgId` from the token, client-supplied tenant ids stripped.
@@ -95,9 +98,15 @@ export function createApp({ config = env, skipRouteAssertion = false } = {}) {
   app.use(express.json({ limit: JSON_BODY_LIMIT, strict: true }));
   app.use(cookieParser());
 
-  // Liveness probe for Render / Compose. Outside /api on purpose: no auth, no tenant.
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() });
+  // Health probe for Render / Compose. Outside /api on purpose: no auth, no tenant.
+  // 503 when the database does not answer; why it failed goes to the log, never the client.
+  app.get('/health', async (_req, res) => {
+    try {
+      await pingDb();
+    } catch (err) {
+      throw new ServiceUnavailableError(undefined, err);
+    }
+    res.json({ status: 'ok', db: 'connected', uptime: process.uptime() });
   });
 
   // 4. Brute-force protection on the auth endpoints only.

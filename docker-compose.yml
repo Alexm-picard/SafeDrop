@@ -86,10 +86,10 @@ services:
     # keeps PID 1 alive and waits for a file change, so a crash on boot (a missing dependency after
     # someone adds one without `-V`, a bad .env) looks healthy while every request is refused.
     # Probing /health makes that visible in `docker compose ps` rather than surfacing to whoever is
-    # testing as an unexplained connection reset. busybox wget ships in the node:22-alpine base, and
-    # start_period covers `npm run migrate` running before the server starts listening.
-    # Note this only proves the process answers HTTP: /health does not yet check the database
-    # connection, so a live process with a dead Mongo still reports healthy (see SCRUM-133).
+    # testing as an unexplained connection reset. /health also pings the database and answers 503
+    # when it cannot (SCRUM-133), so a live process with a dead Mongo is unhealthy too. busybox wget
+    # exits non-zero on a 503, ships in the node:22-alpine base, and start_period covers
+    # `npm run migrate` running before the server starts listening.
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/health > /dev/null 2>&1 || exit 1']
       interval: 10s

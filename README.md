@@ -47,7 +47,7 @@ docker compose up --build   # mongo (replica set) + mongo-init + backend (runs m
 ```
 
 - Frontend: <http://localhost:5173> — the first screen is the login page; use **Create an organization** to bootstrap the first admin.
-- Backend: <http://localhost:4000> (`/health` is a public liveness probe).
+- Backend: <http://localhost:4000> (`/health` is a public probe: 200 when the API and its database are up, 503 when the database is unreachable).
 - Mongo from the host: `mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true`.
 
 Useful variants:
