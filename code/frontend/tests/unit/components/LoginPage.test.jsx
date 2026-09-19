@@ -10,16 +10,35 @@
  *
  * Covers the accessible form structure, the failure paths (a 401 keeps the user on the page with the
  * API's message; an unreachable API shows a generic one), and the navigation rules: a successful
- * login goes to the catalogue, or back to the protected page the user was originally sent from, and
- * an already-authenticated visitor is redirected away from the form.
+ * login lands on the screen for the caller's role (SCRUM-21), or back on the protected page the user
+ * was originally sent from, and an already-authenticated visitor is redirected away from the form.
+ *
+ * The landing tests assert the destination *and* that its heading rendered, so a path that no longer
+ * resolves to the intended screen fails here rather than passing as a bare string comparison.
  */
 import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { adminUser, errorResponse, meHandler } from '../../mocks/handlers';
+import { adminUser, approverUser, meHandler, memberUser } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { anonymousState, renderApp } from '../../utils/render';
+
+/**
+ * Sign the next login in as `user`, whatever credentials the form sends.
+ *
+ * The default login handler only ever answers with the admin, so a role test has to override both
+ * it and `/me`: the first is what the form calls, the second is what the session bootstrap and the
+ * background organisation fetch call afterwards.
+ * @param {object} user
+ * @returns {void}
+ */
+function signInAs(user) {
+  server.use(
+    http.post('*/api/auth/login', () => HttpResponse.json({ user })),
+    meHandler(user),
+  );
+}
 /**
  * Fill in the three login fields and submit.
  *
@@ -55,13 +74,17 @@ describe('LoginPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: /sign in/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   });
-  it('redirects to the catalog after a successful login', async () => {
+  it.each([
+    ['member', memberUser, '/requests', 'My requests'],
+    ['approver', approverUser, '/admin/approvals', 'Approval queue'],
+    ['admin', adminUser, '/admin', 'Dashboard'],
+  ])('lands a %s on their own screen after signing in', async (_role, who, path, heading) => {
     const user = userEvent.setup();
-    server.use(meHandler(adminUser));
+    signInAs(who);
     const { router } = renderApp('/login', anonymousState);
     await fillAndSubmit(user, 'Correct-Horse-Battery-9');
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe(path));
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
   });
   it('returns to the protected page the user was sent from', async () => {
     const user = userEvent.setup();
@@ -81,13 +104,15 @@ describe('LoginPage', () => {
     await fillAndSubmit(user, 'whatever-whatever');
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
-  it('sends the user home when already signed in', async () => {
-    server.use(
-      http.get('*/api/assets', () =>
-        errorResponse(501, 'NOT_IMPLEMENTED', 'nope', { ticket: 'SCRUM-assets-list' }),
-      ),
-    );
+  it('sends an already signed-in visitor to their landing screen', async () => {
+    // No initialState: the session comes from the default /me handler, which is the admin.
     const { router } = renderApp('/login');
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin'));
+  });
+
+  it('sends an already signed-in member to their requests, not the admin dashboard', async () => {
+    server.use(meHandler(memberUser));
+    const { router } = renderApp('/login');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/requests'));
   });
 });
