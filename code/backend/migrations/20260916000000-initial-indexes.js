@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: every index from SDD §2.4 data model; tenant compound indexes begin with orgId (NFR-4)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
 // First migration: creates every index the models rely on. Mongoose autoIndex is OFF (src/server.js),
 // so this file is the single source of truth for indexes. tests/setup.js also applies it to the

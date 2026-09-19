@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: tenant-scoped user persistence; passwordHash only via the explicit *WithPassword readers (SR-2, SR-3); session-aware reads, countByRole and setPassword for the member lifecycle
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; countByRole and the session options added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; countByRole and the session options added for the member-lifecycle ticket.
 //
 // Every function takes orgId first. A document from another tenant is simply never matched, so the
 // service layer turns `null` into a 404 (never a 403, which would confirm the id exists).
