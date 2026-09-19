@@ -20,13 +20,17 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { errorMessage } from '../services/api';
-import { APP_NAME, ROUTES } from '../utils/constants';
+import { APP_NAME, landingFor, ROUTES } from '../utils/constants';
 /**
  * Render the login form and sign the user in.
  *
  * An already-authenticated visitor is redirected instead of shown the form, to wherever they were
- * headed before `RequireAuth` intercepted them (`location.state.from`), falling back to the home
- * page.
+ * headed before `RequireAuth` intercepted them (`location.state.from`), falling back to the landing
+ * screen for their role (SCRUM-21): a member's own requests, an approver's queue, an admin's
+ * dashboard.
+ *
+ * After a successful sign-in the role comes from what `login()` returns rather than from the
+ * context, because the context state has not been applied yet at that point in the handler.
  *
  * On submit, the slug is lowercased and the email trimmed — the API normalises both, and doing it
  * here means a stray capital or trailing space never reads as a failed login. The password is sent
@@ -39,7 +43,7 @@ import { APP_NAME, ROUTES } from '../utils/constants';
  * @returns {JSX.Element}
  */
 export function LoginPage() {
-  const { status, login } = useAuth();
+  const { status, role, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [orgSlug, setOrgSlug] = useState('');
@@ -47,17 +51,21 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(false);
-  const from = location.state?.from ?? ROUTES.home;
+  const from = location.state?.from ?? null;
   if (status === 'authenticated') {
-    return <Navigate to={from} replace />;
+    return <Navigate to={from ?? landingFor(role)} replace />;
   }
   const onSubmit = async (event) => {
     event.preventDefault();
     setPending(true);
     setError(null);
     try {
-      await login({ orgSlug: orgSlug.trim().toLowerCase(), email: email.trim(), password });
-      navigate(from, { replace: true });
+      const user = await login({
+        orgSlug: orgSlug.trim().toLowerCase(),
+        email: email.trim(),
+        password,
+      });
+      navigate(from ?? landingFor(user?.role), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
