@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; member lifecycle implemented from the ticket)
 // AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-users-list / -invite / -role)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
 
 /**
  * Organisation lifecycle and member administration.

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: SCRUM-102 login/refresh/logout/me behaviour incl. race-safe rotation, reuse detection + grace window, session caps, rate limiting (SR-3, SR-4, SR-12)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Integration tests for the session endpoints (SDD §6.2, SR-3, SR-4).

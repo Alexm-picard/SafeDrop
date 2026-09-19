@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: bcrypt login with constant-time fallback, access JWT capped to the session, race-safe rotating refresh-token family with reuse detection + grace window, logout (SDD §6.2, SR-3, SR-4); changePassword()
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; changePassword added afterwards. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; changePassword added afterwards.
 //
 // AI-ASSISTED: YES
 //   Tool: Claude Code. Prompt: "in-house auth: bcrypt cost 12, 15-min HS256 access token, opaque

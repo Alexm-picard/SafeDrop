@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: defineRoute()/mount() so every route composes authorize → validate → controller; listRoutes() walks the Express stack incl. rogue middleware and sub-apps (SDD §6.4)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
 // The ONLY way routes are registered in this codebase. A route without a permission (or an explicit
 // `public: true`) throws here, at boot, before a single request is served. listRoutes() reads the
