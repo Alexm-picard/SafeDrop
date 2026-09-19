@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: the single fetch wrapper: credentials, JSON only, typed ApiError, one single-flight refresh + one retry on 401 (SDD §2.3.1, §6.3)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
 // This is the ONLY module in the SPA allowed to call fetch (ESLint enforces it for components,
 
@@ -92,7 +92,6 @@ const NO_REFRESH_PATHS = new Set([
   '/api/auth/login',
   '/api/auth/refresh',
   '/api/auth/logout',
-  '/api/auth/accept-invite',
   '/api/organizations',
 ]);
 /**

@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: user-management handlers (list, invite, resend invitation, change role)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; wired to the member-lifecycle service. Must be reviewed and tested by the owning team member before merge.
+// AI-Assisted Areas: user-management handlers (list, invite, change role)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; wired to the member-lifecycle service.
 
 /**
  * HTTP layer for `/api/users`: membership and roles.
@@ -30,8 +30,7 @@ export async function list(req, res) {
 /**
  * `POST /api/users/invite` — invite someone into the caller's organisation. Answers 201.
  *
- * The response carries the one-time invitation link, so it is marked `no-store`: a credential must not be
- * kept by a browser cache or an intermediary. It is shown only here — the database keeps just a hash.
+ * The initial password arrives in the body and is never echoed: the response describes the member only.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
@@ -39,7 +38,7 @@ export async function invite(req, res) {
   const result = await organizationService.inviteUser(req.orgId, req.auth, req.body, {
     requestId: req.id,
   });
-  res.set('Cache-Control', 'no-store').status(201).json(result);
+  res.status(201).json(result);
 }
 
 /**
@@ -59,17 +58,4 @@ export async function changeRole(req, res) {
     { requestId: req.id },
   );
   res.status(200).json(result);
-}
-
-/**
- * `POST /api/users/:id/resend-invite` — issue a member a fresh invitation link, killing the old one.
- * Answers 200 with the new link, `no-store` like `invite`.
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- */
-export async function resendInvite(req, res) {
-  const result = await organizationService.resendInvite(req.orgId, req.auth, req.params.id, {
-    requestId: req.id,
-  });
-  res.set('Cache-Control', 'no-store').status(200).json(result);
 }

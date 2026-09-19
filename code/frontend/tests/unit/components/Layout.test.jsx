@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Tests for the application shell.
@@ -50,7 +50,7 @@ describe('Layout', () => {
   it.each([
     [memberUser, ['Catalog', 'My requests']],
     [approverUser, ['Catalog', 'My requests', 'Approvals']],
-    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Members', 'Audit log']],
+    [adminUser, ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Users', 'Audit log']],
   ])('shows navigation by role', (user, expected) => {
     renderLayout(user);
     const nav = screen.getByRole('navigation', { name: 'Primary' });
@@ -60,6 +60,17 @@ describe('Layout', () => {
         .map((a) => a.textContent),
     ).toEqual(expected);
   });
+  it('links the Users entry to /admin/users, and only an ORG_ADMIN is offered it', () => {
+    const { unmount } = renderLayout(adminUser);
+    expect(screen.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/admin/users');
+    unmount();
+    for (const person of [memberUser, approverUser]) {
+      const view = renderLayout(person);
+      expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
   it('signs out and goes to /login', async () => {
     const user = userEvent.setup();
     const { router, value } = renderLayout(adminUser);

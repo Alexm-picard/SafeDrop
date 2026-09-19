@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: Members screen tests: list with invitation status, invite (copyable one-time link, no password anywhere), resend invitation, field-level errors, role change, failure paths, pagination
+// AI-Assisted Areas: Members screen tests: list, invite (admin-set initial password), field-level errors, role change, failure paths, pagination
 // Human Contributions: pending team review
 // Notes: Runs against the MSW mock of the real API contract. Must be reviewed by the owning team member before merge.
 
@@ -9,31 +9,30 @@
  * Tests for the members screen (member-lifecycle ticket).
  *
  * Many of these assert on the *request* the page sends as well as what it renders, because the
- * interesting failures are on the wire: an invitation that smuggled a password field would let an admin
- * choose a member's password, and a role change that never reaches the server would still look right on
- * screen until the next reload.
+ * interesting failures are on the wire: an invitation that omitted the initial password would create a
+ * member nobody can sign in as, and a role change that never reaches the server would still look right
+ * on screen until the next reload.
  *
- * The invitation tests are the ones to keep if any are trimmed. There is no email: the API returns a
- * one-time link and the page must let the admin copy it — through the Copy button, and through the
- * read-only field when the Clipboard API is not available. Because the link is a credential that lets
- * whoever opens it set the account's password, the page must say so beside it, must keep it only in
- * component state, and must offer no way to choose a password.
+ * The password tests are the ones to keep if any are trimmed. Iteration 1 has no email service, so the
+ * admin sets the member's initial password and shares it out of band. The page must send it, must keep it
+ * masked unless the admin asks to see it (they cannot recover from a typo), must clear it the moment the
+ * invitation succeeds, and must never show it back — the confirmation tells the admin what they need
+ * (the organization code) but not the password.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { MembersPage } from '../../../src/pages/MembersPage';
 import {
   adminUser,
   approverUser,
   errorResponse,
-  INVITE_LINK,
   memberUser,
   members,
   membersPage,
-  RESENT_LINK,
 } from '../../mocks/handlers';
+import { formatDate } from '../../../src/utils/format';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 
@@ -43,9 +42,6 @@ let listRequests = [];
 let inviteBodies = [];
 /** `{ id, role }` for each `PATCH /api/users/:id/role` the page has sent. */
 let roleChanges = [];
-
-// The clipboard test stubs a rejection; it must not leak into the next test.
-afterEach(() => vi.restoreAllMocks());
 
 beforeEach(() => {
   listRequests = [];
@@ -68,10 +64,8 @@ beforeEach(() => {
             email: body.email,
             name: body.name,
             role: body.role,
-            invitation: { status: 'PENDING', expiresAt: '2026-09-13T00:00:00.000Z' },
             createdAt: '2026-09-10T00:00:00.000Z',
           },
-          inviteLink: INVITE_LINK,
         },
         { status: 201 },
       );
@@ -96,7 +90,7 @@ async function renderLoaded() {
 }
 
 /** Fill the invite form; every field is optional so a test sets only what it cares about. */
-async function fillInvite(user, { name, email, role } = {}) {
+async function fillInvite(user, { name, email, role, password } = {}) {
   if (name !== undefined) {
     await user.type(screen.getByLabelText('Name'), name);
   }
@@ -106,7 +100,12 @@ async function fillInvite(user, { name, email, role } = {}) {
   if (role !== undefined) {
     await user.selectOptions(screen.getByLabelText('Role'), role);
   }
+  if (password !== undefined) {
+    await user.type(screen.getByLabelText('Initial password'), password);
+  }
 }
+
+const PASSWORD = 'Initial-Passw0rd-1';
 
 describe('MembersPage: the list', () => {
   it('shows a loading state, then the organisation’s members with their roles', async () => {
@@ -123,6 +122,35 @@ describe('MembersPage: the list', () => {
     expect(screen.getByLabelText('Role for Max Member')).toHaveValue('MEMBER');
   });
 
+  it('shows exactly name, email, role and join date for each member', async () => {
+    await renderLoaded();
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Name',
+      'Email',
+      'Role',
+      'Joined',
+    ]);
+    // Oldest first, as the API returns them: the founding admin is at the top.
+    expect(dataRows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
+      'Ada Admin (you)',
+      'Ann Approver',
+      'Max Member',
+    ]);
+    // Each row carries that member's email and the date they joined.
+    const first = within(dataRows()[0]).getAllByRole('cell');
+    expect(first[1]).toHaveTextContent('ada@acme.test');
+    expect(first[2]).toHaveTextContent('Organization admin');
+    expect(first[3]).toHaveTextContent(formatDate(members[0].createdAt));
+    expect(within(dataRows()[2]).getAllByRole('cell')[3]).toHaveTextContent(
+      formatDate(members[2].createdAt),
+    );
+  });
+
+  it('never shows a password or hash: the list has no such data to show', async () => {
+    await renderLoaded();
+    expect(screen.getByRole('table').textContent).not.toMatch(/password|hash|\$2[aby]\$/i);
+  });
+
   it('marks the signed-in admin as "(you)" and gives them no role control', async () => {
     await renderLoaded();
     const own = within(dataRows()[0]);
@@ -131,47 +159,6 @@ describe('MembersPage: the list', () => {
     expect(own.queryByRole('combobox')).not.toBeInTheDocument();
     // Everyone else can be changed.
     expect(within(dataRows()[1]).getByRole('combobox')).toBeInTheDocument();
-  });
-
-  it('shows who is active, who has a pending invitation and when it expires, and whose expired', async () => {
-    const pending = {
-      ...memberUser,
-      invitation: { status: 'PENDING', expiresAt: '2026-09-13T15:00:00.000Z' },
-    };
-    const expired = {
-      ...approverUser,
-      invitation: { status: 'EXPIRED', expiresAt: '2026-09-01T15:00:00.000Z' },
-    };
-    server.use(
-      http.get('*/api/users', ({ request }) =>
-        HttpResponse.json(
-          membersPage(new URL(request.url).searchParams, [adminUser, pending, expired]),
-        ),
-      ),
-    );
-    renderWithAuth(<MembersPage />, { user: adminUser });
-    await screen.findByRole('table');
-    expect(within(dataRows()[0]).getByText('Active')).toBeInTheDocument();
-    expect(within(dataRows()[1]).getByText(/Invited · link expires/)).toBeInTheDocument();
-    expect(within(dataRows()[2]).getByText('Invitation expired')).toBeInTheDocument();
-  });
-
-  it('offers to resend an invitation only to members who have not accepted', async () => {
-    const pending = {
-      ...memberUser,
-      invitation: { status: 'PENDING', expiresAt: '2026-09-13T15:00:00.000Z' },
-    };
-    server.use(
-      http.get('*/api/users', ({ request }) =>
-        HttpResponse.json(membersPage(new URL(request.url).searchParams, [adminUser, pending])),
-      ),
-    );
-    renderWithAuth(<MembersPage />, { user: adminUser });
-    await screen.findByRole('table');
-    expect(
-      within(dataRows()[1]).getByRole('button', { name: 'Resend invitation to Max Member' }),
-    ).toBeInTheDocument();
-    expect(within(dataRows()[0]).queryByRole('button', { name: /Resend/ })).not.toBeInTheDocument();
   });
 
   it('requests the first page at the page size', async () => {
@@ -238,129 +225,165 @@ describe('MembersPage: the list', () => {
 });
 
 describe('MembersPage: inviting', () => {
-  it('sends only name, email and role, shows the link for the admin to send, and refreshes the list', async () => {
+  it('sends name, email, role and the initial password, then refreshes the list', async () => {
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', role: 'APPROVER' });
+    await fillInvite(user, {
+      name: 'Nina New',
+      email: 'nina@acme.test',
+      role: 'APPROVER',
+      password: PASSWORD,
+    });
     const listCallsBefore = listRequests.length;
 
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
-    const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent('Invited Nina New as Approver.');
-    expect(notice).toHaveTextContent(/send them the link below/i);
-    expect(screen.getByLabelText('Invitation link for Nina New')).toHaveValue(INVITE_LINK);
-
-    // No password of any kind goes up: the member chooses their own from the link.
-    expect(inviteBodies).toEqual([{ name: 'Nina New', email: 'nina@acme.test', role: 'APPROVER' }]);
-
-    // The list was reloaded, and the form is empty and ready for the next one.
+    expect(await screen.findByRole('status')).toHaveTextContent('Invited Nina New as Approver.');
+    expect(inviteBodies).toEqual([
+      { name: 'Nina New', email: 'nina@acme.test', role: 'APPROVER', password: PASSWORD },
+    ]);
     await waitFor(() => expect(listRequests.length).toBeGreaterThan(listCallsBefore));
-    expect(screen.getByLabelText('Name')).toHaveValue('');
-    expect(screen.getByLabelText('Email')).toHaveValue('');
-    expect(screen.getByLabelText('Role')).toHaveValue('MEMBER');
-  });
-
-  it('warns that the link is a credential, that it is shown only once, and when it expires', async () => {
-    const user = userEvent.setup();
-    await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
-    await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    const notice = await screen.findByRole('status');
-
-    expect(notice).toHaveTextContent(/send this only to Nina New/i);
-    expect(notice).toHaveTextContent(/anyone who opens it can set the password/i);
-    expect(notice).toHaveTextContent(/works once and expires/i);
-    expect(notice).toHaveTextContent(/shown only now/i);
-    expect(notice).toHaveTextContent(/Resend invitation/);
-  });
-
-  it('copies the link to the clipboard and says so', async () => {
-    const user = userEvent.setup();
-    await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
-    await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    await screen.findByRole('status');
-
-    await user.click(screen.getByRole('button', { name: 'Copy link' }));
-
-    expect(await screen.findByText('Copied to clipboard.')).toBeInTheDocument();
-    expect(await navigator.clipboard.readText()).toBe(INVITE_LINK);
-  });
-
-  it('tells the admin to copy it by hand when the clipboard is unavailable, and the text is there to select', async () => {
-    const user = userEvent.setup();
-    await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
-    await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    await screen.findByRole('status');
-    // The Clipboard API needs a secure context and can be refused; the link must never depend on it.
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
-
-    await user.click(screen.getByRole('button', { name: 'Copy link' }));
-
-    expect(await screen.findByText(/could not copy automatically/i)).toBeInTheDocument();
-    const field = screen.getByLabelText('Invitation link for Nina New');
-    expect(field).toHaveValue(INVITE_LINK);
-    // Read-only, so it can be selected and copied but not edited into something else.
-    expect(field).toHaveAttribute('readonly');
-  });
-
-  it('selects the whole link when the field is focused, so copying by hand is one keystroke', async () => {
-    const user = userEvent.setup();
-    await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
-    await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    await screen.findByRole('status');
-
-    const field = screen.getByLabelText('Invitation link for Nina New');
-    await user.click(field);
-    expect(field.selectionStart).toBe(0);
-    expect(field.selectionEnd).toBe(INVITE_LINK.length);
   });
 
   it('defaults the new member’s role to the least privileged one', async () => {
     const user = userEvent.setup();
     await renderLoaded();
     expect(screen.getByLabelText('Role')).toHaveValue('MEMBER');
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     await screen.findByRole('status');
     expect(inviteBodies[0].role).toBe('MEMBER');
   });
 
-  it('gives the admin no way to choose a member’s password', async () => {
-    await renderLoaded();
-    const form = screen.getByRole('form', { name: 'Invite a member' });
-    expect(within(form).queryByLabelText(/password/i)).not.toBeInTheDocument();
-    expect(form.querySelector('input[type="password"]')).toBeNull();
-  });
-
-  it('keeps the link in component state only, and it is gone when the notice is dismissed', async () => {
+  it('tells the admin how the new member signs in, including the organization code', async () => {
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
-    await screen.findByLabelText('Invitation link for Nina New');
 
-    // A credential: nothing in browser storage.
-    expect(window.localStorage.length).toBe(0);
-    expect(window.sessionStorage.length).toBe(0);
-
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByLabelText('Invitation link for Nina New')).not.toBeInTheDocument();
-    expect(screen.queryByDisplayValue(INVITE_LINK)).not.toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    const notice = await screen.findByRole('status');
+    // A new member has no other way to learn the code that login needs.
+    expect(notice).toHaveTextContent('organization code “acme-robotics”');
+    expect(notice).toHaveTextContent('nina@acme.test');
+    expect(notice).toHaveTextContent(/through a channel you trust/i);
   });
 
-  it('does not list the link among the members: it is not part of the list data', async () => {
+  it('never shows the password back, in the confirmation or anywhere else', async () => {
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    const notice = await screen.findByRole('status');
+
+    expect(notice.textContent).not.toContain(PASSWORD);
+    expect(document.body.textContent).not.toContain(PASSWORD);
+    expect(screen.queryByDisplayValue(PASSWORD)).not.toBeInTheDocument();
+    expect(notice).toHaveTextContent(/password is not shown again/i);
+  });
+
+  it('clears the whole form once the invitation succeeds, password included', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     await screen.findByRole('status');
-    // Only the notice shows it, never a table cell.
-    expect(within(screen.getByRole('table')).queryByText(/accept-invite/)).not.toBeInTheDocument();
+
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.getByLabelText('Email')).toHaveValue('');
+    expect(screen.getByLabelText('Initial password')).toHaveValue('');
+    expect(screen.getByLabelText('Role')).toHaveValue('MEMBER');
+  });
+
+  it('stores the password nowhere in the browser', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('masks the password by default, and lets the admin reveal it to check what they typed', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    const field = screen.getByLabelText('Initial password');
+    expect(field).toHaveAttribute('type', 'password');
+    expect(field).toHaveAttribute('autocomplete', 'new-password');
+    await user.type(field, PASSWORD);
+
+    await user.click(screen.getByLabelText('Show password'));
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveValue(PASSWORD);
+
+    await user.click(screen.getByLabelText('Show password'));
+    expect(field).toHaveAttribute('type', 'password');
+  });
+
+  it('hides the password again after a successful invitation', async () => {
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
+    await user.click(screen.getByLabelText('Show password'));
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    await screen.findByRole('status');
+
+    expect(screen.getByLabelText('Initial password')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Show password')).not.toBeChecked();
+  });
+
+  it('keeps the password field on a failed invitation so a duplicate email can be corrected', async () => {
+    server.use(
+      http.post('*/api/users/invite', () =>
+        errorResponse(
+          409,
+          'CONFLICT',
+          'A member with this email already exists in your organisation',
+          {
+            field: 'email',
+          },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Max Again', email: 'max@acme.test', password: PASSWORD });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+
+    await screen.findByText('A member with this email already exists in your organisation');
+    // Nothing was created, so the admin can fix the email without retyping the rest.
+    expect(screen.getByLabelText('Initial password')).toHaveValue(PASSWORD);
+  });
+
+  it('shows the API’s password rules beside the password field', async () => {
+    server.use(
+      http.post('*/api/users/invite', () =>
+        errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+          { location: 'body', path: 'password', message: 'must be at least 10 characters' },
+        ]),
+      ),
+    );
+    const user = userEvent.setup();
+    await renderLoaded();
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: 'short' });
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+
+    expect(await screen.findByText('must be at least 10 characters')).toHaveAttribute(
+      'id',
+      'password-error',
+    );
+    const field = screen.getByLabelText('Initial password');
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    // Both the error and the standing hint are announced.
+    expect(field.getAttribute('aria-describedby')).toContain('password-error');
+    expect(field.getAttribute('aria-describedby')).toContain('password-hint');
+  });
+
+  it('has no invitation link or email step: there is nothing to copy or resend', async () => {
+    await renderLoaded();
+    expect(screen.queryByRole('button', { name: /copy link/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
   });
 
   it('shows a duplicate email beside the email field, not as a banner, and shows no success', async () => {
@@ -376,7 +399,7 @@ describe('MembersPage: inviting', () => {
     );
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Max Again', email: 'max@acme.test' });
+    await fillInvite(user, { name: 'Max Again', email: 'max@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
     const email = screen.getByLabelText('Email');
@@ -402,7 +425,7 @@ describe('MembersPage: inviting', () => {
     );
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'N', email: 'nope' });
+    await fillInvite(user, { name: 'N', email: 'nope', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
     expect(await screen.findByText('Invalid email address')).toHaveAttribute('id', 'email-error');
@@ -415,7 +438,7 @@ describe('MembersPage: inviting', () => {
     server.use(http.post('*/api/users/invite', () => errorResponse(403, 'FORBIDDEN', 'Forbidden')));
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Forbidden');
@@ -437,117 +460,13 @@ describe('MembersPage: inviting', () => {
     );
     const user = userEvent.setup();
     await renderLoaded();
-    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test' });
+    await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
     const busy = await screen.findByRole('button', { name: 'Inviting…' });
     expect(busy).toBeDisabled();
     release();
     await screen.findByRole('button', { name: 'Invite member' });
-  });
-});
-
-describe('MembersPage: resending an invitation', () => {
-  const pendingList = () =>
-    server.use(
-      http.get('*/api/users', ({ request }) => {
-        const url = new URL(request.url);
-        listRequests.push(url.searchParams);
-        return HttpResponse.json(
-          membersPage(url.searchParams, [
-            adminUser,
-            {
-              ...memberUser,
-              invitation: { status: 'EXPIRED', expiresAt: '2026-09-01T00:00:00.000Z' },
-            },
-          ]),
-        );
-      }),
-    );
-
-  it('resends to that member, shows the new link, and says the old one is dead', async () => {
-    pendingList();
-    const resent = [];
-    server.use(
-      http.post('*/api/users/:id/resend-invite', ({ params }) => {
-        resent.push(params.id);
-        return HttpResponse.json({
-          user: {
-            ...memberUser,
-            invitation: { status: 'PENDING', expiresAt: '2026-09-16T00:00:00.000Z' },
-          },
-          inviteLink: RESENT_LINK,
-        });
-      }),
-    );
-    const user = userEvent.setup();
-    await renderLoaded();
-    const listCallsBefore = listRequests.length;
-
-    await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
-
-    const notice = await screen.findByRole('status');
-    expect(notice).toHaveTextContent('New invitation link for Max Member.');
-    expect(notice).toHaveTextContent(/previous link no longer works/i);
-    expect(screen.getByLabelText('Invitation link for Max Member')).toHaveValue(RESENT_LINK);
-    expect(resent).toEqual([memberUser.id]);
-    await waitFor(() => expect(listRequests.length).toBeGreaterThan(listCallsBefore));
-  });
-
-  it('can copy the new link too', async () => {
-    pendingList();
-    server.use(
-      http.post('*/api/users/:id/resend-invite', () =>
-        HttpResponse.json({
-          user: {
-            ...memberUser,
-            invitation: { status: 'PENDING', expiresAt: '2026-09-16T00:00:00.000Z' },
-          },
-          inviteLink: RESENT_LINK,
-        }),
-      ),
-    );
-    const user = userEvent.setup();
-    await renderLoaded();
-    await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
-    await screen.findByRole('status');
-    await user.click(screen.getByRole('button', { name: 'Copy link' }));
-    await screen.findByText('Copied to clipboard.');
-    expect(await navigator.clipboard.readText()).toBe(RESENT_LINK);
-  });
-
-  it('shows a refusal, such as the member having already accepted', async () => {
-    pendingList();
-    server.use(
-      http.post('*/api/users/:id/resend-invite', () =>
-        errorResponse(409, 'CONFLICT', 'This member has already accepted their invitation'),
-      ),
-    );
-    const user = userEvent.setup();
-    await renderLoaded();
-    await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/already accepted/i);
-  });
-
-  it('disables the button while it is sending', async () => {
-    pendingList();
-    let release;
-    server.use(
-      http.post('*/api/users/:id/resend-invite', async () => {
-        await new Promise((resolve) => {
-          release = resolve;
-        });
-        return errorResponse(500, 'INTERNAL_ERROR', 'Boom');
-      }),
-    );
-    const user = userEvent.setup();
-    await renderLoaded();
-    await user.click(screen.getByRole('button', { name: 'Resend invitation to Max Member' }));
-    expect(
-      await screen.findByRole('button', { name: 'Resend invitation to Max Member' }),
-    ).toBeDisabled();
-    release();
-    await screen.findByRole('alert');
   });
 });
 

@@ -16,7 +16,7 @@ import App from '../../../src/App';
 import { render } from '@testing-library/react';
 import { adminUser, approverUser, assets, memberUser, meHandler } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
-import { authenticatedState, renderApp } from '../../utils/render';
+import { anonymousState, authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
   it.each([
     // The catalogue, asset detail, my-requests and approval queue have no ticket: SCRUM-115 and
@@ -28,7 +28,9 @@ describe('routes', () => {
     ['/requests', 'My requests', null],
     ['/admin', 'Dashboard', null],
     ['/admin/approvals', 'Approval queue', null],
-    ['/admin/members', 'Members', null],
+    // Users has no ticket: the user-management screen is live (list, invite, change role), so it
+    // renders real data rather than a placeholder. MembersPage.test.jsx covers it properly.
+    ['/admin/users', 'Users', null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
@@ -50,13 +52,30 @@ describe('routes', () => {
     ).toBe(true);
   });
   it.each([memberUser, approverUser])(
-    'a $role is bounced from /admin/members to the catalog',
+    'a $role is bounced from /admin/users to the catalog, with a notice saying why',
     async (person) => {
-      const { router } = renderApp('/admin/members', authenticatedState(person));
+      const { router } = renderApp('/admin/users', authenticatedState(person));
       await waitFor(() => expect(router.state.location.pathname).toBe('/'));
       expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+      // The permission-denied state: the destination explains, rather than silently dropping them.
+      expect(
+        screen.getAllByRole('alert').some((a) => /do not have access/.test(a.textContent ?? '')),
+      ).toBe(true);
+      expect(screen.queryByRole('heading', { name: 'Users' })).not.toBeInTheDocument();
     },
   );
+
+  it('a visitor with no session is sent to the login page from /admin/users', async () => {
+    const { router } = renderApp('/admin/users', anonymousState);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+  });
+
+  it('the old /admin/members address no longer exists: there is one Users route', async () => {
+    renderApp('/admin/members', authenticatedState(adminUser));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Page not found' }),
+    ).toBeInTheDocument();
+  });
 
   it('unknown paths render the 404 page', async () => {
     renderApp('/definitely/not/here', authenticatedState(adminUser));

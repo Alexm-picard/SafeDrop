@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: append-only AuditEvent schema; server-set timestamp on every insert path; every update/delete/aggregate-write path throws (SDD §2.5, SR-8, SR-9, SR-10)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * The `auditevents` collection: the append-only record of who did what (SDD §2.5, SR-8, SR-9).

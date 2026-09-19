@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: JSDoc typedefs mirroring the backend contracts (SDD §2.4, §6.5) for editor help in plain JavaScript; InviteUserInput/InviteUserResult
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// AI-Assisted Areas: JSDoc typedefs mirroring the backend contracts (SDD §2.4, §6.5) for editor help in plain JavaScript; InviteUserInput
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
 // Reference these from JSDoc, e.g. `/** @type {import('../types/api').User} */`.
 // Converting the SPA to TypeScript (Iteration 3 optional item) turns these into real types.
@@ -32,7 +32,6 @@
  * @property {string} email
  * @property {string} name
  * @property {Role} role
- * @property {{ status: 'PENDING' | 'EXPIRED', expiresAt: string } | null} [invitation] non-null until an invited member accepts
  * @property {string} [createdAt]
  */
 
@@ -40,13 +39,8 @@
  * @typedef {object} InviteUserInput
  * @property {string} email
  * @property {string} name
+ * @property {string} password the initial password the admin sets and shares; never returned
  * @property {Role} [role] defaults to MEMBER
- */
-
-/**
- * @typedef {object} InviteUserResult
- * @property {User} user
- * @property {string} inviteLink the one-time link to give the invitee; returned only once
  */
 
 /**

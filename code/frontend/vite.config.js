@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~80% (Vite template base; dev proxy added per SDD §6.3 / OD-1 Option A)
 // AI-Assisted Areas: /api dev proxy so cookies stay first-party in local development
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Vite configuration for the SPA (SDD §6.3, OD-1 Option A).

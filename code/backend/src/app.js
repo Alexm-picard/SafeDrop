@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: the middleware chain in the exact order of SDD §3 / architecture review
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Express application assembly — the middleware chain that every request passes through.
@@ -31,6 +31,7 @@ import { requestId } from './middleware/requestId.js';
 import { scopeTenant } from './middleware/scopeTenant.js';
 import {
   createOriginCheck,
+  noStore,
   requireJsonForStateChanges,
   securityHeaders,
 } from './middleware/security.js';
@@ -56,7 +57,8 @@ export const JSON_BODY_LIMIT = '100kb';
  *
  * Then the chain, in order:
  *  1. `requestId` — correlation id on every request and response.
- *  2. `securityHeaders`, `createCors` — helmet (including HSTS) and the origin allowlist.
+ *  2. `securityHeaders`, `noStore`, `createCors` — helmet (including HSTS), `Cache-Control:
+ *     no-store` on every response, and the origin allowlist.
  *  3. `requireJsonForStateChanges`, `createOriginCheck`, `express.json`, `cookieParser` — JSON-only
  *     body handling and the CSRF defences.
  *     `/health` is registered here, deliberately outside `/api`: a health probe needs no session
@@ -87,8 +89,9 @@ export function createApp({ config = env, skipRouteAssertion = false } = {}) {
   // 1. Correlation id on every request/response.
   app.use(requestId);
 
-  // 2. Security headers (helmet incl. HSTS) and CORS allowlist.
+  // 2. Security headers (helmet incl. HSTS), no caching of any response, and the CORS allowlist.
   app.use(securityHeaders);
+  app.use(noStore);
   app.use(createCors(config.CORS_ORIGINS));
 
   // 3. JSON only. State-changing requests must be application/json and, if a browser sent an

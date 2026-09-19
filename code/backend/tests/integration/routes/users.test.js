@@ -8,10 +8,10 @@
 /**
  * Integration tests for member lifecycle: list, invite, change role (SDD OD-3, SR-1, SR-2, OD-2).
  *
- * The point of the ticket is that an organisation can have more than one person in it. The end-to-end
- * demonstration of that — an admin invites people, they accept by email and each gets the access their
- * role implies — lives in invitations.test.js, since it needs the emailed link. This file covers the
- * properties that make the three routes safe:
+ * The point of the ticket is that an organisation can have more than one person in it: the end-to-end
+ * test at the bottom has an admin add an approver and a member, who then sign in with the passwords they
+ * were given and find the access their role implies. Around it are the properties that make the routes
+ * safe:
  *  - **Only ORG_ADMIN** can use any of it, and a *demoted* admin holding an unexpired token is refused,
  *    because the mutations re-read the role from the database (SDD §6.2).
  *  - **Tenant isolation.** An invitation lands in the caller's organisation whatever the body says; a
@@ -21,10 +21,12 @@
  *    revocation.
  *  - **The last ORG_ADMIN cannot be demoted**, including when two admins try to demote each other at
  *    the same instant, which a naive count-then-write would let both win.
- *  - **Credentials.** An invitee has no usable password until they open their emailed link; the admin
- *    can neither choose nor learn one, and no token or password is ever returned, stored raw or audited.
- *    The link itself — expiry, single use, resend — is covered in invitations.test.js.
+ *  - **Credentials.** Iteration 1 has no email service, so the admin sets the member's initial password
+ *    and shares it out of band. It is validated like any password, stored only as a bcrypt hash, and
+ *    never returned, logged or audited.
  */
+import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';
@@ -51,8 +53,14 @@ beforeEach(async () => {
 });
 
 const asAdminA = () => accessCookieFor(seed.a.admin);
-const invite = (body, cookie = asAdminA()) =>
+/** The initial password an admin sets in these tests unless a test says otherwise. */
+const INITIAL_PASSWORD = 'Initial-Passw0rd-1';
+/** Send `body` exactly as given: for tests about a missing or invalid password. */
+const inviteRaw = (body, cookie = asAdminA()) =>
   request(app).post('/api/users/invite').set('Cookie', cookie).send(body);
+/** Invite with a valid initial password unless the body names one. */
+const invite = (body, cookie = asAdminA()) =>
+  inviteRaw({ password: INITIAL_PASSWORD, ...body }, cookie);
 const changeRole = (userId, role, cookie = asAdminA()) =>
   request(app).patch(`/api/users/${userId}/role`).set('Cookie', cookie).send({ role });
 const listUsers = (query = '', cookie = asAdminA()) =>
@@ -60,17 +68,17 @@ const listUsers = (query = '', cookie = asAdminA()) =>
 
 const newMember = { email: 'new.hire@a.test', name: 'New Hire' };
 /** The exact set of fields a member may be shown as: no hash, nothing internal. */
-const PUBLIC_USER_FIELDS = ['createdAt', 'email', 'id', 'invitation', 'name', 'orgId', 'role'];
+const PUBLIC_USER_FIELDS = ['createdAt', 'email', 'id', 'name', 'orgId', 'role'];
 
 const auditFor = (orgId, action) => AuditEvent.find({ orgId, action }).lean();
 const adminCount = (orgId) => User.countDocuments({ orgId, role: ROLES.ORG_ADMIN });
 
 describe('POST /api/users/invite', () => {
-  it('creates a MEMBER in the admin’s organisation as a pending invitation, and returns its one-time link', async () => {
-    const before = Date.now();
+  it('creates a MEMBER in the admin’s organisation and returns the member, never the password', async () => {
     const res = await invite(newMember);
 
     expect(res.status).toBe(201);
+    expect(Object.keys(res.body)).toEqual(['user']);
     expect(Object.keys(res.body.user).sort()).toEqual(PUBLIC_USER_FIELDS);
     expect(res.body.user).toMatchObject({
       email: 'new.hire@a.test',
@@ -78,44 +86,52 @@ describe('POST /api/users/invite', () => {
       role: ROLES.MEMBER,
       orgId: seed.a.orgId,
     });
-    // Pending, and expiring 72 hours from now (give or take the time the request took).
-    expect(res.body.user.invitation.status).toBe('PENDING');
-    const expiresIn = new Date(res.body.user.invitation.expiresAt).getTime() - before;
-    expect(expiresIn).toBeGreaterThan(72 * 3_600_000 - 60_000);
-    expect(expiresIn).toBeLessThan(72 * 3_600_000 + 60_000);
-    // The response carries the one-time link for the admin to send, and no password: the invitee chooses
-    // their own. The link is a credential, so it must not be cacheable.
-    expect(Object.keys(res.body).sort()).toEqual(['inviteLink', 'user']);
-    expect(res.body.inviteLink).toContain('/accept-invite?token=');
-    expect(res.headers['cache-control']).toBe('no-store');
-    expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+    // The password the admin set is not echoed back, in any form.
+    expect(JSON.stringify(res.body)).not.toMatch(/password|\$2[aby]\$/i);
   });
 
-  it('stores no usable password and only a hash of the token', async () => {
+  it('stores only a bcrypt hash of the initial password the admin set', async () => {
     await invite(newMember);
     const stored = await User.findOne({ orgId: seed.a.orgId, email: newMember.email }).select(
-      '+passwordHash +inviteTokenHash',
+      '+passwordHash',
     );
 
-    // A bcrypt hash of a value nobody holds: present (the schema requires one) but unusable.
     expect(stored.passwordHash).toMatch(/^\$2[aby]\$12\$/);
-    // A SHA-256 hex digest, not a raw token.
-    expect(stored.inviteTokenHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(stored.inviteExpiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(stored.passwordHash).not.toContain(INITIAL_PASSWORD);
+    expect(await bcrypt.compare(INITIAL_PASSWORD, stored.passwordHash)).toBe(true);
   });
 
-  it('cannot be signed into before the invitation is accepted, with any password', async () => {
+  it('lets the new member sign in with the password they were given', async () => {
     await invite(newMember);
-    for (const password of ['p@ssword123!', 'password', 'Correct-Horse-Battery-9', ' ']) {
-      const { res } = await loginAs(app, { orgSlug: 'org-a', email: newMember.email, password });
-      expect(res.status).toBe(401);
-    }
+    const { res } = await loginAs(app, {
+      orgSlug: 'org-a',
+      email: newMember.email,
+      password: INITIAL_PASSWORD,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ email: newMember.email, role: ROLES.MEMBER });
+    // A different password does not.
+    const wrong = await loginAs(app, {
+      orgSlug: 'org-a',
+      email: newMember.email,
+      password: 'Some-Other-Passw0rd',
+    });
+    expect(wrong.res.status).toBe(401);
+  });
+
+  it('gives each member their own salted hash, even for the same password', async () => {
+    await invite(newMember);
+    await invite({ email: 'second@a.test', name: 'Second' });
+    const hashOf = async (email) =>
+      (await User.findOne({ orgId: seed.a.orgId, email }).select('+passwordHash')).passwordHash;
+    expect(await hashOf(newMember.email)).not.toBe(await hashOf('second@a.test'));
   });
 
   it.each([
-    ['temporaryPassword', { temporaryPassword: 'Chosen-By-The-Admin-42' }],
-    ['password', { password: 'Chosen-By-The-Admin-42' }],
-  ])('has no way for the admin to choose a password: a %s field is a 400', async (_name, extra) => {
+    ['passwordHash', { passwordHash: '$2b$12$abcdefghijklmnopqrstuv' }],
+    ['temporaryPassword', { temporaryPassword: 'Another-Passw0rd-1' }],
+    ['id', { id: '0'.repeat(24) }],
+  ])('rejects a client-supplied %s field with 400 (mass assignment)', async (_name, extra) => {
     const before = await User.countDocuments({ orgId: seed.a.orgId });
     const res = await invite({ ...newMember, ...extra });
     expect(res.status).toBe(400);
@@ -156,11 +172,9 @@ describe('POST /api/users/invite', () => {
       name: 'New Hire',
       role: ROLES.MEMBER,
     });
-    expect(new Date(event.after.inviteExpiresAt).toISOString()).toBe(
-      res.body.user.invitation.expiresAt,
-    );
     // The audit trail is readable by every admin and kept forever: it must not hold a credential.
-    expect(JSON.stringify(event)).not.toMatch(/passwordHash|inviteTokenHash|token/i);
+    expect(JSON.stringify(event)).not.toMatch(/password|hash/i);
+    expect(JSON.stringify(event)).not.toContain(INITIAL_PASSWORD);
     // And no other organisation's trail was touched.
     expect(await auditFor(seed.b.orgId, AUDIT_ACTION.USER_INVITED)).toHaveLength(0);
   });
@@ -206,13 +220,28 @@ describe('POST /api/users/invite', () => {
     ['a blank name', { email: 'x@a.test', name: '   ' }, 'name'],
     ['an unknown role', { email: 'x@a.test', name: 'X', role: 'SUPERUSER' }, 'role'],
     ['a lower-case role', { email: 'x@a.test', name: 'X', role: 'org_admin' }, 'role'],
+    ['a missing password', { email: 'x@a.test', name: 'X', password: undefined }, 'password'],
+    ['a too-short password', { email: 'x@a.test', name: 'X', password: 'short' }, 'password'],
+    [
+      'a password over bcrypt’s 72-byte limit',
+      { email: 'x@a.test', name: 'X', password: 'a'.repeat(73) },
+      'password',
+    ],
+    ['a non-string password', { email: 'x@a.test', name: 'X', password: 12345678901 }, 'password'],
+    [
+      'an operator in place of a password',
+      { email: 'x@a.test', name: 'X', password: { $ne: null } },
+      null,
+    ],
   ])('rejects %s with 400 and creates nothing', async (_label, body, field) => {
     const before = await User.countDocuments({ orgId: seed.a.orgId });
-    const res = await invite(body);
+    const res = await inviteRaw({ password: INITIAL_PASSWORD, ...body });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    expect(res.body.error.details.some((d) => d.path === field)).toBe(true);
+    if (field) {
+      expect(res.body.error.details.some((d) => d.path === field)).toBe(true);
+    }
     expect(await User.countDocuments({ orgId: seed.a.orgId })).toBe(before);
   });
 
@@ -275,6 +304,85 @@ describe('GET /api/users', () => {
       'member@a.test',
     ]);
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|@b\.test/);
+  });
+
+  it('never exposes a password hash: not as a field, and not as a bcrypt hash anywhere in the body', async () => {
+    // The seeded users all have real bcrypt hashes, so this is a meaningful check rather than a vacuous one.
+    const withHashes = await User.find({ orgId: seed.a.orgId }).select('+passwordHash');
+    expect(withHashes.every((u) => /^\$2[aby]\$12\$/.test(u.passwordHash))).toBe(true);
+
+    const res = await listUsers();
+
+    expect(res.status).toBe(200);
+    for (const item of res.body.items) {
+      expect(item).not.toHaveProperty('passwordHash');
+      expect(item).not.toHaveProperty('password');
+    }
+    expect(JSON.stringify(res.body)).not.toMatch(/\$2[aby]\$/);
+    for (const u of withHashes) {
+      expect(JSON.stringify(res.body)).not.toContain(u.passwordHash);
+    }
+  });
+
+  it('lists members oldest first, by when they joined', async () => {
+    // Give the three seeded members known join dates that are the *opposite* of their id order, so an
+    // ordering that fell back to insertion order would come out wrong.
+    const byId = [...(await User.find({ orgId: seed.a.orgId }))].sort((a, b) =>
+      String(b._id).localeCompare(String(a._id)),
+    );
+    const days = [1, 2, 3];
+    for (const [i, user] of byId.entries()) {
+      await User.collection.updateOne(
+        { _id: user._id },
+        { $set: { createdAt: new Date(Date.UTC(2026, 0, days[i])) } },
+      );
+    }
+
+    const res = await listUsers();
+
+    expect(res.body.items.map((u) => u.id)).toEqual(byId.map((u) => String(u._id)));
+    // And a member added now is the newest, so it goes last.
+    const invited = await invite(newMember);
+    expect((await listUsers()).body.items.at(-1).id).toBe(invited.body.user.id);
+  });
+
+  it('exposes each member’s join date as createdAt', async () => {
+    const joined = new Date(Date.UTC(2026, 2, 14, 9, 30));
+    await User.collection.updateOne({ _id: seed.a.member._id }, { $set: { createdAt: joined } });
+
+    const res = await listUsers();
+
+    const member = res.body.items.find((u) => u.id === String(seed.a.member._id));
+    expect(member.createdAt).toBe(joined.toISOString());
+  });
+
+  it('keeps pages stable when members share a join time: every member appears exactly once, in id order', async () => {
+    // Same createdAt for everyone, as happens when accounts are created in one millisecond.
+    const sameInstant = new Date(Date.UTC(2026, 0, 1));
+    await User.collection.updateMany(
+      { orgId: new mongoose.Types.ObjectId(seed.a.orgId) },
+      { $set: { createdAt: sameInstant } },
+    );
+
+    const pages = [];
+    for (const page of [1, 2, 3]) {
+      pages.push(...(await listUsers(`?limit=1&page=${page}`)).body.items.map((u) => u.id));
+    }
+
+    expect(new Set(pages).size).toBe(3);
+    // Ties are broken by _id, so the order is the same on every request.
+    expect(pages).toEqual([...pages].sort());
+    const again = [];
+    for (const page of [1, 2, 3]) {
+      again.push(...(await listUsers(`?limit=1&page=${page}`)).body.items.map((u) => u.id));
+    }
+    expect(again).toEqual(pages);
+  });
+
+  it('returns an empty page, not an error, past the last one', async () => {
+    const res = await listUsers('?page=9&limit=25');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 3, page: 9, limit: 25, items: [] });
   });
 
   it('shows a newly invited member, after the existing ones (oldest first)', async () => {
@@ -561,5 +669,64 @@ describe('PATCH /api/users/:id/role', () => {
       .patch(`/api/users/${seed.a.member._id}/role`)
       .send({ role: ROLES.APPROVER });
     expect(res.status).toBe(401);
+  });
+});
+
+describe('the member lifecycle end to end (what SCRUM-58 and SCRUM-45 need to demo)', () => {
+  it('an admin adds an approver and a member; both sign in with the passwords they were given and have the access their role implies', async () => {
+    // The founding admin adds two people, choosing each one's initial password.
+    const ann = await invite({
+      email: 'ann@a.test',
+      name: 'Ann',
+      role: ROLES.APPROVER,
+      password: 'Ann-Initial-Passw0rd',
+    });
+    const max = await invite({
+      email: 'max@a.test',
+      name: 'Max',
+      password: 'Max-Initial-Passw0rd',
+    });
+    expect(ann.status).toBe(201);
+    expect(max.status).toBe(201);
+
+    const annSession = await loginAs(app, {
+      orgSlug: 'org-a',
+      email: 'ann@a.test',
+      password: 'Ann-Initial-Passw0rd',
+    });
+    const maxSession = await loginAs(app, {
+      orgSlug: 'org-a',
+      email: 'max@a.test',
+      password: 'Max-Initial-Passw0rd',
+    });
+    expect(annSession.res.body.user.role).toBe(ROLES.APPROVER);
+    expect(maxSession.res.body.user.role).toBe(ROLES.MEMBER);
+
+    // A member can browse the catalogue but cannot manage people or read the audit log.
+    const maxCookie = maxSession.accessCookie;
+    expect((await request(app).get('/api/assets').set('Cookie', maxCookie)).status).toBe(200);
+    expect((await request(app).get('/api/users').set('Cookie', maxCookie)).status).toBe(403);
+    expect(
+      (
+        await request(app).post('/api/users/invite').set('Cookie', maxCookie).send({
+          email: 'sneaky@a.test',
+          name: 'Sneaky',
+          password: INITIAL_PASSWORD,
+        })
+      ).status,
+    ).toBe(403);
+    expect((await request(app).get('/api/audit').set('Cookie', maxCookie)).status).toBe(403);
+    // An approver has more than a member but still cannot manage people.
+    expect(
+      (await request(app).get('/api/users').set('Cookie', annSession.accessCookie)).status,
+    ).toBe(403);
+
+    // The admin sees everyone, and the trail shows who was added.
+    const members = await listUsers();
+    expect(members.body.total).toBe(5);
+    const trail = await request(app)
+      .get(`/api/audit?action=${AUDIT_ACTION.USER_INVITED}`)
+      .set('Cookie', asAdminA());
+    expect(trail.body.total).toBe(2);
   });
 });

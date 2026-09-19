@@ -1,15 +1,15 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members, /accept-invite
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
+// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket.
 
 /**
  * The route table: every URL the SPA serves, and the guards wrapped around them.
  *
- * The nesting is the access model. `/login`, `/setup` and `/accept-invite` sit outside everything, since
- * they are reachable without a session. Everything else is inside `RequireAuth` (a session is needed) and then
+ * The nesting is the access model. `/login` and `/setup` sit outside everything, since they are
+ * reachable without a session. Everything else is inside `RequireAuth` (a session is needed) and then
  * `Layout` (the shell with navigation). Within that, `RequireRole` wraps the admin areas: the approval
  * queue for APPROVER and ORG_ADMIN, the dashboard, members and audit log for ORG_ADMIN alone.
  *
@@ -25,7 +25,6 @@ import { RequireAuth } from './components/RequireAuth';
 import { RequireRole } from './components/RequireRole';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
-import { AcceptInvitePage } from './pages/AcceptInvitePage';
 import { AssetDetailPage } from './pages/AssetDetailPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { CatalogPage } from './pages/CatalogPage';
@@ -42,8 +41,6 @@ import { OrgSetupPage } from './pages/OrgSetupPage';
 export const routes = [
   { path: '/login', element: <LoginPage /> },
   { path: '/setup', element: <OrgSetupPage /> },
-  // Public: the invitee has no account yet, and the token in the invitation link is their credential.
-  { path: '/accept-invite', element: <AcceptInvitePage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -61,7 +58,7 @@ export const routes = [
             element: <RequireRole roles={['ORG_ADMIN']} />,
             children: [
               { path: 'admin', element: <AdminDashboardPage /> },
-              { path: 'admin/members', element: <MembersPage /> },
+              { path: 'admin/users', element: <MembersPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
             ],
           },

@@ -2,14 +2,14 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: deny-by-default proof (SDD §6.4): walks the live Express stack, exercises every route per role, and proves rogue registrations are refused at boot and at runtime (SR-1)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Security tests for deny-by-default across the whole route table (SDD §6.4, SR-1).
  *
  * This suite proves the invariant rather than sampling it. It walks the *live* Express router stack,
- * asserts that every `/api` route declares a permission and that exactly four routes are public, then
+ * asserts that every `/api` route declares a permission and that exactly three routes are public, then
  * exercises each protected route to confirm it actually refuses an unauthorized caller.
  *
  * It also attacks the mechanism itself: routes registered without `defineRoute()`, a plain
@@ -85,7 +85,7 @@ describe('deny by default: every /api route declares a permission (SDD §6.4)', 
     },
   );
 
-  it('exactly the four documented public routes skip authentication', () => {
+  it('exactly the three documented public routes skip authentication', () => {
     const actual = apiRoutes
       .filter((r) => r.public)
       .map((r) => `${r.method} ${r.path}`)

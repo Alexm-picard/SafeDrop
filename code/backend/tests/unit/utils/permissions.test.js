@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: permission matrix tests mirroring SDD §6.4
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Unit tests for the permission matrix (SDD §6.4, SR-1).
@@ -12,7 +12,7 @@
  * silently added to or removed from a role fails the build rather than changing the system quietly.
  *
  * It also pins deny-by-default from both directions: unknown roles and unknown permissions answer
- * false, exactly four routes are public, and `authorize()` refuses at build time to create middleware
+ * false, exactly three routes are public, and `authorize()` refuses at build time to create middleware
  * for a permission nobody declared.
  */
 import { describe, expect, it } from 'vitest';
@@ -56,12 +56,12 @@ describe('permission matrix (SDD §6.4)', () => {
     expect(roleHasPermission(undefined, undefined)).toBe(false);
   });
 
-  it('recognises exactly the four public routes', () => {
+  it('recognises exactly the three public routes', () => {
     expect(isPublicRoute('POST', '/api/auth/login')).toBe(true);
     expect(isPublicRoute('post', '/api/auth/refresh/')).toBe(true);
     expect(isPublicRoute('POST', '/api/organizations?x=1')).toBe(true);
-    expect(isPublicRoute('POST', '/api/auth/accept-invite')).toBe(true);
-    expect(isPublicRoute('GET', '/api/auth/accept-invite')).toBe(false);
+    // The invitation-link route no longer exists: creating a member is an authenticated, admin-only act.
+    expect(isPublicRoute('POST', '/api/auth/accept-invite')).toBe(false);
     expect(isPublicRoute('GET', '/api/organizations')).toBe(false);
     expect(isPublicRoute('POST', '/api/auth/logout')).toBe(false);
   });
