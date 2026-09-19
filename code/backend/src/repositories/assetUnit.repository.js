@@ -100,7 +100,6 @@ export async function countByStatus(orgId) {
   return counts;
 }
 
-
 /**
  * Move a unit to a new status and, optionally, record a condition change in the same write.
  *
@@ -112,7 +111,12 @@ export async function countByStatus(orgId) {
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document|null>}
  */
-export async function updateStatusAndCondition(orgId, unitId, { status, condition }, { session } = {}) {
+export async function updateStatusAndCondition(
+  orgId,
+  unitId,
+  { status, condition },
+  { session } = {},
+) {
   const set = { status };
   if (condition) {
     set.condition = condition;

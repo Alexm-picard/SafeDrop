@@ -75,7 +75,7 @@ describe('checkout state machine (F4)', () => {
     ]);
   });
 
-  it.each(['submit', 'list', 'get', 'cancel' ])(
+  it.each(['submit', 'list', 'get', 'cancel'])(
     'handler %s is a Sprint 1 stub (501)',
     async (name) => {
       await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);

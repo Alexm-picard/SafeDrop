@@ -58,7 +58,7 @@ const stubs = [
 
   // POST /api/requests/:request/checkout and /api/requests/:request/return are no longer here: SCRUM-120 implemented them — see
   // tests/integration/routes/requests.test.js.
-    
+
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
   // criteria live in the un-skipped describe block below.
   { method: 'GET', path: '/api/users', as: 'admin' },
