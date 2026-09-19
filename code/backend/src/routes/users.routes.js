@@ -20,19 +20,20 @@ import { z } from 'zod';
 import * as users from '../controllers/users.controller.js';
 import { PERMISSIONS, ROLE_LIST } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
-import { email, emptyBody, idParams, pagination, personName } from './schemas.js';
+import { email, idParams, pagination, password, personName } from './schemas.js';
 
 /**
- * Body for `POST /api/users/invite`: the new member's email, name and role.
+ * Body for `POST /api/users/invite`: the new member's email, name, role and initial password.
  *
- * The role defaults to MEMBER, so an invitation that says nothing about privileges grants the least
- * of them. There is deliberately no password field: the invitee chooses their own through the invitation
- * link, so an admin can neither choose nor learn a member's password. There is no organisation field
- * either, so an invitation can only ever land in the caller's own organisation.
+ * The role defaults to MEMBER, so an invitation that says nothing about privileges grants the least of
+ * them. Iteration 1 has no email service, so the admin sets the member's initial `password` and shares
+ * it out of band; it goes through the shared `password` schema, so the strength and 72-byte rules apply.
+ * There is no organisation field, so an invitation can only ever land in the caller's own organisation.
  */
 export const inviteBody = z.object({
   email,
   name: personName,
+  password,
   role: z.enum(ROLE_LIST).default('MEMBER'),
 });
 
@@ -72,14 +73,4 @@ defineRoute(
     schemas: { params: idParams, body: roleBody },
   },
   users.changeRole,
-);
-defineRoute(
-  usersRouter,
-  {
-    method: 'POST',
-    path: '/:id/resend-invite',
-    permission: PERMISSIONS.USERS_MANAGE,
-    schemas: { params: idParams, body: emptyBody.optional() },
-  },
-  users.resendInvite,
 );

@@ -34,7 +34,6 @@ export const ROUTES = Object.freeze({
   home: '/',
   login: '/login',
   setup: '/setup',
-  acceptInvite: '/accept-invite',
   catalog: '/',
   asset: (id) => `/assets/${id}`,
   myRequests: '/requests',

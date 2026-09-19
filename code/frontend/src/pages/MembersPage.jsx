@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: Members screen: list with invitation status, invite form with field-level API errors, copyable one-time invitation link, resend invitation, per-row role change
+// AI-Assisted Areas: Members screen: list, invite form (admin-set initial password) with field-level API errors, per-row role change
 // Human Contributions: pending team review
 // Notes: Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -13,16 +13,14 @@
  *
  * Three decisions worth knowing:
  *
- * **Inviting gives the admin a link to copy and send.** There is no email: the API returns a one-time
- * link (valid for 72 hours) and this page shows it with a Copy button, for the admin to pass to the member
- * however they like — a message, an email of their own, or pasted into a browser. The member opens it and
- * chooses their own password, so there is no password field here. The link is a credential: whoever opens
- * it can set the password for that account, and the page says so beside it.
- *
- * **The link is shown once.** The server keeps only a hash of it, so it cannot be displayed again, and
- * here it lives in component state only — never in storage or the URL — and goes when the notice is
- * dismissed or the page is left. That is what "Resend invitation" is for: offered for anyone who has not
- * yet accepted, expired or not, it issues a new link, the old one stops working, and the 72 hours restart.
+ * **The admin sets the new member's initial password.** Iteration 1 has no email service, so there is no
+ * invitation link: the admin types an initial password for the person and shares it with them through
+ * a channel they trust. The form has a Show password option because a typo cannot be recovered from
+ * (there is no reset-password feature yet), so the admin needs to be able to check what they typed. The
+ * password goes to the API once, is held in component state only, is cleared from the form as soon as the
+ * invitation succeeds, and is never shown again — not even in the confirmation. The member signs in with
+ * the organization code, their email and that password; the confirmation tells the admin the code,
+ * since a new member has no other way to learn it.
  *
  * **You cannot change your own role here.** The API allows it (and refuses only to demote the last
  * admin), but a mis-click that demotes yourself ends your own access to this very screen. Another admin
@@ -50,6 +48,7 @@ const EMPTY_FORM = Object.freeze({
   name: '',
   email: '',
   role: ROLES.MEMBER,
+  password: '',
 });
 
 /**
@@ -71,82 +70,11 @@ function fieldErrorsOf(err) {
 }
 
 /**
- * Build the notice for a freshly issued invitation link.
- *
- * Both a first invitation and a resend end up here, since the admin's next step is identical: copy the
- * link and send it. Only the wording differs, and a resend says the previous link is dead because that is
- * the thing an admin re-sending one most needs to hear.
- * @param {{ name: string, role: string, invitation: { expiresAt: string }|null }} user
- * @param {string} link the one-time link
- * @param {boolean} [resent] whether this was a resend rather than a first invitation
- * @returns {{ tone: 'success', message: string, link: string, forName: string, expiresAt: string|null }}
- */
-function linkNotice(user, link, resent = false) {
-  return {
-    tone: 'success',
-    message: resent
-      ? `New invitation link for ${user.name}. The previous link no longer works.`
-      : `Invited ${user.name} as ${ROLE_LABELS[user.role]}. Send them the link below so they can choose their own password.`,
-    link,
-    forName: user.name,
-    expiresAt: user.invitation?.expiresAt ?? null,
-  };
-}
-
-/**
- * The invitation link, with a way to copy it and a warning about what it is.
- *
- * The link is in a read-only field as well as behind the button, because the Clipboard API is not
- * available everywhere (it needs a secure context) and copying must never depend on it: if the button
- * fails, the admin is told to select the text, which is already there. Focusing the field selects it, so
- * that is one click and Ctrl/Cmd-C. The confirmation is announced through an `aria-live` region rather
- * than another `role="status"`, so the page keeps a single status message.
- * @param {{ link: string, forName: string, expiresAt: string|null }} props
- * @returns {JSX.Element}
- */
-function InviteLink({ link, forName, expiresAt }) {
-  const [copyState, setCopyState] = useState('');
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopyState('Copied to clipboard.');
-    } catch {
-      setCopyState('Could not copy automatically. Select the link and copy it.');
-    }
-  };
-  return (
-    <div className="invite-link">
-      <label htmlFor="invite-link">Invitation link for {forName}</label>
-      <div className="invite-link__row">
-        <input
-          id="invite-link"
-          type="text"
-          readOnly
-          value={link}
-          onFocus={(e) => e.target.select()}
-        />
-        <button type="button" onClick={copy}>
-          Copy link
-        </button>
-      </div>
-      <span className="hint" aria-live="polite">
-        {copyState}
-      </span>
-      <p className="hint">
-        Send this only to {forName}: anyone who opens it can set the password for this account. It
-        works once{expiresAt ? ` and expires ${formatDate(expiresAt)}` : ''}. It is shown only now,
-        so if you lose it, use “Resend invitation” to make a new one (which cancels this one).
-      </p>
-    </div>
-  );
-}
-
-/**
  * The invite form.
  *
- * Reports success upward rather than rendering it, because the confirmation — and above all the
- * and above all the link — belongs in the page-level notice, which must outlive the form's own state.
- * @param {{ onInvited: (result: { user: object, inviteLink: string }) => void }} props
+ * Reports success upward rather than rendering it, because the confirmation belongs in the page-level
+ * notice, which must outlive the form's own state.
+ * @param {{ onInvited: (result: { user: object }) => void }} props
  * @returns {JSX.Element}
  */
 function InviteForm({ onInvited }) {
@@ -154,6 +82,7 @@ function InviteForm({ onInvited }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const set = (name) => (event) => setValues((prev) => ({ ...prev, [name]: event.target.value }));
 
@@ -167,8 +96,11 @@ function InviteForm({ onInvited }) {
         name: values.name,
         email: values.email,
         role: values.role,
+        password: values.password,
       });
+      // Cleared at once: the password lives in this form only as long as it takes to send.
       setValues(EMPTY_FORM);
+      setShowPassword(false);
       onInvited(result);
     } catch (err) {
       if (isApiError(err)) {
@@ -253,6 +185,38 @@ function InviteForm({ onInvited }) {
           </span>
         ) : null}
       </div>
+      <div className="field">
+        <label htmlFor="invite-password">Initial password</label>
+        <input
+          id="invite-password"
+          name="password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="new-password"
+          required
+          value={values.password}
+          onChange={set('password')}
+          aria-invalid={fieldErrors.password ? true : undefined}
+          aria-describedby={[fieldErrors.password ? 'password-error' : null, 'password-hint']
+            .filter(Boolean)
+            .join(' ')}
+        />
+        <span id="password-hint" className="hint">
+          At least 10 characters. Share it with them securely; they sign in with it.
+        </span>
+        {fieldErrors.password ? (
+          <span id="password-error" className="field-error">
+            {fieldErrors.password}
+          </span>
+        ) : null}
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={showPassword}
+            onChange={(e) => setShowPassword(e.target.checked)}
+          />{' '}
+          Show password
+        </label>
+      </div>
       <button type="submit" disabled={pending}>
         {pending ? 'Inviting…' : 'Invite member'}
       </button>
@@ -263,27 +227,34 @@ function InviteForm({ onInvited }) {
 /**
  * Render the members screen.
  *
- * `notice` is the single message area for the page — an invite or resend (with its link), a role-change
+ * `notice` is the single message area for the page — an invite confirmation, a role-change
  * confirmation, or a failed role change — so there is never more than one live region competing for a
  * screen reader's attention. A success is announced politely (`role="status"`), a failure assertively
  * (`role="alert"`).
  * @returns {JSX.Element}
  */
 export function MembersPage() {
-  const { user: me } = useAuth();
+  const { user: me, organization } = useAuth();
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState(null);
   const [changingId, setChangingId] = useState(null);
-  const [resendingId, setResendingId] = useState(null);
   const params = useMemo(() => ({ page, limit: MEMBERS_PAGE_SIZE }), [page]);
   const { status, data, error, reload } = useMembers(params);
 
   const onInvited = useCallback(
-    ({ user, inviteLink }) => {
-      setNotice(linkNotice(user, inviteLink));
+    ({ user }) => {
+      const code = organization?.slug;
+      setNotice({
+        tone: 'success',
+        message:
+          `Invited ${user.name} as ${ROLE_LABELS[user.role]}. Give them the password you just set, ` +
+          `through a channel you trust. They sign in with their email (${user.email}), that password` +
+          `${code ? ` and the organization code “${code}”` : ' and your organization’s code'}. ` +
+          'The password is not shown again.',
+      });
       reload();
     },
-    [reload],
+    [organization, reload],
   );
 
   const onChangeRole = useCallback(
@@ -301,23 +272,6 @@ export function MembersPage() {
         setNotice({ tone: 'error', message: errorMessage(err) });
       } finally {
         setChangingId(null);
-      }
-    },
-    [reload],
-  );
-
-  const onResend = useCallback(
-    async (member) => {
-      setResendingId(member.id);
-      setNotice(null);
-      try {
-        const result = await usersApi.resendInvite(member.id);
-        setNotice(linkNotice(result.user, result.inviteLink, true));
-        reload();
-      } catch (err) {
-        setNotice({ tone: 'error', message: errorMessage(err) });
-      } finally {
-        setResendingId(null);
       }
     },
     [reload],
@@ -342,9 +296,6 @@ export function MembersPage() {
           className={notice.tone === 'error' ? 'alert' : 'notice'}
         >
           <p>{notice.message}</p>
-          {notice.link ? (
-            <InviteLink link={notice.link} forName={notice.forName} expiresAt={notice.expiresAt} />
-          ) : null}
           <button type="button" className="secondary" onClick={() => setNotice(null)}>
             Dismiss
           </button>
@@ -393,35 +344,7 @@ export function MembersPage() {
                     </select>
                   ),
               },
-              {
-                key: 'status',
-                header: 'Status',
-                render: (m) => {
-                  if (!m.invitation) {
-                    return 'Active';
-                  }
-                  return m.invitation.status === 'EXPIRED'
-                    ? 'Invitation expired'
-                    : `Invited · link expires ${formatDate(m.invitation.expiresAt)}`;
-                },
-              },
               { key: 'joined', header: 'Added', render: (m) => formatDate(m.createdAt) },
-              {
-                key: 'actions',
-                header: 'Invitation',
-                render: (m) =>
-                  m.invitation ? (
-                    <button
-                      type="button"
-                      className="secondary"
-                      aria-label={`Resend invitation to ${m.name}`}
-                      disabled={resendingId === m.id}
-                      onClick={() => onResend(m)}
-                    >
-                      {resendingId === m.id ? 'Sending…' : 'Resend invitation'}
-                    </button>
-                  ) : null,
-              },
             ]}
             rows={data.items}
             getRowId={(m) => m.id}

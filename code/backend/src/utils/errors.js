@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: typed error hierarchy mapped to HTTP status + { error: { code, message } } (SDD §6.5); InvitationError
+// AI-Assisted Areas: typed error hierarchy mapped to HTTP status + { error: { code, message } } (SDD §6.5)
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the invitation-link work. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * The typed error hierarchy the API answers with (SDD §6.5).
@@ -59,20 +59,6 @@ export class AuthError extends AppError {
 export class ForbiddenError extends AppError {
   constructor(message = 'Forbidden') {
     super(message, { status: 403, code: 'FORBIDDEN' });
-  }
-}
-
-/**
- * 400 — an invitation link could not be used: it is unknown or already used (`INVITATION_INVALID`), or
- * it has expired (`INVITATION_EXPIRED`).
- *
- * The two are told apart on purpose. An invitation token is 256 random bits, so nobody can guess one
- * and "expired" reveals nothing about who exists; and the recovery differs — an expired link needs the
- * admin to send a new one, an invalid one probably means it was already used.
- */
-export class InvitationError extends AppError {
-  constructor(code, message) {
-    super(message, { status: 400, code });
   }
 }
 

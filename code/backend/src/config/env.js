@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11); invitation link settings
+// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -58,13 +58,6 @@ export const envSchema = z
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
     // Number of reverse-proxy hops to trust for req.ip (Render: 1). Default: 1 in production, 0 otherwise.
     TRUST_PROXY: z.coerce.number().int().min(0).optional(),
-    // Invitations (SDD OD-3): how long a link stays valid, and where it points.
-    INVITE_TTL: duration.default('72h'),
-    // The SPA's public origin, the base of the invitation link. No trailing slash.
-    APP_BASE_URL: z
-      .url()
-      .default('http://localhost:5173')
-      .transform((value) => value.replace(/\/+$/, '')),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
@@ -79,14 +72,6 @@ export const envSchema = z
         code: 'custom',
         path: ['CORS_ORIGINS'],
         message: 'must list the SPA origin(s) in production (SR-14)',
-      });
-    }
-    if (value.NODE_ENV === 'production' && !value.APP_BASE_URL.startsWith('https://')) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['APP_BASE_URL'],
-        message:
-          "must be the SPA's public https:// URL in production: it is the base of the invitation link",
       });
     }
     for (const origin of value.CORS_ORIGINS) {

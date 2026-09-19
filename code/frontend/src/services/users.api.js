@@ -1,12 +1,12 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: API client for member list, invite, resend invitation and role change
+// AI-Assisted Areas: API client for member list, invite and role change
 // Human Contributions: pending team review
 // Notes: Verified through MembersPage.test.jsx against the MSW mock of the real contract. Must be reviewed by the owning team member before merge.
 
 /**
- * Member-management endpoints (ORG_ADMIN only): list, invite, resend an invitation, change role.
+ * Member-management endpoints (ORG_ADMIN only): list, invite, change role.
  *
  * All three act on the caller's own organisation — the tenant is taken from the session by the API, so
  * nothing here carries an organisation id, and none could be made to.
@@ -34,24 +34,15 @@ export const list = (params = {}, signal) => {
 };
 
 /**
- * Invite someone into the organisation. The result carries a one-time link for the admin to send them.
+ * Add someone to the organisation with an initial password the admin sets.
  *
- * There is no password in the request, and no email: the member opens the link and chooses their own
- * password. The link is a credential and is returned **only here** — the server keeps just a hash — so a
- * caller must show it now or issue a new one with `resendInvite`.
- * @param {{ email: string, name: string, role?: string }} input
- * @returns {Promise<{ user: import('../types/api').User, inviteLink: string }>}
+ * Iteration 1 has no email service, so the admin chooses the password and shares it out of band; the
+ * member signs in with it. The password is sent once and never returned. It is validated by the API like
+ * any password (at least 10 characters, at most 72 bytes).
+ * @param {{ email: string, name: string, password: string, role?: string }} input
+ * @returns {Promise<{ user: import('../types/api').User }>}
  */
 export const invite = (input) => apiRequest('/api/users/invite', { method: 'POST', body: input });
-
-/**
- * Issue a member a fresh invitation link, replacing the old one (which stops working) and restarting the
- * 72-hour window. Like `invite`, the link is returned only here.
- * @param {string} userId
- * @returns {Promise<{ user: import('../types/api').User, inviteLink: string }>}
- */
-export const resendInvite = (userId) =>
-  apiRequest(`/api/users/${userId}/resend-invite`, { method: 'POST', body: {} });
 
 /**
  * Change a member's role.
