@@ -33,14 +33,14 @@ beforeEach(async () => {
 });
 
 const stubs = [
-  { method: 'GET', path: '/api/assets', as: 'member' },
+  // GET /api/assets and GET /api/assets/:asset are no longer here: SCRUM-115 implemented them, so
+  // they answer 200. Their acceptance criteria live in assets.test.js.
   {
     method: 'POST',
     path: '/api/assets',
     as: 'admin',
     body: { name: 'Camera', category: 'camera' },
   },
-  { method: 'GET', path: '/api/assets/:asset', as: 'member' },
   { method: 'PATCH', path: '/api/assets/:asset', as: 'admin', body: { name: 'Camera 2' } },
   { method: 'POST', path: '/api/assets/:asset/retire', as: 'admin' },
   { method: 'POST', path: '/api/assets/:asset/units', as: 'admin', body: { tag: 'cam-001' } },
@@ -98,7 +98,8 @@ describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
 
 // ---- Acceptance criteria owned by later tickets. Un-skip when implementing. ----------------------
 describe.skip('SCRUM-assets-*: asset catalogue', () => {
-  it('GET /api/assets lists only the caller org’s non-retired assets, paginated');
+  // GET /api/assets is no longer here: SCRUM-115 implemented it. Its acceptance criteria live in
+  // assets.test.js.
   it(
     'POST /api/assets (ORG_ADMIN) creates an asset and appends ASSET_CREATED in the same transaction',
   );

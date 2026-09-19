@@ -47,6 +47,83 @@ export const summary = {
   retired: 2,
 };
 /**
+ * Three assets for the caller's org, matching what the real API serialises: an `id` rather than
+ * `_id`, and `retiredAt` present (null unless a test overrides it).
+ */
+export const assets = [
+  {
+    id: '6aab2a45c6e457e01ac0971a',
+    orgId: org.id,
+    name: 'Dell XPS 15',
+    category: 'laptop',
+    description: 'Developer laptop, 16GB RAM',
+    imageUrl: null,
+    retiredAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0971b',
+    orgId: org.id,
+    name: 'Canon EOS R6',
+    category: 'camera',
+    description: '',
+    imageUrl: null,
+    retiredAt: null,
+  },
+];
+/** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */
+export const assetUnits = {
+  [assets[0].id]: [
+    {
+      id: '6aab2a45c6e457e01ac0972a',
+      assetId: assets[0].id,
+      tag: 'xps-001',
+      serial: 'SN-001',
+      condition: 'GOOD',
+      status: 'AVAILABLE',
+    },
+    {
+      id: '6aab2a45c6e457e01ac0972b',
+      assetId: assets[0].id,
+      tag: 'xps-002',
+      serial: 'SN-002',
+      condition: 'FAIR',
+      status: 'OUT',
+    },
+  ],
+  [assets[1].id]: [
+    {
+      id: '6aab2a45c6e457e01ac0972c',
+      assetId: assets[1].id,
+      tag: 'cam-001',
+      serial: null,
+      condition: 'NEW',
+      status: 'HELD',
+    },
+  ],
+};
+/**
+ * Apply the pagination and filters the real `/api/assets` endpoint applies.
+ * @param {URLSearchParams} search
+ * @returns {{ items: object[], total: number, page: number, limit: number }}
+ */
+export function assetsPage(search) {
+  const category = search.get('category');
+  const includeRetired = search.get('includeRetired') === 'true';
+  const filtered = assets.filter((a) => {
+    if (!includeRetired && a.retiredAt) {
+      return false;
+    }
+    if (category && a.category !== category) {
+      return false;
+    }
+    return true;
+  });
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
+/**
  * 30 audit events, newest first — enough to page at the UI's 25 per page.
  *
  * The shape matches what the real API serialises: an `id` rather than `_id`, ObjectIds flattened to
@@ -183,8 +260,16 @@ export const handlers = [
     );
   }),
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
-  http.get('*/api/assets', () => notImplemented('SCRUM-assets-list')),
-  http.get('*/api/assets/:id', () => notImplemented('SCRUM-assets-read')),
+  http.get('*/api/assets', ({ request }) =>
+    HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
+  ),
+  http.get('*/api/assets/:id', ({ params }) => {
+    const asset = assets.find((a) => a.id === params.id);
+    if (!asset) {
+      return errorResponse(404, 'NOT_FOUND', 'Asset not found');
+    }
+    return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
+  }),
   http.get('*/api/requests', () => notImplemented('SCRUM-requests-list')),
   http.get('*/api/audit', ({ request }) =>
     HttpResponse.json(auditPage(new URL(request.url).searchParams)),

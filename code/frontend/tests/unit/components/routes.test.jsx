@@ -14,13 +14,16 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from '../../../src/App';
 import { render } from '@testing-library/react';
-import { adminUser, memberUser, meHandler } from '../../mocks/handlers';
+import { adminUser, assets, memberUser, meHandler } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
   it.each([
-    ['/', 'Catalog', 'SCRUM-assets-list'],
-    ['/assets/6aab2a45c6e457e01ac0968a', 'Asset', 'SCRUM-assets-read'],
+    // The catalogue and asset detail have no ticket: SCRUM-115 shipped both endpoints and both
+    // screens, so they render real data rather than a placeholder. CatalogPage.test.jsx and
+    // AssetDetailPage.test.jsx cover them properly.
+    ['/', 'Catalog', null],
+    [`/assets/${assets[0].id}`, assets[0].name, null],
     ['/requests', 'My requests', 'SCRUM-requests-list'],
     ['/admin', 'Dashboard', null],
     ['/admin/approvals', 'Approval queue', 'SCRUM-requests-approve'],
