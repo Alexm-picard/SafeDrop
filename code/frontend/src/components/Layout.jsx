@@ -1,16 +1,16 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation, sign-out (NFR-9, NFR-12)
+// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members for ORG_ADMIN), sign-out (NFR-9, NFR-12)
 // Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
 
 /**
  * The application shell: header, primary navigation, session bar and footer around every signed-in
  * page.
  *
- * Navigation entries are filtered by role — approvals for APPROVER and ORG_ADMIN, dashboard and audit
- * log for ORG_ADMIN — which is presentation only. The routes themselves are guarded by `RequireRole`,
+ * Navigation entries are filtered by role — approvals for APPROVER and ORG_ADMIN, dashboard, members and
+ * audit log for ORG_ADMIN — which is presentation only. The routes themselves are guarded by `RequireRole`,
  * and the API enforces every permission regardless (SR-1).
  *
  * The accessibility details here are deliberate: a skip link ahead of the navigation, a labelled `nav`
@@ -65,6 +65,11 @@ export function Layout() {
                 <NavLink to={ROUTES.admin} end>
                   Dashboard
                 </NavLink>
+              </li>
+            ) : null}
+            {isAdmin ? (
+              <li>
+                <NavLink to={ROUTES.members}>Members</NavLink>
               </li>
             ) : null}
             {isAdmin ? (
