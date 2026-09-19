@@ -52,8 +52,8 @@ const stubs = [
     body: { unitId: '0'.repeat(24), neededFrom: '2026-10-01', neededTo: '2026-10-05' },
   },
   { method: 'GET', path: '/api/requests/:request', as: 'member' },
-  { method: 'POST', path: '/api/requests/:request/approve', as: 'approver' },
-  { method: 'POST', path: '/api/requests/:request/deny', as: 'approver' },
+  // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
+  // tests/integration/routes/requests.test.js.
   { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },
   { method: 'POST', path: '/api/requests/:request/checkout', as: 'approver' },
   { method: 'POST', path: '/api/requests/:request/return', as: 'approver' },

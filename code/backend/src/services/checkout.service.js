@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; transition handlers stubbed (SDD §8, arch review F4)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny() implemented (SCRUM-requests-approve, SCRUM-requests-deny)
 // Human Contributions: pending team review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
 
@@ -17,15 +17,21 @@
  * as the state change and its audit event, so a failed step can never leave a unit half-checked-out
  * (NFR-2).
  *
- * The handlers are Sprint 1 stubs. Each must: load the request by (orgId, id) and 404 if absent,
- * call `assertTransition`, apply the approval policy where relevant, and write request + unit + audit
- * inside one `withTransaction()`.
+ * `approve`/`deny` are implemented: load the request by (orgId, id) → 404 if absent, apply the
+ * organisation's approval policy (separation of duties), assertTransition, then write request + unit
+ * + audit inside one `withTransaction()`. The remaining handlers are still Sprint 1 stubs.
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
  */
-import { REQUEST_STATE as S, UNIT_STATUS as U } from '../utils/constants.js';
-import { NotImplementedError, StateTransitionError } from '../utils/errors.js';
+import { withTransaction } from '../config/db.js';
+import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
+import * as checkoutRequestRepo from '../repositories/checkoutRequest.repository.js';
+import * as organizationRepo from '../repositories/organization.repository.js';
+import { AUDIT_ACTION, AUDIT_TARGET_TYPE, REQUEST_STATE as S, UNIT_STATUS as U } from '../utils/constants.js';
+import { ForbiddenError, NotFoundError, NotImplementedError, StateTransitionError } from '../utils/errors.js';
+import * as auditService from './audit.service.js';
+import { policyFor } from './policies/approvalPolicy.js';
 
 /**
  * THE state machine. Every handler below must go through assertTransition(); nothing else may
@@ -115,9 +121,6 @@ export function canTransition(from, to) {
   return Object.hasOwn(TRANSITIONS, from) && Object.hasOwn(TRANSITIONS[from], to);
 }
 
-// ---- Sprint 1 stubs. Each must: load the request by (orgId, id) → 404 if absent; assertTransition;
-// ---- run the policy where relevant; update request + unit + audit inside ONE withTransaction(). ---
-
 /**
  * Open a checkout request (`POST /api/requests`) — not implemented yet.
  *
@@ -156,28 +159,139 @@ export async function get(_orgId, _actor, _requestId) {
 }
 
 /**
- * Approve a request (`POST /api/requests/:id/approve`) — not implemented yet.
+ * Approve a request (`POST /api/requests/:id/approve`).
  *
- * TODO(SCRUM-requests-approve): check `policy.canDecide` (an approver may not decide their own
- * request), move PENDING → APPROVED and set the unit to HELD in the same transaction.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * Holds the unit for the requester: PENDING -> APPROVED, unit -> HELD, both in one transaction with
+ * the REQUEST_APPROVED audit event (SR-9, NFR-2). Separation of duties (SDD §6.4) is enforced by the
+ * organisation's approval policy before anything is written.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ note?: string, requestId?: string }} [input] validated `decisionBody`, plus the HTTP
+ *   request id for audit correlation
+ * @returns {Promise<object>} the approved request
+ * @throws {NotFoundError} (404) no such request in this organisation
+ * @throws {ForbiddenError} (403) actor's role can't decide, or actor is the requester
+ * @throws {StateTransitionError} (409) the request isn't PENDING (including a lost race)
  */
-export async function approve(_orgId, _actor, _requestId, _input) {
-  throw new NotImplementedError(
-    'SCRUM-requests-approve',
-    'Approving requests is not implemented yet',
-  );
+export async function approve(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const org = await organizationRepo.findById(orgId);
+  const decision = policyFor(org).canDecide(request, actor);
+  if (!decision.allowed) {
+    throw new ForbiddenError(decision.reason ?? 'Not allowed to decide this request');
+  }
+
+  const { unitStatus } = assertTransition(request.state, S.APPROVED);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: S.PENDING,
+        patch: {
+          state: S.APPROVED,
+          decidedBy: actor.userId,
+          decidedAt: new Date(),
+          decisionNote: input.note ?? '',
+        },
+      },
+      { session },
+    );
+    if (!updated) {
+      // Someone else decided this request between our read and this write.
+      throw new StateTransitionError(request.state, S.APPROVED);
+    }
+
+    await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_APPROVED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: S.PENDING },
+        after: { state: S.APPROVED },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }
 
 /**
- * Deny a request (`POST /api/requests/:id/deny`) — not implemented yet.
+ * Deny a request (`POST /api/requests/:id/deny`).
  *
- * TODO(SCRUM-requests-deny): check `policy.canDecide`, move PENDING → DENIED. No unit side-effect:
- * nothing was ever held.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * PENDING -> DENIED with no unit side-effect — nothing was ever held — plus the REQUEST_DENIED
+ * audit event in the same transaction. Same policy check and race protection as `approve`.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ note?: string, requestId?: string }} [input] validated `decisionBody`, plus the HTTP
+ *   request id for audit correlation
+ * @returns {Promise<object>} the denied request
+ * @throws {NotFoundError} (404) no such request in this organisation
+ * @throws {ForbiddenError} (403) actor's role can't decide, or actor is the requester
+ * @throws {StateTransitionError} (409) the request isn't PENDING (including a lost race)
  */
-export async function deny(_orgId, _actor, _requestId, _input) {
-  throw new NotImplementedError('SCRUM-requests-deny', 'Denying requests is not implemented yet');
+export async function deny(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const org = await organizationRepo.findById(orgId);
+  const decision = policyFor(org).canDecide(request, actor);
+  if (!decision.allowed) {
+    throw new ForbiddenError(decision.reason ?? 'Not allowed to decide this request');
+  }
+
+  assertTransition(request.state, S.DENIED);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: S.PENDING,
+        patch: {
+          state: S.DENIED,
+          decidedBy: actor.userId,
+          decidedAt: new Date(),
+          decisionNote: input.note ?? '',
+        },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.DENIED);
+    }
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_DENIED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: S.PENDING },
+        after: { state: S.DENIED },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }
 
 /**

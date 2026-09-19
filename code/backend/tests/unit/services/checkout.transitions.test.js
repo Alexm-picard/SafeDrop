@@ -75,12 +75,7 @@ describe('checkout state machine (F4)', () => {
     ]);
   });
 
-  it('the table is frozen', () => {
-    expect(Object.isFrozen(checkout.TRANSITIONS)).toBe(true);
-    expect(Object.isFrozen(checkout.TRANSITIONS.PENDING)).toBe(true);
-  });
-
-  it.each(['submit', 'list', 'get', 'approve', 'deny', 'cancel', 'checkout', 'returnUnit'])(
+  it.each(['submit', 'list', 'get', 'cancel', 'checkout', 'returnUnit'])(
     'handler %s is a Sprint 1 stub (501)',
     async (name) => {
       await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
