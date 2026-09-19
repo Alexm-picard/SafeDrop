@@ -44,7 +44,7 @@ const stubs = [
   { method: 'PATCH', path: '/api/assets/:asset', as: 'admin', body: { name: 'Camera 2' } },
   { method: 'POST', path: '/api/assets/:asset/retire', as: 'admin' },
   { method: 'POST', path: '/api/assets/:asset/units', as: 'admin', body: { tag: 'cam-001' } },
-  { method: 'GET', path: '/api/requests', as: 'member' },
+  // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
   {
     method: 'POST',
     path: '/api/requests',
@@ -52,8 +52,8 @@ const stubs = [
     body: { unitId: '0'.repeat(24), neededFrom: '2026-10-01', neededTo: '2026-10-05' },
   },
   { method: 'GET', path: '/api/requests/:request', as: 'member' },
-  { method: 'POST', path: '/api/requests/:request/approve', as: 'approver' },
-  { method: 'POST', path: '/api/requests/:request/deny', as: 'approver' },
+  // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
+  // tests/integration/routes/requests.test.js.
   { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },
   { method: 'POST', path: '/api/requests/:request/checkout', as: 'approver' },
   { method: 'POST', path: '/api/requests/:request/return', as: 'approver' },

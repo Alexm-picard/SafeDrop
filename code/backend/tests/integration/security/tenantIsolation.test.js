@@ -174,14 +174,14 @@ describe('HTTP layer: org A addressing org B', () => {
       method: 'POST',
       path: '/api/requests/:id/approve',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-approve',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/deny',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-deny',
     },
     {

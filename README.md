@@ -47,7 +47,7 @@ docker compose up --build   # mongo (replica set) + mongo-init + backend (runs m
 ```
 
 - Frontend: <http://localhost:5173> — the first screen is the login page; use **Create an organization** to bootstrap the first admin.
-- Backend: <http://localhost:4000> (`/health` is a public liveness probe).
+- Backend: <http://localhost:4000> (`/health` is a public probe: 200 when the API and its database are up, 503 when the database is unreachable).
 - Mongo from the host: `mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true`.
 
 Useful variants:
@@ -124,3 +124,52 @@ drops and recreates them from scratch — no flag or confirmation needed. Refuse
 `NODE_ENV=production`.
 
 **`MONGODB_URI` must be set wherever you run this — inside the container or on your host machine.**
+
+## Staging
+
+| | URL |
+|---|---|
+| App (Vercel) | <https://safe-drop-five.vercel.app> |
+| API (Render) | <https://safedrop-ony6.onrender.com> (`/health` is the probe) |
+
+**How a change gets there.** Merge to `main` in this repository. CI runs lint, format, tests, the
+dependency audit and both Docker builds; if all pass, the `deploy-staging` job force-pushes `main`
+to [`Alexm-picard/SafeDrop`](https://github.com/Alexm-picard/SafeDrop), which Render and Vercel are
+connected to. Render then rebuilds the API from `code/backend/Dockerfile` and Vercel rebuilds the
+app from `code/frontend`. SafeDrop is only a mirror: anything committed to it directly is
+overwritten by the next merge here. Vercel labels these builds "Production"; for this project they
+are staging. Nothing deploys to production yet (`deploy-production` in CI is a placeholder).
+
+The app calls `/api/*` on its own origin and `code/frontend/vercel.json` forwards those requests to
+the Render API, so the session cookies stay first-party (SDD §6.3).
+
+**Render environment.** Set in the Render dashboard, never committed:
+
+| Variable | Staging value |
+|---|---|
+| `NODE_ENV` | `production` (set by the Dockerfile) |
+| `MONGODB_URI` | Atlas connection string (secret) |
+| `JWT_ACCESS_SECRET` | secret, at least 32 characters |
+| `CORS_ORIGINS` | `https://safe-drop-five.vercel.app` |
+| `APP_BASE_URL` | `https://safe-drop-five.vercel.app` (base of invitation links) |
+| `COOKIE_SECURE` | `true` |
+| `TRUST_PROXY` | `1` per SDD §6.8, which is also the production default when unset (see the known issue below) |
+
+In production mode the API refuses to start without `COOKIE_SECURE=true`, a non-empty
+`CORS_ORIGINS` and an `https://` `APP_BASE_URL`, so a missing value fails the deploy rather than
+serving insecurely. The catch is that Render then keeps the previous version running, so staging
+quietly stays on old code. **A PR that adds a required variable must have it set in Render before
+it merges**, and should add it to this table.
+
+**Database.** MongoDB Atlas (free tier). The container does not run migrations: after merging a
+change that adds one, run `npm run migrate` from `code/backend` with `MONGODB_URI` set to the Atlas
+connection string.
+
+**Cold starts.** The Render free tier stops the API after 15 minutes without traffic, and the next
+request waits while it starts again (about 20 seconds when measured).
+
+**Known issue: login rate limiting on staging.** On Render the API does not see the caller's IP.
+Requests from a single client land in several rate-limit buckets that other clients share, which
+means it is keying on a few Render proxy addresses. The failed-login limit (20 per 15 minutes) is
+therefore shared by everyone rather than applied per client, so enough failed logins from anyone
+produce 429s for everyone. Do not test the rate limiter against staging until this is fixed.

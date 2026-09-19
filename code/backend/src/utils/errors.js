@@ -17,9 +17,9 @@
  * a failed lookup) belongs in `cause`, which is logged and never sent.
  *
  * Exports: `AppError` and its subclasses `ValidationError` (400), `AuthError` (401), `ForbiddenError`
- * (403), `NotFoundError` (404), `ConflictError` (409), `StateTransitionError` (409),
- * `UnsupportedMediaTypeError` (415), `RateLimitError` (429), `NotImplementedError` (501), plus the
- * `isAppError` type guard.
+ * (403), `InvitationError` (400), `NotFoundError` (404), `ConflictError` (409), `StateTransitionError` (409),
+ * `UnsupportedMediaTypeError` (415), `RateLimitError` (429), `NotImplementedError` (501),
+ * `ServiceUnavailableError` (503), plus the `isAppError` type guard.
  */
 
 /**
@@ -121,6 +121,17 @@ export class NotImplementedError extends AppError {
       code: 'NOT_IMPLEMENTED',
       details: ticket ? { ticket } : undefined,
     });
+  }
+}
+
+/**
+ * 503 — the process is up but cannot serve requests because a dependency (the database) is not
+ * reachable. Raised by GET /health. The client learns only "not ready"; the underlying driver error
+ * travels in `cause`, which is logged and never sent (SDD §6.5).
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service not ready', cause) {
+    super(message, { status: 503, code: 'SERVICE_UNAVAILABLE', cause });
   }
 }
 
