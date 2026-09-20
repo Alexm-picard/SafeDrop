@@ -16,7 +16,9 @@
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
+import { Link } from 'react-router';
 import { useRequests } from '../hooks/useRequests';
+import { ROUTES } from '../utils/constants';
 import { formatDate, humanize } from '../utils/format';
 /**
  * Render the member's requests as a table.
@@ -38,7 +40,13 @@ export function MyRequestsPage() {
         <DataTable
           caption="Requests"
           columns={[
-            { key: 'state', header: 'State', render: (r) => humanize(r.state) },
+            {
+              key: 'state',
+              header: 'State',
+              // The state doubles as the way in to the detail screen (SCRUM-123), so the row has a
+              // link without a column of bare "View" links.
+              render: (r) => <Link to={ROUTES.request(r.id)}>{humanize(r.state)}</Link>,
+            },
             { key: 'from', header: 'Needed from', render: (r) => formatDate(r.neededFrom) },
             { key: 'to', header: 'Needed until', render: (r) => formatDate(r.neededTo) },
           ]}

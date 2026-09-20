@@ -489,6 +489,32 @@ export const handlers = [
   http.get('*/api/requests', ({ request }) =>
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
   ),
+  http.get('*/api/requests/:id', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    if (!found) {
+      // What the real API answers for another member's request and for one that never existed:
+      // the same 404, so neither can be told from the other (SR-2).
+      return errorResponse(404, 'NOT_FOUND', 'Request not found');
+    }
+    const unit = Object.values(assetUnits)
+      .flat()
+      .find((u) => u.id === found.unitId);
+    const asset = unit ? assets.find((a) => a.id === unit.assetId) : null;
+    return HttpResponse.json({
+      request: found,
+      asset,
+      unit,
+      requester: { id: memberUser.id, name: memberUser.name, email: memberUser.email },
+      decidedBy: found.decidedBy
+        ? { id: approverUser.id, name: approverUser.name, email: approverUser.email }
+        : null,
+      timeline: [
+        { at: '2026-09-18T00:00:00.000Z', event: 'SUBMITTED' },
+        ...(found.decidedAt ? [{ at: found.decidedAt, event: 'APPROVED' }] : []),
+        ...(found.checkedOutAt ? [{ at: found.checkedOutAt, event: 'CHECKED_OUT' }] : []),
+      ],
+    });
+  }),
   http.post('*/api/requests/:id/approve', ({ params }) => {
     const found = checkoutRequests.find((r) => r.id === params.id);
     return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'APPROVED' });

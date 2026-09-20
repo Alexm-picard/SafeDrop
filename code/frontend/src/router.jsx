@@ -36,6 +36,7 @@ import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { OrgSetupPage } from './pages/OrgSetupPage';
+import { RequestDetailPage } from './pages/RequestDetailPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 /**
  * The route tree, from public pages down to role-gated admin areas.
@@ -60,6 +61,9 @@ export const routes = [
           { index: true, element: <CatalogPage /> },
           { path: 'assets/:id', element: <AssetDetailPage /> },
           { path: 'requests', element: <MyRequestsPage /> },
+          // Not role-gated: the API decides who may see a given request, answering 404 for one
+          // that is not the caller's (SCRUM-123, SR-2).
+          { path: 'requests/:id', element: <RequestDetailPage /> },
           {
             element: <RequireRole roles={['APPROVER', 'ORG_ADMIN']} />,
             children: [{ path: 'admin/approvals', element: <ApprovalQueuePage /> }],
