@@ -40,16 +40,6 @@ export const memberUser = {
   name: 'Max Member',
   role: 'MEMBER',
 };
-/** An invitation token the mock accepts, one it reports as expired, and (by elimination) any other is invalid. */
-export const VALID_TOKEN = 'valid-invitation-token-0123456789abcdefghij';
-export const EXPIRED_TOKEN = 'expired-invitation-token-0123456789abcdefgh';
-
-/** The one-time links the mock API hands back for an invitation and for a resend. */
-export const INVITE_LINK =
-  'http://localhost:5173/accept-invite?token=invite-token-0123456789abcdefghijklmnopqrs';
-export const RESENT_LINK =
-  'http://localhost:5173/accept-invite?token=resent-token-0123456789abcdefghijklmnopqrs';
-
 export const summary = {
   totalAssets: 12,
   checkedOut: 4,
@@ -193,7 +183,10 @@ export function auditPage(search) {
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
 }
 /**
- * Three checkout requests for the caller's org, one per state the approval queue actually exercises.
+ * Four checkout requests for the caller's org, one per state the approval queue actually exercises:
+ * PENDING (approve/deny), APPROVED (checkout), CHECKED_OUT (return), and DENIED — a terminal state
+ * with no action, so a test can prove the actions column renders nothing rather than merely having
+ * no row to check.
  */
 export const checkoutRequests = [
   {
@@ -242,6 +235,22 @@ export const checkoutRequests = [
     decisionNote: '',
     checkedOutAt: '2026-09-01T00:00:00.000Z',
     dueAt: '2026-09-14T00:00:00.000Z',
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973d',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972a',
+    requesterId: memberUser.id,
+    state: 'DENIED',
+    neededFrom: '2026-08-01T00:00:00.000Z',
+    neededTo: '2026-08-10T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-07-31T00:00:00.000Z',
+    decisionNote: 'Not eligible',
+    checkedOutAt: null,
+    dueAt: null,
     returnedAt: null,
   },
 ];
@@ -348,21 +357,6 @@ export const handlers = [
     errorResponse(401, 'UNAUTHENTICATED', 'Invalid refresh token'),
   ),
   http.post('*/api/auth/logout', () => new HttpResponse(null, { status: 204 })),
-  http.post('*/api/auth/accept-invite', async ({ request }) => {
-    const body = await request.json();
-    if (body.token === EXPIRED_TOKEN) {
-      return errorResponse(400, 'INVITATION_EXPIRED', 'This invitation has expired');
-    }
-    if (body.token !== VALID_TOKEN) {
-      return errorResponse(400, 'INVITATION_INVALID', 'This invitation link is not valid');
-    }
-    if (!body.password || body.password.length < 10) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
-        { location: 'body', path: 'password', message: 'must be at least 10 characters' },
-      ]);
-    }
-    return HttpResponse.json({ user: { ...memberUser, invitation: null }, organization: org });
-  }),
   http.post('*/api/organizations', async ({ request }) => {
     const body = await request.json();
     if (!body.adminPassword || body.adminPassword.length < 10) {
@@ -444,6 +438,14 @@ export const handlers = [
     const found = checkoutRequests.find((r) => r.id === params.id);
     return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'DENIED' });
   }),
+  http.post('*/api/requests/:id/checkout', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'CHECKED_OUT' });
+  }),
+  http.post('*/api/requests/:id/return', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'RETURNED' });
+  }),
   http.get('*/api/users', ({ request }) =>
     HttpResponse.json(membersPage(new URL(request.url).searchParams)),
   ),
@@ -457,32 +459,11 @@ export const handlers = [
           email: body.email,
           name: body.name,
           role: body.role ?? 'MEMBER',
-          invitation: {
-            status: 'PENDING',
-            expiresAt: new Date(Date.UTC(2026, 8, 13)).toISOString(),
-          },
           createdAt: new Date(Date.UTC(2026, 8, 10)).toISOString(),
         },
-        inviteLink: INVITE_LINK,
       },
       { status: 201 },
     );
-  }),
-  http.post('*/api/users/:id/resend-invite', ({ params }) => {
-    const target = members.find((m) => m.id === params.id);
-    if (!target) {
-      return errorResponse(404, 'NOT_FOUND', 'User not found');
-    }
-    return HttpResponse.json({
-      user: {
-        ...target,
-        invitation: {
-          status: 'PENDING',
-          expiresAt: new Date(Date.UTC(2026, 8, 16)).toISOString(),
-        },
-      },
-      inviteLink: RESENT_LINK,
-    });
   }),
   http.patch('*/api/users/:id/role', async ({ params, request }) => {
     const { role } = await request.json();

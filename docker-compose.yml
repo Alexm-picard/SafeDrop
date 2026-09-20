@@ -2,8 +2,8 @@
 # Tools: Claude Code
 # Overall AI Contribution: ~90% (skeleton generated from team design documents)
 # AI-Assisted Areas: three-container local stack (mongo replica set + init sidecar, backend, frontend)
-# Human Contributions: pending team review (original two-service file by Alex Picard; mongo services added)
-# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+# Human Contributions: original two-service file by Alex Picard, mongo services added; reviewed by Amber Rastella (PR #7, 2026-09-18)
+# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 #
 # Local development stack for SafeDrop (SDD §2.3.4, kickoff SCRUM-111).
 #
@@ -74,8 +74,6 @@ services:
       COOKIE_SECURE: 'false'
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
-      INVITE_TTL: ${INVITE_TTL:-72h}
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
     volumes:
       - ./code/backend:/app # bind mount so `node --watch` reloads on edits
       - /app/node_modules # keep the container's node_modules, not the host's

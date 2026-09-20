@@ -1,33 +1,30 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; member lifecycle implemented from the ticket)
-// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (one-time link for the admin to send), resend, change role (SCRUM-users-list / -invite / -role)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
+// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-users-list / -invite / -role)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
 
 /**
  * Organisation lifecycle and member administration.
  *
  * `createOrganization()` is the system's bootstrap: it creates a tenant, its first ORG_ADMIN, the
  * ORG_CREATED audit event and the admin's session, all in one transaction. Everything after that is
- * member management — `listUsers`, `inviteUser`, `resendInvite` and `changeUserRole` — which is how an organisation
+ * member management — `listUsers`, `inviteUser` and `changeUserRole` — which is how an organisation
  * grows beyond its founding admin. All three act on the *caller's own* organisation: the tenant is
  * passed in from the verified token and never read from the request (SR-2).
  *
- * Exports: `createOrganization`, `listUsers`, `inviteUser`, `resendInvite`, `changeUserRole`, and a re-export of
+ * Exports: `createOrganization`, `listUsers`, `inviteUser`, `changeUserRole`, and a re-export of
  * `slugify`.
  */
 import { withTransaction } from '../config/db.js';
 import * as orgRepo from '../repositories/organization.repository.js';
 import * as refreshRepo from '../repositories/refreshToken.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
-import { env } from '../config/env.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../utils/constants.js';
-import { durationToMs } from '../utils/duration.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { PERMISSIONS, ROLE_LIST, ROLES, roleHasPermission } from '../utils/permissions.js';
 import { slugify } from '../utils/slug.js';
-import { generateOpaqueToken, hashToken } from '../utils/tokens.js';
 import { record as recordAudit } from './audit.service.js';
 import { hashPassword, publicUser, startSession } from './auth.service.js';
 
@@ -169,110 +166,69 @@ export async function listUsers(orgId, query = {}) {
   return { items: items.map(publicUser), total, page, limit };
 }
 
-/**
- * Mint an invitation: a random one-time token, its stored hash, and when it stops working.
- *
- * The raw token exists only long enough to be put in the link handed to the admin; the database gets
- * the SHA-256 hash, so a leaked copy of it cannot be turned back into a working link. Expiry is `INVITE_TTL` from now.
- * @param {Date} [now]
- * @returns {{ raw: string, tokenHash: string, expiresAt: Date }}
- */
-function newInvitation(now = new Date()) {
-  const raw = generateOpaqueToken();
-  return {
-    raw,
-    tokenHash: hashToken(raw),
-    expiresAt: new Date(now.getTime() + durationToMs(env.INVITE_TTL)),
-  };
-}
-
-/**
- * Build the link an invitee opens to choose their password.
- *
- * It points at the SPA (`APP_BASE_URL`), not the API, because the invitee needs a page to type into. The
- * token is base64url, so it needs no escaping in a URL.
- * @param {string} rawToken
- * @returns {string}
- */
-const inviteLink = (rawToken) => `${env.APP_BASE_URL}/accept-invite?token=${rawToken}`;
-
 // AI-ASSISTED: YES
 //   Tool: Claude Code
-//   Prompt Summary: "Implement invite: create a user in the admin's own org and append USER_INVITED in
-//   the same transaction." Revised: "a one-time link that expires after 72 hours, shown to the admin
-//   to copy and send; the invitee chooses their own password; no default password, no email."
+//   Prompt Summary: "Implement invite: create a user in the admin's own org with the role chosen and an
+//   initial password the admin sets and shares out of band; append USER_INVITED in the same
+//   transaction; duplicate email in the org is a 409." (no email service, no invitation link)
 //   AI Contribution: Initial draft and tests (~100% of the first version).
 //   Modifications: none yet — pending review by the owning team member.
 //   Verification:
-//   - Integration tests (tests/integration/routes/users.test.js, invitations.test.js)
+//   - Integration tests (tests/integration/routes/users.test.js)
 //   - Unit tests (tests/unit/services/userManagement.test.js)
-//   Confidence: Medium-High; the Security lead should review the invitation token handling.
+//   Confidence: Medium-High; the Security lead should review the shared initial password.
 /**
  * Invite a new member into the caller's organisation (`POST /api/users/invite`, SDD OD-3).
  *
  * The user is created in the *admin's own* organisation — `orgId` is the token's, and the body schema
- * has no organisation field, so a request cannot name another tenant (SR-2).
+ * has no organisation field, so a request cannot name another tenant (SR-2, mass-assignment defence).
  *
- * The invitee is created with **no usable password** and a one-time link. Their account holds a bcrypt
- * hash of a random value that nobody knows, so no one can sign in as them; the link lets whoever opens it
- * choose a password (`acceptInvite`). The link is returned to the admin to copy and send however they
- * like — there is no email — and it is **shown only in this response**: the database keeps just its
- * hash, so it cannot be displayed again. It stops working after `INVITE_TTL` (72 hours by default) or
- * once used, and the admin can issue a replacement (`resendInvite`), which kills the old one.
+ * Iteration 1 has no email service, so the admin **sets the member's initial password** and shares it
+ * out of band. It is validated by the same schema as any password (length, 72-byte cap), hashed with
+ * bcrypt, and never returned, logged or audited: the response and the USER_INVITED event describe the
+ * member, not the credential. The member signs in with the organisation code, their email and that
+ * password. Email delivery is deferred to Iteration 2 alongside forgotten-password.
  *
- * **Trade-off, deliberately accepted:** because the admin holds the link, the admin *could* open it and
- * choose the member's password themselves. The flow guarantees the member can pick their own, not that
- * nobody else could. The link is a credential; the SPA says so beside it. Nothing here logs it, audits
- * it, or stores it.
+ * **Known limitation, accepted for Iteration 1:** the admin knows the member's password, and nothing
+ * makes the member change it. That sits uneasily with non-repudiation (SR-10); a change-password screen
+ * and a forced change at first sign-in are the follow-up.
  *
  * Order of work, and why:
- *  1. A duplicate email is refused with 409 *before* any bcrypt work — hashing at cost 12 is slow, and
- *     there is no reason to spend it on a request that cannot succeed. The message covers a member who
- *     has been invited but not yet accepted: for them the answer is to resend, not to invite again.
- *  2. The placeholder password is hashed *outside* the transaction, for the same reason
- *     `createOrganization` does: never hold a transaction open across bcrypt.
- *  3. Inside the transaction the caller's role is re-read from the database (see
- *     `currentManagerRole`), the user is created, and USER_INVITED is appended, so the account and
- *     the evidence of who created it commit together or not at all (OD-2).
- *  4. Only after the commit is the link built from the raw token, which exists nowhere else.
+ *  1. A duplicate email is refused with 409 *before* the bcrypt hash is computed — hashing at cost 12 is
+ *     slow, and there is no reason to spend it on a request that cannot succeed. Uniqueness is per
+ *     organisation (OD-3): the same address in another organisation is fine.
+ *  2. The password is hashed *outside* the transaction, for the same reason `createOrganization` does:
+ *     never hold a transaction open across bcrypt.
+ *  3. Inside the transaction the caller's role is re-read from the database (see `currentManagerRole`),
+ *     the user is created, and USER_INVITED is appended, so the account and the evidence of who created
+ *     it commit together or not at all (OD-2, SR-9).
  *
  * The check in step 1 is a courtesy; the `orgId_email_unique` index is the real guarantee. Two
  * concurrent invitations for one address both pass step 1, and the loser of the race hits the index —
  * translated here to the same 409 rather than leaking a raw duplicate-key error.
  *
- * The invitee can hold any role, including ORG_ADMIN: `users:manage` is what gates this, and until
- * they open the link they cannot sign in at all, whatever the role.
- *
+ * The invitee can hold any role, including ORG_ADMIN: `users:manage` is what gates this.
  * @param {string} orgId the caller's organisation, from the token
  * @param {{ userId: string }} actor the verified caller (`req.auth`)
- * @param {{ email: string, name: string, role?: string }} input validated by `inviteBody`
+ * @param {{ email: string, name: string, password: string, role?: string }} input validated by `inviteBody`
  * @param {{ requestId?: string }} [context]
- * @returns {Promise<{ user: object, inviteLink: string }>} the new member, and the one-time link to give them
+ * @returns {Promise<{ user: object }>} the new member (never their password)
  * @throws {ConflictError} (409) when the email is already a member of this organisation
  * @throws {ForbiddenError} (403) when the caller has been demoted since their token was issued
  */
 export async function inviteUser(orgId, actor, input, { requestId } = {}) {
-  const { email, name, role = ROLES.MEMBER } = input;
+  const { email, name, password, role = ROLES.MEMBER } = input;
   if (await userRepo.findByEmail(orgId, email)) {
     throw new ConflictError(DUPLICATE_EMAIL, { field: 'email' });
   }
-  const passwordHash = await hashPassword(generateOpaqueToken());
-  const invitation = newInvitation();
+  const passwordHash = await hashPassword(password);
 
-  let user;
   try {
-    user = await withTransaction(async (session) => {
+    const user = await withTransaction(async (session) => {
       const actorRole = await currentManagerRole(orgId, actor, session);
       const created = await userRepo.create(
         orgId,
-        {
-          email,
-          name,
-          role,
-          passwordHash,
-          inviteTokenHash: invitation.tokenHash,
-          inviteExpiresAt: invitation.expiresAt,
-        },
+        { email, name, role, passwordHash },
         { session },
       );
       await recordAudit(
@@ -283,106 +239,20 @@ export async function inviteUser(orgId, actor, input, { requestId } = {}) {
           targetType: AUDIT_TARGET_TYPE.User,
           targetId: created._id,
           before: null,
-          after: {
-            email: created.email,
-            name: created.name,
-            role: created.role,
-            inviteExpiresAt: invitation.expiresAt,
-          },
+          after: { email: created.email, name: created.name, role: created.role },
           requestId,
         },
         { session },
       );
       return created;
     });
+    return { user: publicUser(user) };
   } catch (err) {
     if (err && err.code === 11000) {
       throw new ConflictError(DUPLICATE_EMAIL, { field: 'email' });
     }
     throw err;
   }
-  return { user: publicUser(user), inviteLink: inviteLink(invitation.raw) };
-}
-
-// AI-ASSISTED: YES
-//   Tool: Claude Code
-//   Prompt Summary: "Resend invitation: issue a fresh one-time link and a new 72-hour window for a
-//   member who has not accepted, invalidating the old link."
-//   AI Contribution: Initial draft and tests (~100% of the first version).
-//   Modifications: none yet — pending review by the owning team member.
-//   Verification:
-//   - Integration tests (tests/integration/routes/invitations.test.js)
-//   Confidence: Medium-High.
-/**
- * Issue a member a fresh invitation link (`POST /api/users/:id/resend-invite`).
- *
- * For an invitee whose link expired or was lost — the admin cannot be shown the old one again, since only
- * its hash is stored. It replaces the stored token and expiry, so **the old link stops working the
- * moment this succeeds** and only the newest one is live. It applies only to a member who has not yet
- * accepted: someone already active is a 409, because a fresh link for an existing account would be
- * a way to take it over.
- *
- * Same discipline as `inviteUser`: the caller's role is re-read from the database inside the
- * transaction, the target is looked up in the caller's own organisation (another tenant's user is a
- * 404), and the audit event — a second USER_INVITED, distinguishable by carrying `resent: true` and the
- * previous expiry as `before` — commits with the change. Like `inviteUser`, the link is returned once
- * and stored nowhere.
- * @param {string} orgId the caller's organisation, from the token
- * @param {{ userId: string }} actor the verified caller (`req.auth`)
- * @param {string} userId the member to re-invite, from the URL
- * @param {{ requestId?: string }} [context]
- * @returns {Promise<{ user: object, inviteLink: string }>}
- * @throws {ForbiddenError} (403) when the caller has been demoted since their token was issued
- * @throws {NotFoundError} (404) when the user is not in the caller's organisation
- * @throws {ConflictError} (409) when the member has already accepted their invitation
- */
-export async function resendInvite(orgId, actor, userId, { requestId } = {}) {
-  const invitation = newInvitation();
-  const user = await withTransaction(async (session) => {
-    const actorRole = await currentManagerRole(orgId, actor, session);
-    const target = await userRepo.findById(orgId, userId, { session });
-    if (!target) {
-      throw new NotFoundError('User not found');
-    }
-    const previousExpiry = target.inviteExpiresAt ?? null;
-    const updated = previousExpiry
-      ? await userRepo.reissueInvite(
-          orgId,
-          target._id,
-          invitation.tokenHash,
-          invitation.expiresAt,
-          {
-            session,
-          },
-        )
-      : null;
-    if (!updated) {
-      throw new ConflictError('This member has already accepted their invitation', {
-        field: 'user',
-      });
-    }
-    await recordAudit(
-      orgId,
-      {
-        actor: { userId: actor.userId, role: actorRole },
-        action: AUDIT_ACTION.USER_INVITED,
-        targetType: AUDIT_TARGET_TYPE.User,
-        targetId: target._id,
-        before: { inviteExpiresAt: previousExpiry },
-        after: {
-          email: updated.email,
-          name: updated.name,
-          role: updated.role,
-          inviteExpiresAt: invitation.expiresAt,
-          resent: true,
-        },
-        requestId,
-      },
-      { session },
-    );
-    return updated;
-  });
-  return { user: publicUser(user), inviteLink: inviteLink(invitation.raw) };
 }
 
 // AI-ASSISTED: YES

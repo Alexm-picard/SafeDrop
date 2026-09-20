@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: every Sprint-1 stub returns 501 with its ticket; skipped acceptance tests name what each ticket must satisfy
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Integration tests for the Sprint 1 stubs, and the specification of what replaces them.
@@ -55,8 +55,10 @@ const stubs = [
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
   { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },
-  { method: 'POST', path: '/api/requests/:request/checkout', as: 'approver' },
-  { method: 'POST', path: '/api/requests/:request/return', as: 'approver' },
+
+  // POST /api/requests/:request/checkout and /api/requests/:request/return are no longer here: SCRUM-120 implemented them — see
+  // tests/integration/routes/requests.test.js.
+
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
   // criteria live in the un-skipped describe block below.
   // GET /api/users, POST /api/users/invite and PATCH /api/users/:id/role are no longer here: the
@@ -110,10 +112,6 @@ describe.skip('SCRUM-requests-*: checkout workflow (F4 state machine)', () => {
   );
   it('deny moves PENDING → DENIED and appends REQUEST_DENIED');
   it('cancel by the requester moves PENDING/APPROVED → CANCELLED and frees a HELD unit');
-  it(
-    'checkout (requests:handoff) moves APPROVED → CHECKED_OUT, sets unit OUT and dueAt, appends ASSET_CHECKED_OUT',
-  );
-  it('return moves CHECKED_OUT/OVERDUE → RETURNED, sets unit AVAILABLE, appends ASSET_RETURNED');
   it('a MEMBER reading another member’s request gets 404');
 });
 

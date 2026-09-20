@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny()/list() implemented (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * The checkout state machine, and the request handlers built on it.
@@ -17,11 +17,11 @@
  * as the state change and its audit event, so a failed step can never leave a unit half-checked-out
  * (NFR-2).
  *
- * `approve`/`deny` are implemented: load the request by (orgId, id) → 404 if absent, apply the
- * organisation's approval policy (separation of duties), assertTransition, then write request + unit
- * + audit inside one `withTransaction()`. `list()` is implemented too: it answers `GET /api/requests`
- * for every role, but which requests come back depends on the caller, not just their role — see its
- * own doc comment. The remaining handlers are still Sprint 1 stubs.
+ * `approve`/`deny`/`checkout`/`returnUnit` are implemented: load the request by (orgId, id) → 404 if
+ * absent, assertTransition, then write request + unit + audit inside one `withTransaction()`.
+ * `approve`/`deny` additionally apply the organisation's approval policy (separation of duties);
+ * `checkout`/`returnUnit` do not — access to them is gated entirely by the `requests:handoff`
+ * permission at the route (OD-4). `submit`, `list`, `get`, `cancel` are still Sprint 1 stubs.
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
@@ -340,26 +340,124 @@ export async function cancel(_orgId, _actor, _requestId) {
 }
 
 /**
- * Hand the item over (`POST /api/requests/:id/checkout`) — not implemented yet.
+ * Hand the item over (`POST /api/requests/:id/checkout`).
  *
- * TODO(SCRUM-requests-checkout): requires `requests:handoff`; moves APPROVED → CHECKED_OUT, sets the
- * unit to OUT and stamps `dueAt` from the requested window.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * APPROVED -> CHECKED_OUT, unit -> OUT, `dueAt` stamped from the request's own `neededTo` (OD-4:
+ * gated by `requests:handoff` at the route, not by separation of duties — anyone holding that
+ * permission may record a handoff). ASSET_CHECKED_OUT audit event in the same transaction.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ requestId?: string }} [input] the HTTP request id, for audit correlation
+ * @returns {Promise<object>} the checked-out request
+ * @throws {NotFoundError} (404) no such request in this organisation
+ * @throws {StateTransitionError} (409) the request isn't APPROVED (including a lost race)
  */
-export async function checkout(_orgId, _actor, _requestId) {
-  throw new NotImplementedError(
-    'SCRUM-requests-checkout',
-    'Checkout handoff is not implemented yet',
-  );
+export async function checkout(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const { unitStatus } = assertTransition(request.state, S.CHECKED_OUT);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: S.APPROVED,
+        patch: {
+          state: S.CHECKED_OUT,
+          checkedOutAt: new Date(),
+          dueAt: request.neededTo,
+        },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.CHECKED_OUT);
+    }
+
+    await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.ASSET_CHECKED_OUT,
+        targetType: AUDIT_TARGET_TYPE.AssetUnit,
+        targetId: updated.unitId,
+        before: { status: U.HELD },
+        after: { status: unitStatus },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }
 
 /**
- * Take the item back (`POST /api/requests/:id/return`) — not implemented yet.
+ * Take the item back (`POST /api/requests/:id/return`).
  *
- * TODO(SCRUM-requests-return): requires `requests:handoff`; moves CHECKED_OUT or OVERDUE → RETURNED
- * and sets the unit back to AVAILABLE, recording any condition change.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * CHECKED_OUT or OVERDUE -> RETURNED, unit -> AVAILABLE, with any reported condition change recorded
+ * in the same write. OVERDUE itself is Iteration 2 (needs a scheduler) — nothing puts a request there
+ * yet, so this path exists for when it does, without depending on that work. ASSET_RETURNED audit
+ * event in the same transaction. Gated by `requests:handoff` at the route (OD-4).
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ condition?: string, note?: string, requestId?: string }} [input] validated `returnBody`,
+ *   plus the HTTP request id for audit correlation
+ * @returns {Promise<object>} the returned request
+ * @throws {NotFoundError} (404) no such request in this organisation
+ * @throws {StateTransitionError} (409) the request isn't CHECKED_OUT/OVERDUE (including a lost race)
  */
-export async function returnUnit(_orgId, _actor, _requestId, _input) {
-  throw new NotImplementedError('SCRUM-requests-return', 'Return handoff is not implemented yet');
+export async function returnUnit(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const { unitStatus } = assertTransition(request.state, S.RETURNED);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: request.state,
+        patch: { state: S.RETURNED, returnedAt: new Date() },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.RETURNED);
+    }
+
+    await assetUnitRepo.updateStatusAndCondition(
+      orgId,
+      updated.unitId,
+      { status: unitStatus, condition: input.condition },
+      { session },
+    );
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.ASSET_RETURNED,
+        targetType: AUDIT_TARGET_TYPE.AssetUnit,
+        targetId: updated.unitId,
+        before: { status: U.OUT },
+        after: { status: unitStatus, ...(input.condition ? { condition: input.condition } : {}) },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }

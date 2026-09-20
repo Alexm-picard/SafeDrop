@@ -50,7 +50,7 @@ describe('POST /api/auth/change-password', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.user).toMatchObject({ email: seed.a.member.email, invitation: null });
+    expect(res.body.user).toMatchObject({ email: seed.a.member.email });
     // Nothing secret comes back — not the new password, not any hash.
     expect(JSON.stringify(res.body)).not.toMatch(new RegExp(`${CHOSEN}|passwordHash|\\$2[aby]\\$`));
     // The browser leaves holding fresh session cookies.

@@ -1,9 +1,9 @@
 /* AI-USAGE SUMMARY
    Tools: Claude Code
    Overall AI Contribution: ~90% (skeleton generated from team design documents)
-   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice and .invite-form for the members screen
-   Human Contributions: pending team review
-   Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge. */
+   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen
+   Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+   Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. */
 
 :root {
   --bg: #f7f7f5;
@@ -266,7 +266,7 @@ button.danger,
   margin-bottom: 1rem;
 }
 
-/* A success message, the counterpart of .alert. Also holds the one-time temporary password. */
+/* A success message, the counterpart of .alert. */
 .notice {
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
@@ -277,31 +277,11 @@ button.danger,
 .notice p {
   margin: 0 0 0.5rem;
 }
-.invite-link {
-  margin: 0.75rem 0;
-}
-.invite-link label {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-.invite-link__row {
-  display: flex;
-  gap: 0.5rem;
-}
-.invite-link__row input {
-  flex: 1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+.checkbox {
+  font-weight: 400;
   font-size: 0.875rem;
+  margin-top: 0.25rem;
 }
-.notice code {
-  font-size: 1rem;
-  font-weight: 700;
-  padding: 0.125rem 0.375rem;
-  border-radius: 4px;
-  background: var(--bg);
-  overflow-wrap: anywhere;
-}
-
 /* The invite form sits above the list; keep it from stretching across a wide screen. */
 .invite-form {
   max-width: 32rem;

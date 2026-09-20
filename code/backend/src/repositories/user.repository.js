@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped user persistence; passwordHash only via the explicit *WithPassword readers (SR-2, SR-3); session-aware reads, countByRole, setPassword and the invitation-token functions for the member lifecycle
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; countByRole and the session options added for the member-lifecycle ticket. Must be reviewed and tested by the owning team member before merge.
+// AI-Assisted Areas: tenant-scoped user persistence; passwordHash only via the explicit *WithPassword readers (SR-2, SR-3); session-aware reads, countByRole and setPassword for the member lifecycle
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; countByRole and the session options added for the member-lifecycle ticket.
 //
 // Every function takes orgId first. A document from another tenant is simply never matched, so the
 // service layer turns `null` into a 404 (never a 403, which would confirm the id exists).
@@ -23,10 +23,8 @@
  * same snapshot as the writes that follow them.
  *
  * Exports: `create`, `findById`, `findByEmail`, `findByEmailWithPassword`, `findRole`, `updateRole`,
- * `list`, `countByOrg`, `countByRole`, `findByIdWithPassword`, `setPassword`, `findByInviteTokenHash`, `acceptInvite`,
- * `reissueInvite`.
+ * `list`, `countByOrg`, `countByRole`, `findByIdWithPassword`, `setPassword`.
  */
-import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 
 /**
@@ -42,28 +40,16 @@ const normalizeEmail = (email) => String(email).trim().toLowerCase();
  * Takes an already-computed `passwordHash` — hashing is auth.service's job, and a repository that
  * accepted a plaintext password would invite one to be stored.
  * @param {string} orgId
- * @param {{ email: string, name: string, role: string, passwordHash: string, inviteTokenHash?: string, inviteExpiresAt?: Date }} data
+ * @param {{ email: string, name: string, role: string, passwordHash: string }} data
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>}
  */
-export async function create(
-  orgId,
-  { email, name, role, passwordHash, inviteTokenHash, inviteExpiresAt },
-  { session } = {},
-) {
+export async function create(orgId, { email, name, role, passwordHash }, { session } = {}) {
   const [doc] = await User.create(
-    [
-      {
-        orgId,
-        email: normalizeEmail(email),
-        name,
-        role,
-        passwordHash,
-        inviteTokenHash,
-        inviteExpiresAt,
-      },
-    ],
-    { session },
+    [{ orgId, email: normalizeEmail(email), name, role, passwordHash }],
+    {
+      session,
+    },
   );
   return doc;
 }
@@ -146,7 +132,11 @@ export async function updateRole(orgId, userId, role, { session } = {}) {
  * List the organisation's users, oldest first, paginated.
  *
  * Sorted by `createdAt` so the founding admin stays at the top and the order does not shift as
- * people are renamed. Backs the admin user-management view (`users:manage`).
+ * people are renamed, with `_id` as the tiebreak. The tiebreak is not decoration: two members created in
+ * the same millisecond (a seeded organisation, a bulk import) have equal `createdAt`, and with `skip`
+ * and `limit` an order that is undefined among equals can repeat one member and drop another between
+ * pages. `_id` is unique and rises over time, so every page boundary falls in the same place every time.
+ * Backs the admin user-management view (`users:manage`).
  * @param {string} orgId
  * @param {{ page?: number, limit?: number }} [options]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
@@ -154,7 +144,7 @@ export async function updateRole(orgId, userId, role, { session } = {}) {
 export async function list(orgId, { page = 1, limit = 50 } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
-    User.find({ orgId }).sort({ createdAt: 1 }).skip(skip).limit(limit),
+    User.find({ orgId }).sort({ createdAt: 1, _id: 1 }).skip(skip).limit(limit),
     User.countDocuments({ orgId }),
   ]);
   return { items, total, page, limit };
@@ -212,74 +202,5 @@ export async function setPassword(orgId, userId, passwordHash, { session } = {})
     { _id: userId, orgId },
     { $set: { passwordHash } },
     { returnDocument: 'after', runValidators: true, session },
-  );
-}
-
-/**
- * Find the user an invitation token belongs to, from the hash of the token alone.
- *
- * The one user lookup with no `orgId`, and deliberately so: accepting an invitation is a public route,
- * and the token — 256 bits of randomness — is itself the credential, so there is no verified tenant yet
- * (the same reasoning as `refreshTokenRepository.findByHash`). The tenant is read *from* the document
- * and used to scope everything that follows. It returns expired invitations too, so the caller can tell
- * "expired" from "never existed".
- * @param {string} tokenHash SHA-256 of the raw token
- * @returns {Promise<import('mongoose').Document|null>}
- */
-export async function findByInviteTokenHash(tokenHash) {
-  return User.findOne({ inviteTokenHash: tokenHash }).select('+inviteTokenHash');
-}
-
-/**
- * Consume an invitation: set the chosen password and clear the token, atomically.
- *
- * One conditional update carries every precondition — this user, this exact token, not yet expired at
- * `now` — so the database decides the winner if the link is opened twice at once: exactly one call gets
- * a document back, and the other gets `null` because the token is gone by the time it looks. That is what
- * makes the link single-use rather than "usually single-use".
- * @param {string} orgId
- * @param {string} userId
- * @param {string} tokenHash
- * @param {string} passwordHash the bcrypt hash of the password the invitee chose
- * @param {{ now?: Date, session?: import('mongoose').ClientSession }} [options]
- * @returns {Promise<import('mongoose').Document|null>} the activated user, or null when the token was not consumable
- */
-export async function acceptInvite(
-  orgId,
-  userId,
-  tokenHash,
-  passwordHash,
-  { now = new Date(), session } = {},
-) {
-  return User.findOneAndUpdate(
-    {
-      _id: userId,
-      orgId,
-      inviteTokenHash: tokenHash,
-      // sanitizeFilter is on globally; operators we build ourselves must be marked trusted.
-      inviteExpiresAt: mongoose.trusted({ $gt: now }),
-    },
-    { $set: { passwordHash }, $unset: { inviteTokenHash: 1, inviteExpiresAt: 1 } },
-    { returnDocument: 'after', session },
-  );
-}
-
-/**
- * Replace an outstanding invitation's token and expiry, invalidating the old link.
- *
- * Only touches a user who still *has* an invitation (`inviteExpiresAt` set), whether pending or
- * expired; someone who has already accepted is left alone and `null` comes back.
- * @param {string} orgId
- * @param {string} userId
- * @param {string} tokenHash
- * @param {Date} expiresAt
- * @param {{ session?: import('mongoose').ClientSession }} [options]
- * @returns {Promise<import('mongoose').Document|null>}
- */
-export async function reissueInvite(orgId, userId, tokenHash, expiresAt, { session } = {}) {
-  return User.findOneAndUpdate(
-    { _id: userId, orgId, inviteExpiresAt: mongoose.trusted({ $exists: true }) },
-    { $set: { inviteTokenHash: tokenHash, inviteExpiresAt: expiresAt } },
-    { returnDocument: 'after', session },
   );
 }

@@ -1,9 +1,9 @@
 # AI-USAGE SUMMARY
 # Tools: Claude Code
 # Overall AI Contribution: ~90% (skeleton generated from team design documents)
-# AI-Assisted Areas: matrix test job, docker build job, deploy placeholders
-# Human Contributions: pending team review
-# Notes: Generated from SDD v0.1, SPPP §5c, NFR doc (NFR-10, SR-13), Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+# AI-Assisted Areas: matrix test job, docker build job, staging deploy by mirroring main to Alexm-picard/SafeDrop (pinned to this repo), production deploy placeholder
+# Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+# Notes: Generated from SDD v0.1, SPPP §5c, NFR doc (NFR-10, SR-13), Sprint 1 backlog.
 #
 # Lives at the repository root because GitHub only reads .github/ from the root (the old code/.github was never run).
 
@@ -88,10 +88,13 @@ jobs:
   # mirroring main there once tests and the Docker build pass. SafeDrop is a mirror: anything committed
   # directly to it is overwritten on the next merge. Auth is a write-enabled deploy key on SafeDrop whose
   # private half is the SAFEDROP_DEPLOY_KEY secret here.
+  # The mirror carries this workflow too, so both deploy jobs are pinned to this repository: run on
+  # SafeDrop they would skip for want of the secret yet still record a "staging" deployment there,
+  # which reads as if Render had deployed.
   deploy-staging:
     name: Deploy staging (mirror main to Alexm-picard/SafeDrop)
     needs: [test, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.repository == 'BUMETCS673/CS673OLF26P3' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: staging
     steps:
@@ -119,7 +122,7 @@ jobs:
   deploy-production:
     name: Deploy production (placeholder)
     needs: [test, docker]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'BUMETCS673/CS673OLF26P3' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: production
     steps:

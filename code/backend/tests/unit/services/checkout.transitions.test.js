@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: exhaustive F4 state-machine test: every allowed pair passes, every other pair throws StateTransitionError (NFR-11)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Unit tests for the checkout state machine (arch review F4).
@@ -75,12 +75,9 @@ describe('checkout state machine (F4)', () => {
     ]);
   });
 
-  it.each(['submit', 'get', 'cancel', 'checkout', 'returnUnit'])(
-    'handler %s is a Sprint 1 stub (501)',
-    async (name) => {
-      await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
-    },
-  );
+  it.each(['submit', 'get', 'cancel'])('handler %s is a Sprint 1 stub (501)', async (name) => {
+    await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
+  });
 });
 
 describe('checkout state machine: prototype keys are not states', () => {

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: table-driven multi-tenancy proof (SR-2): org A can never see, count or address org B's records
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
 // Two layers:
 //  1. Repository layer: every finder takes orgId first and returns null for another tenant's id.
@@ -195,14 +195,14 @@ describe('HTTP layer: org A addressing org B', () => {
       method: 'POST',
       path: '/api/requests/:id/checkout',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-checkout',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/return',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-return',
     },
     {

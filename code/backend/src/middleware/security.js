@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: helmet headers incl. HSTS (SR-5); JSON-only + Origin/Referer/Fetch-Metadata check for state-changing requests (SDD §6.3)
-// Human Contributions: pending team review
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * Chain step 3: security response headers and the two CSRF defences that do not need a token.
@@ -44,6 +44,25 @@ export const securityHeaders = helmet({
   crossOriginResourcePolicy: { policy: 'same-origin' },
   referrerPolicy: { policy: 'no-referrer' },
 });
+
+/**
+ * Forbid storing any response from this API.
+ *
+ * Every JSON body here is either a tenant's data or a health verdict, and neither should sit in a
+ * browser cache, a proxy or a CDN: the first is private, the second is only true at the moment it
+ * was asked. Found by the ZAP baseline scan of staging, which reported the responses as storable
+ * and cacheable because nothing said otherwise (SCRUM-126).
+ *
+ * `no-store` rather than `no-cache`: no-cache still permits a stored copy that is revalidated,
+ * which is exactly the copy we do not want written to disk on a shared machine.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export function noStore(_req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
 
 /**
  * Require `Content-Type: application/json` on POST, PUT, PATCH and DELETE.

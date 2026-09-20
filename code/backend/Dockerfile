@@ -2,8 +2,8 @@
 # Tools: Claude Code
 # Overall AI Contribution: ~90% (skeleton generated from team design documents; original by Alex Picard)
 # AI-Assisted Areas: Node 22 base, production default command, dev override via docker-compose
-# Human Contributions: pending team review
-# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Must be reviewed and tested by the owning team member before merge.
+# Human Contributions: reviewed by Amber Rastella (PR #6, 2026-09-14)
+# Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 #
 # Production-shaped image: runtime deps only, `node src/server.js`. docker-compose overrides the
 # command with `npm run migrate && npm run dev` and bind-mounts the source for hot reload.
