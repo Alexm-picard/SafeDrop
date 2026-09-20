@@ -19,7 +19,8 @@ import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { useAssets } from '../hooks/useAssets';
-import { ROUTES } from '../utils/constants';
+import { useAuth } from '../hooks/useAuth';
+import { ROLES, ROUTES } from '../utils/constants';
 /**
  * Render the catalogue, with loading, error and empty states.
  *
@@ -34,6 +35,7 @@ import { ROUTES } from '../utils/constants';
 export function CatalogPage() {
   const { status, data, error, reload } = useAssets();
   const location = useLocation();
+  const { role } = useAuth();
   const denied = Boolean(location.state?.denied);
   return (
     <>
@@ -42,6 +44,16 @@ export function CatalogPage() {
         <div role="alert" className="alert">
           You do not have access to that page.
         </div>
+      ) : null}
+      {/* SCRUM-122: the admin's way into the create form. Shown here rather than in the primary nav
+          because the catalogue is where inventory is managed from, and the nav is shared with two
+          roles that cannot use it. Hiding it is usability only — the API enforces `assets:write`. */}
+      {role === ROLES.ORG_ADMIN ? (
+        <p className="actions">
+          <Link className="button" to={ROUTES.assetNew}>
+            New asset
+          </Link>
+        </p>
       ) : null}
       {status === 'loading' ? <LoadingState label="Loading assets…" /> : null}
       {status === 'error' ? (

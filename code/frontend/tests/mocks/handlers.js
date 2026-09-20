@@ -383,6 +383,50 @@ export const handlers = [
     }
     return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
   }),
+  // The four asset write endpoints (SCRUM-122). These answer as the *finished* backend will, not as
+  // it does today: the services behind them are still 501 stubs owned by SCRUM-assets-create,
+  // -update, -retire and -units. Mocking the intended contract is what lets the UI be built and
+  // tested now; when those tickets land, these handlers are what the real responses are checked
+  // against. A test that wants a failure overrides the one handler it cares about with `server.use`.
+  http.post('*/api/assets', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      {
+        id: '6aab2a45c6e457e01ac0971f',
+        orgId: org.id,
+        retiredAt: null,
+        ...body,
+      },
+      { status: 201 },
+    );
+  }),
+  http.patch('*/api/assets/:id', async ({ params, request }) => {
+    const asset = assets.find((a) => a.id === params.id);
+    if (!asset) {
+      return errorResponse(404, 'NOT_FOUND', 'Asset not found');
+    }
+    return HttpResponse.json({ ...asset, ...(await request.json()) });
+  }),
+  http.post('*/api/assets/:id/retire', ({ params }) => {
+    const asset = assets.find((a) => a.id === params.id);
+    if (!asset) {
+      return errorResponse(404, 'NOT_FOUND', 'Asset not found');
+    }
+    return HttpResponse.json({ ...asset, retiredAt: '2026-09-19T12:00:00.000Z' });
+  }),
+  http.post('*/api/assets/:id/units', async ({ params, request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      {
+        id: '6aab2a45c6e457e01ac0972f',
+        orgId: org.id,
+        assetId: params.id,
+        status: 'AVAILABLE',
+        ...body,
+      },
+      { status: 201 },
+    );
+  }),
   http.get('*/api/requests', ({ request }) =>
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
   ),

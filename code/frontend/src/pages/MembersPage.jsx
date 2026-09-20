@@ -40,6 +40,7 @@ import { errorMessage, isApiError } from '../services/api';
 import * as usersApi from '../services/users.api';
 import { MEMBERS_PAGE_SIZE, ROLE_LABELS, ROLES } from '../utils/constants';
 import { formatDate, pluralize } from '../utils/format';
+import { fieldErrorsOf } from '../utils/formErrors';
 
 /** The roles an admin can invite as or change to, least privileged first. */
 const ROLE_OPTIONS = Object.freeze(Object.values(ROLES));
@@ -50,24 +51,6 @@ const EMPTY_FORM = Object.freeze({
   role: ROLES.MEMBER,
   password: '',
 });
-
-/**
- * Work out which form field, if any, an API error belongs to.
- *
- * A 400 lists its problems per field (`fieldErrors()`), but a 409 for a duplicate email carries a single
- * `{ field }` instead, so it is folded into the same shape here and shows beside the email input rather
- * than as a banner.
- * @param {import('../services/api').ApiError} err
- * @returns {Record<string, string>}
- */
-function fieldErrorsOf(err) {
-  const perField = err.fieldErrors();
-  const single = err.details && !Array.isArray(err.details) ? err.details.field : null;
-  if (typeof single === 'string' && !(single in perField)) {
-    perField[single] = err.message;
-  }
-  return perField;
-}
 
 /**
  * The invite form.

@@ -64,6 +64,18 @@ describe('routes', () => {
       expect(screen.queryByRole('heading', { name: 'Users' })).not.toBeInTheDocument();
     },
   );
+  // `assets:write` is ORG_ADMIN-only in the permission matrix, so neither of the other two roles
+  // reaches either asset form. This is the usability guard; the API refuses them regardless (SR-1).
+  it.each([
+    { role: 'MEMBER', person: memberUser, route: '/admin/assets/new' },
+    { role: 'APPROVER', person: approverUser, route: '/admin/assets/new' },
+    { role: 'MEMBER', person: memberUser, route: `/assets/${assets[0].id}/edit` },
+    { role: 'APPROVER', person: approverUser, route: `/assets/${assets[0].id}/edit` },
+  ])('a $role is bounced from $route to the catalog', async ({ person, route }) => {
+    const { router } = renderApp(route, authenticatedState(person));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+  });
 
   it('a visitor with no session is sent to the login page from /admin/users', async () => {
     const { router } = renderApp('/admin/users', anonymousState);
