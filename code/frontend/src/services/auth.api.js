@@ -48,3 +48,30 @@ export const refresh = () =>
  * @returns {Promise<{ user: object, organization: object|null }>}
  */
 export const me = (signal) => apiRequest('/api/auth/me', { signal });
+/**
+ * Replace the caller's own password.
+ *
+ * Answers with the user and a fresh session, so the forced-change flag clears in the same round
+ * trip that sets the new password.
+ * @param {{ currentPassword: string, newPassword: string }} input
+ * @returns {Promise<{ user: object }>}
+ */
+export const changePassword = (input) =>
+  apiRequest('/api/auth/change-password', { method: 'POST', body: input, retryOn401: false });
+/**
+ * Ask for a password-reset link (SCRUM-22).
+ *
+ * Always resolves when the request reaches the API, whether or not that account exists: the answer
+ * is deliberately the same either way, so the caller cannot be used to discover who has an account.
+ * @param {{ orgSlug: string, email: string }} input
+ * @returns {Promise<{ message: string }>}
+ */
+export const forgotPassword = (input) =>
+  apiRequest('/api/auth/forgot-password', { method: 'POST', body: input, retryOn401: false });
+/**
+ * Spend a reset link and set a new password. Answers 204, so it resolves to `undefined`.
+ * @param {{ token: string, newPassword: string }} input
+ * @returns {Promise<void>}
+ */
+export const resetPassword = (input) =>
+  apiRequest('/api/auth/reset-password', { method: 'POST', body: input, retryOn401: false });

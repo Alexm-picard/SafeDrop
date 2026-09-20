@@ -14,8 +14,8 @@
  * grows beyond its founding admin. All three act on the *caller's own* organisation: the tenant is
  * passed in from the verified token and never read from the request (SR-2).
  *
- * Exports: `createOrganization`, `listUsers`, `inviteUser`, `changeUserRole`, and a re-export of
- * `slugify`.
+ * Exports: `createOrganization`, `listUsers`, `inviteUser`, `changeUserRole`, `setUserPassword`,
+ * and a re-export of `slugify`.
  */
 import { withTransaction } from '../config/db.js';
 import * as orgRepo from '../repositories/organization.repository.js';
@@ -228,7 +228,9 @@ export async function inviteUser(orgId, actor, input, { requestId } = {}) {
       const actorRole = await currentManagerRole(orgId, actor, session);
       const created = await userRepo.create(
         orgId,
-        { email, name, role, passwordHash },
+        // The admin typed this password and will send it over some channel, so the account is
+        // confined to the change-password screen until the member picks their own (SCRUM-22).
+        { email, name, role, passwordHash, mustChangePassword: true },
         { session },
       );
       await recordAudit(
@@ -337,6 +339,68 @@ export async function changeUserRole(orgId, actor, userId, role, { requestId } =
         targetId: target._id,
         before: { role: before },
         after: { role },
+        requestId,
+      },
+      { session },
+    );
+    return { user: publicUser(updated) };
+  });
+}
+
+/**
+ * Set a member's password on their behalf (`POST /api/users/:id/password`, SCRUM-36).
+ *
+ * The fallback for someone who cannot use the emailed link — they have lost access to the mailbox,
+ * or cannot remember which address the account uses. An admin types a password, tells the person
+ * through a channel they trust, and the account is flagged `mustChangePassword`, so that password
+ * buys exactly one thing: the change-password screen.
+ *
+ * Three consequences, all in one transaction with the audit entry (OD-2, SR-9):
+ *  - the password changes;
+ *  - every session the member had is revoked, because a forgotten password and a stolen one look
+ *    identical from here;
+ *  - `USER_PASSWORD_RESET` records which admin did it, to which account.
+ *
+ * An admin cannot aim this at themselves: doing so would lock their own session out of everything
+ * but the change-password screen, for no gain over using it directly. Password strength is the
+ * route schema's business, as at invitation.
+ * @param {string} orgId the caller's organisation, from the token
+ * @param {{ userId: string }} actor the verified caller (`req.auth`)
+ * @param {string} userId the member whose password is being set
+ * @param {{ password: string }} input validated by `setPasswordBody`
+ * @param {{ requestId?: string }} [context]
+ * @returns {Promise<{ user: object }>}
+ * @throws {NotFoundError} (404) when no such member exists in this organisation (SR-2)
+ * @throws {ConflictError} (409) when an admin aims it at their own account
+ */
+export async function setUserPassword(orgId, actor, userId, { password }, { requestId } = {}) {
+  if (String(userId) === String(actor.userId)) {
+    throw new ConflictError('Use change-password to set your own password', { field: 'id' });
+  }
+  // Outside the transaction: never hold one open across bcrypt.
+  const passwordHash = await hashPassword(password);
+
+  return withTransaction(async (session) => {
+    const actorRole = await currentManagerRole(orgId, actor, session);
+    const target = await userRepo.findById(orgId, userId, { session });
+    if (!target) {
+      throw new NotFoundError('User not found');
+    }
+
+    const updated = await userRepo.setPassword(orgId, target._id, passwordHash, {
+      session,
+      mustChangePassword: true,
+    });
+    await refreshRepo.revokeAllForUser(orgId, target._id, { session });
+    await recordAudit(
+      orgId,
+      {
+        actor: { userId: actor.userId, role: actorRole },
+        action: AUDIT_ACTION.USER_PASSWORD_RESET,
+        targetType: AUDIT_TARGET_TYPE.User,
+        targetId: target._id,
+        before: null,
+        after: { mustChangePassword: true },
         requestId,
       },
       { session },

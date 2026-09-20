@@ -33,6 +33,10 @@ export const ROLE_LABELS = Object.freeze({
 export const ROUTES = Object.freeze({
   home: '/',
   login: '/login',
+  forgotPassword: '/forgot-password',
+  // The API builds the mailed link on this path, so the two must agree (backend APP_BASE_URL).
+  resetPassword: '/reset-password',
+  changePassword: '/change-password',
   setup: '/setup',
   catalog: '/',
   asset: (id) => `/assets/${id}`,

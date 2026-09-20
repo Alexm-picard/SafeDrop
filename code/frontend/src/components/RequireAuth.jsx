@@ -25,16 +25,23 @@ import { LoadingState } from './LoadingState';
  *
  * The attempted path is carried along in navigation state so the login page can return the user
  * there, and `replace` keeps the guarded URL out of history.
+ *
+ * A session still using a password an admin chose is sent to the change-password screen instead of
+ * wherever it was going. That is a courtesy, not the rule: the API refuses those requests itself
+ * (SR-1), so this only spares the person a screen full of 403s (SCRUM-22).
  * @returns {JSX.Element}
  */
 export function RequireAuth() {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const location = useLocation();
   if (status === 'loading') {
     return <LoadingState label="Checking your session…" />;
   }
   if (status === 'anonymous') {
     return <Navigate to={ROUTES.login} replace state={{ from: location.pathname }} />;
+  }
+  if (user?.mustChangePassword && location.pathname !== ROUTES.changePassword) {
+    return <Navigate to={ROUTES.changePassword} replace />;
   }
   return <Outlet />;
 }

@@ -38,7 +38,8 @@
  * takes effect at the next refresh instead of lingering for the life of a token.
  *
  * Exports: `hashPassword`, `verifyPassword`, `publicUser`, `startSession`, `login`, `refresh`,
- * `logout`, `me`, `changePassword`, and `REFRESH_REUSE_GRACE_MS`.
+ * `logout`, `me`, `changePassword`, `requestPasswordReset`, `resetPassword`, and
+ * `REFRESH_REUSE_GRACE_MS`.
  */
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -47,11 +48,19 @@ import { withTransaction } from '../config/db.js';
 import * as orgRepo from '../repositories/organization.repository.js';
 import * as refreshRepo from '../repositories/refreshToken.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
-import { BCRYPT_COST, PASSWORD_MAX_BYTES } from '../utils/constants.js';
+import {
+  AUDIT_ACTION,
+  AUDIT_TARGET_TYPE,
+  BCRYPT_COST,
+  PASSWORD_MAX_BYTES,
+} from '../utils/constants.js';
 import { durationToMs } from '../utils/duration.js';
 import { AuthError, ValidationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { generateOpaqueToken, hashToken, signAccessToken } from '../utils/tokens.js';
+import * as audit from './audit.service.js';
+import { sendMail } from './mail/mailer.js';
+import { passwordResetEmail } from './mail/templates.js';
 
 /**
  * How long after a token is rotated its reuse is still treated as innocent.
@@ -132,6 +141,8 @@ export function publicUser(user) {
     email: user.email,
     name: user.name,
     role: user.role,
+    // The SPA needs this to send the person straight to the change-password screen.
+    mustChangePassword: Boolean(user.mustChangePassword),
     createdAt: user.createdAt,
   };
 }
@@ -155,7 +166,14 @@ export async function startSession(user, { session, now = new Date() } = {}) {
   const familyId = new mongoose.Types.ObjectId();
   const absoluteExpiresAt = new Date(now.getTime() + durationToMs(env.JWT_REFRESH_ABSOLUTE_TTL));
   return issueTokens(
-    { orgId, userId, role: user.role, familyId, absoluteExpiresAt },
+    {
+      orgId,
+      userId,
+      role: user.role,
+      mustChangePassword: Boolean(user.mustChangePassword),
+      familyId,
+      absoluteExpiresAt,
+    },
     { session, now },
   );
 }
@@ -180,7 +198,7 @@ export async function startSession(user, { session, now = new Date() } = {}) {
  * @returns {Promise<{ accessToken: string, accessExpiresAt: Date, refreshToken: string, refreshExpiresAt: Date, refreshTokenId: string }>}
  */
 async function issueTokens(
-  { orgId, userId, role, familyId, absoluteExpiresAt, tokenId },
+  { orgId, userId, role, mustChangePassword = false, familyId, absoluteExpiresAt, tokenId },
   { session, now },
 ) {
   const raw = generateOpaqueToken();
@@ -205,7 +223,7 @@ async function issueTokens(
   );
   const accessExpiresAt = new Date(now.getTime() + accessMs);
   const accessToken = signAccessToken(
-    { userId, orgId, role },
+    { userId, orgId, role, mustChangePassword },
     { ttl: `${Math.floor(accessMs / 1000)}s` },
   );
   return {
@@ -322,6 +340,9 @@ export async function refresh(rawRefreshToken, { now = new Date() } = {}) {
         orgId,
         userId: String(user._id),
         role: user.role, // re-read from the DB so role changes propagate at the next refresh
+        // Re-read too: an admin-set password mid-session must start demanding a change, and a
+        // change made in another tab must stop demanding one.
+        mustChangePassword: Boolean(user.mustChangePassword),
         familyId: presented.familyId,
         absoluteExpiresAt: presented.absoluteExpiresAt,
         tokenId: successorId,
@@ -441,5 +462,111 @@ export async function changePassword(auth, { currentPassword, newPassword }) {
     await refreshRepo.revokeAllForUser(auth.orgId, auth.userId, { session });
     const tokens = await startSession(updated, { session });
     return { user: publicUser(updated), ...tokens };
+  });
+}
+
+/**
+ * Begin a password reset: mint a single-use link and mail it (`POST /api/auth/forgot-password`).
+ *
+ * **This function always resolves, and always the same way.** An unknown organisation, an unknown
+ * address and a provider outage are indistinguishable to the caller, because the endpoint is public
+ * and any difference — a 404, a slower reply, an error — would tell a stranger which accounts exist
+ * (SR-2). A send that fails is logged for the operator instead; the person can ask again.
+ *
+ * The raw token is generated here, mailed, and then forgotten: only its SHA-256 is stored, so a
+ * leaked database dump contains no usable link. It expires after `PASSWORD_RESET_TTL` (ten minutes
+ * by default), and asking again replaces the previous one.
+ *
+ * Nothing is written to the audit log here. The caller is anonymous, so recording this would let
+ * anyone append rows to a tenant's audit trail by typing an address; the completed reset is what
+ * gets recorded, in `resetPassword`.
+ * @param {{ orgSlug: string, email: string }} input
+ * @param {{ now?: Date, send?: typeof sendMail }} [options] `send` is injectable for tests
+ * @returns {Promise<void>}
+ */
+export async function requestPasswordReset(
+  { orgSlug, email },
+  { now = new Date(), send = sendMail } = {},
+) {
+  const org = await orgRepo.findBySlug(orgSlug);
+  const user = org ? await userRepo.findByEmail(org._id, email) : null;
+  if (!user) {
+    logger.info({ orgSlug }, 'password reset requested for an unknown account');
+    return;
+  }
+
+  const token = generateOpaqueToken();
+  const ttlMs = durationToMs(env.PASSWORD_RESET_TTL);
+  const expiresAt = new Date(now.getTime() + ttlMs);
+  await userRepo.setResetToken(String(user.orgId), String(user._id), {
+    tokenHash: hashToken(token),
+    expiresAt,
+  });
+
+  const resetUrl = `${env.APP_BASE_URL}/reset-password?token=${encodeURIComponent(token)}`;
+  const message = passwordResetEmail({
+    name: user.name,
+    resetUrl,
+    expiresInMinutes: Math.round(ttlMs / 60_000),
+    orgName: org.name,
+  });
+
+  try {
+    await send({ to: user.email, ...message });
+  } catch (err) {
+    // Deliberately swallowed: the caller must not be able to tell a failed send from a successful
+    // one, or from an address that does not exist. The operator finds it here.
+    logger.error({ err, userId: String(user._id) }, 'password reset email failed to send');
+  }
+}
+
+/**
+ * Finish a password reset (`POST /api/auth/reset-password`).
+ *
+ * The token is the only credential, so it is looked up across organisations by hash, and every way
+ * it can be unusable — unknown, already used, expired — produces the same message. Telling the
+ * difference would turn the endpoint into an oracle for which links exist.
+ *
+ * On success, three things happen in one transaction: the password changes, the token is cleared so
+ * the link cannot be replayed, and every refresh-token family for that user is revoked. That last
+ * one is the point of a reset after a suspected compromise — whoever else was signed in is out.
+ *
+ * The user is **not** signed in as a side effect. They return to the login page and use the new
+ * password, which proves it works and keeps this endpoint from minting sessions for an anonymous
+ * caller holding a token.
+ * @param {{ token: string, newPassword: string }} input
+ * @param {{ now?: Date }} [options]
+ * @returns {Promise<void>}
+ * @throws {ValidationError} (400) when the link is unknown, used or expired
+ */
+export async function resetPassword({ token, newPassword }, { now = new Date() } = {}) {
+  const invalidLink = () =>
+    new ValidationError('Invalid request', [
+      { location: 'body', path: 'token', message: 'this reset link is no longer valid' },
+    ]);
+
+  const user = await userRepo.findByResetTokenHash(hashToken(token));
+  if (!user || !user.resetTokenExpiresAt || user.resetTokenExpiresAt.getTime() <= now.getTime()) {
+    throw invalidLink();
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  const orgId = String(user.orgId);
+  const userId = String(user._id);
+
+  await withTransaction(async (session) => {
+    await userRepo.setPassword(orgId, userId, passwordHash, { session });
+    await userRepo.clearResetToken(orgId, userId, { session });
+    await refreshRepo.revokeAllForUser(orgId, userId, { session });
+    await audit.record(
+      orgId,
+      {
+        actor: { userId, role: user.role },
+        action: AUDIT_ACTION.USER_PASSWORD_RESET,
+        targetType: AUDIT_TARGET_TYPE.User,
+        targetId: userId,
+      },
+      { session },
+    );
   });
 }

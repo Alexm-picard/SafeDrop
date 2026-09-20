@@ -141,3 +141,31 @@ export async function changePassword(req, res) {
   setSessionCookies(res, tokens);
   res.status(200).json({ user });
 }
+
+/**
+ * `POST /api/auth/forgot-password` → 202, always.
+ *
+ * Accepted, not OK: the request has been taken, and whether a mail followed is deliberately not
+ * disclosed. The body is a fixed message so that an unknown address, a real one and a provider
+ * outage are identical to the caller (SCRUM-22).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
+ */
+export async function forgotPassword(req, res) {
+  await authService.requestPasswordReset(req.body);
+  res.status(202).json({ message: 'If that account exists, a reset link is on its way.' });
+}
+
+/**
+ * `POST /api/auth/reset-password` → 204.
+ *
+ * No session is issued: the caller signs in with the new password, which also proves it works.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
+ */
+export async function resetPassword(req, res) {
+  await authService.resetPassword(req.body);
+  res.status(204).end();
+}

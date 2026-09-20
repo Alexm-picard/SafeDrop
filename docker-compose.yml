@@ -74,6 +74,13 @@ services:
       COOKIE_SECURE: 'false'
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
+      # Where the SPA runs, and therefore what a password-reset link points at (SCRUM-22).
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      # Locally nothing is emailed: the message, reset link included, goes to the backend log.
+      # `docker compose logs -f backend` is where you read the link during development.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
+      MAIL_API_KEY: ${MAIL_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-SafeDrop <no-reply@safedrop.local>}
     volumes:
       - ./code/backend:/app # bind mount so `node --watch` reloads on edits
       - /app/node_modules # keep the container's node_modules, not the host's

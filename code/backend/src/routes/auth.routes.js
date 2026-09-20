@@ -51,6 +51,25 @@ export const changePasswordBody = z.object({
   newPassword: password,
 });
 
+/**
+ * Body schema for `POST /api/auth/forgot-password`.
+ *
+ * The organisation slug is required for the same reason login needs it: email is unique per
+ * organisation (OD-3), so an address alone does not identify an account.
+ */
+export const forgotPasswordBody = z.object({ orgSlug, email });
+
+/**
+ * Body schema for `POST /api/auth/reset-password`.
+ *
+ * The token is bounded rather than pattern-matched: it is looked up by hash, and a stricter schema
+ * here would answer "is this shaped like one of our tokens?" before the lookup does.
+ */
+export const resetPasswordBody = z.object({
+  token: z.string().min(1).max(512),
+  newPassword: password,
+});
+
 export const authRouter = createRouter();
 
 defineRoute(
@@ -77,6 +96,28 @@ defineRoute(
   authRouter,
   { method: 'GET', path: '/me', permission: PERMISSIONS.SESSION_SELF },
   auth.me,
+);
+// Both reset routes are public: someone who cannot sign in is, by definition, not signed in. The
+// credential for the second one is the mailed token (SCRUM-22).
+defineRoute(
+  authRouter,
+  {
+    method: 'POST',
+    path: '/forgot-password',
+    public: true,
+    schemas: { body: forgotPasswordBody },
+  },
+  auth.forgotPassword,
+);
+defineRoute(
+  authRouter,
+  {
+    method: 'POST',
+    path: '/reset-password',
+    public: true,
+    schemas: { body: resetPasswordBody },
+  },
+  auth.resetPassword,
 );
 defineRoute(
   authRouter,

@@ -23,10 +23,11 @@ import express from 'express';
 import { pingDb } from './config/db.js';
 import { env } from './config/env.js';
 import { authenticate } from './middleware/authenticate.js';
+import { requirePasswordChange } from './middleware/requirePasswordChange.js';
 import { denyByDefault } from './middleware/authorize.js';
 import { createCors } from './middleware/cors.js';
 import { createErrorHandler, notFound } from './middleware/errorHandler.js';
-import { authRateLimiter } from './middleware/rateLimit.js';
+import { authRateLimiter, passwordResetRateLimiter } from './middleware/rateLimit.js';
 import { requestId } from './middleware/requestId.js';
 import { scopeTenant } from './middleware/scopeTenant.js';
 import {
@@ -66,6 +67,8 @@ export const JSON_BODY_LIMIT = '100kb';
  *     but could not serve a real request.
  *  4. `authRateLimiter` on `/api/auth` only — brute-force protection where credentials are checked.
  *  5. `authenticate` on `/api` — the access cookie becomes `req.auth`, or the request is refused.
+ *  5b. `requirePasswordChange` on `/api` — a session using an admin-set password may only change
+ *     it, log out, or read `/me`.
  *  6. `scopeTenant` on `/api` — `req.orgId` from the token, client-supplied tenant ids stripped.
  *  7. `denyByDefault` on `/api` — every request starts denied.
  *  8–9. `registerRoutes` — each route is authorize → validate → controller → service → repository.
@@ -112,11 +115,16 @@ export function createApp({ config = env, skipRouteAssertion = false } = {}) {
     res.json({ status: 'ok', db: 'connected', uptime: process.uptime() });
   });
 
-  // 4. Brute-force protection on the auth endpoints only.
+  // 4. Brute-force protection on the auth endpoints only. The password-reset pair gets its own,
+  //    tighter limiter first: those routes always answer success, so the login limiter — which
+  //    counts failures — would never count them (SCRUM-22).
+  app.use(['/api/auth/forgot-password', '/api/auth/reset-password'], passwordResetRateLimiter);
   app.use('/api/auth', authRateLimiter);
 
   // 5. Verify the access cookie → req.auth (public routes pass through).
   app.use('/api', authenticate);
+  // 5b. A session still using a password an admin chose may only change it (SCRUM-22).
+  app.use('/api', requirePasswordChange);
   // 6. req.orgId comes only from req.auth; strip client-supplied tenant ids.
   app.use('/api', scopeTenant);
   // 7. Deny by default; each route's authorize(permission) is the only thing that grants.

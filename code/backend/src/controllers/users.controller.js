@@ -59,3 +59,23 @@ export async function changeRole(req, res) {
   );
   res.status(200).json(result);
 }
+
+/**
+ * `POST /api/users/:id/password` — an admin sets a member's password (SCRUM-36).
+ *
+ * Answers with the member, never the password: it was chosen by the caller, who already has it,
+ * and echoing it would put it in logs and browser history for no reason.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @returns {Promise<void>}
+ */
+export async function setPassword(req, res) {
+  const result = await organizationService.setUserPassword(
+    req.orgId,
+    req.auth,
+    req.params.id,
+    req.body,
+    { requestId: req.id },
+  );
+  res.status(200).json(result);
+}

@@ -119,6 +119,10 @@ export const PUBLIC_ROUTES = Object.freeze([
   Object.freeze({ method: 'POST', path: '/api/auth/login' }),
   Object.freeze({ method: 'POST', path: '/api/auth/refresh' }),
   Object.freeze({ method: 'POST', path: '/api/organizations' }),
+  // Password reset (SCRUM-22): asking for a link needs no session, and the mailed token is the
+  // credential for completing it.
+  Object.freeze({ method: 'POST', path: '/api/auth/forgot-password' }),
+  Object.freeze({ method: 'POST', path: '/api/auth/reset-password' }),
 ]);
 
 /**
