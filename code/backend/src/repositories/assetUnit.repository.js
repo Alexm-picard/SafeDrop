@@ -11,7 +11,8 @@
  * Same contract as the other repositories: `orgId` first, folded into every filter, optional
  * `{ session }` for transactional callers.
  *
- * Exports: `create`, `findById`, `listByAsset`, `updateStatus`, `countByStatus`.
+ * Exports: `create`, `findById`, `listByAsset`, `countByAssetInStatuses`, `updateStatus`,
+ * `countByStatus`.
  */
 import mongoose from 'mongoose';
 import { AssetUnit } from '../models/AssetUnit.js';
@@ -56,6 +57,33 @@ export async function findById(orgId, unitId, { session } = {}) {
  */
 export async function listByAsset(orgId, assetId) {
   return AssetUnit.find({ orgId, assetId }).sort({ tag: 1 });
+}
+
+/**
+ * Count one asset's units that are currently in any of `statuses`.
+ *
+ * Exists for the retire guard (SCRUM-134), which has to answer "is anybody holding one of these?"
+ * without pulling every unit across the wire. It takes a `session` — unlike `listByAsset`, which
+ * backs a plain read — because that answer is only trustworthy if it is read inside the same
+ * transaction that then writes the retirement: without it, a checkout committing between the count
+ * and the write would be missed, and the asset would retire out from under a borrower.
+ *
+ * The `$in` is wrapped in `mongoose.trusted()` because `sanitizeFilter` is on globally: it strips
+ * query operators out of filter *values* to defeat injection, so operators the server builds itself
+ * have to be marked as ours. Without it the operator is treated as a literal status to match, which
+ * fails to cast and surfaces as a puzzling 400 instead of a count.
+ * @param {string} orgId
+ * @param {string} assetId
+ * @param {string[]} statuses statuses from UNIT_STATUS
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<number>}
+ */
+export async function countByAssetInStatuses(orgId, assetId, statuses, { session } = {}) {
+  return AssetUnit.countDocuments({
+    orgId,
+    assetId,
+    status: mongoose.trusted({ $in: statuses }),
+  }).session(session ?? null);
 }
 
 /**

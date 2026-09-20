@@ -33,27 +33,16 @@ beforeEach(async () => {
 });
 
 const stubs = [
-  // GET /api/assets and GET /api/assets/:asset are no longer here: SCRUM-115 implemented them, so
-  // they answer 200. Their acceptance criteria live in assets.test.js.
-  {
-    method: 'POST',
-    path: '/api/assets',
-    as: 'admin',
-    body: { name: 'Camera', category: 'camera' },
-  },
-  { method: 'PATCH', path: '/api/assets/:asset', as: 'admin', body: { name: 'Camera 2' } },
-  { method: 'POST', path: '/api/assets/:asset/retire', as: 'admin' },
-  { method: 'POST', path: '/api/assets/:asset/units', as: 'admin', body: { tag: 'cam-001' } },
+  // No /api/assets route is here any more: SCRUM-115 implemented the two reads and SCRUM-134 the
+  // four writes, so all six answer for real. Their acceptance criteria live in assets.test.js.
   // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
   // POST /api/requests is no longer here: SCRUM-requests-create implemented it — see requests.test.js.
   // GET /api/requests/:request is no longer here: SCRUM-123 implemented it — see requests.test.js.
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
   // POST /api/requests/:request/cancel is no longer here: SCRUM-requests-cancel implemented it — see requests.test.js.
-
   // POST /api/requests/:request/checkout and /api/requests/:request/return are no longer here: SCRUM-120 implemented them — see
   // tests/integration/routes/requests.test.js.
-
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
   // criteria live in the un-skipped describe block below.
   // GET /api/users, POST /api/users/invite and PATCH /api/users/:id/role are no longer here: the
@@ -75,7 +64,11 @@ describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
     expect(res.body.error.details.ticket).toMatch(/^SCRUM-/);
   });
 
-  it('validation still runs before a stub (bad input is 400, not 501)', async () => {
+  // Kept on /api/assets even though SCRUM-134 implemented it: the point is the ordering of the
+  // middleware chain — validation runs before the controller, so malformed input is a 400 whether
+  // the handler behind it is real or a stub. That is true of every route, and this is where it is
+  // pinned.
+  it('validation runs before the handler (bad input is 400)', async () => {
     const res = await request(app)
       .post('/api/assets')
       .set('Cookie', accessCookieFor(seed.a.admin))
@@ -85,18 +78,8 @@ describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
 });
 
 // ---- Acceptance criteria owned by later tickets. Un-skip when implementing. ----------------------
-describe.skip('SCRUM-assets-*: asset catalogue', () => {
-  // GET /api/assets is no longer here: SCRUM-115 implemented it. Its acceptance criteria live in
-  // assets.test.js.
-  it(
-    'POST /api/assets (ORG_ADMIN) creates an asset and appends ASSET_CREATED in the same transaction',
-  );
-  it('PATCH /api/assets/:id appends ASSET_UPDATED with before/after snapshots');
-  it(
-    'POST /api/assets/:id/retire refuses while a unit is OUT or HELD and otherwise appends ASSET_RETIRED',
-  );
-  it('POST /api/assets/:id/units rejects a duplicate tag within the org with 409');
-});
+// The SCRUM-assets-* block is gone: SCRUM-115 shipped the reads and SCRUM-134 the writes, so every
+// one of its criteria is now a real test in assets.test.js.
 
 // The SCRUM-requests-* acceptance criteria that used to be todos here are now real tests in
 // requests.test.js.
