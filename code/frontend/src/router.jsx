@@ -36,6 +36,7 @@ import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { OrgSetupPage } from './pages/OrgSetupPage';
+import { RequestDetailPage } from './pages/RequestDetailPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 /**
  * The route tree, from public pages down to role-gated admin areas.
