@@ -1,13 +1,14 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: SCRUM-requests-approve/deny/list — approve and deny a pending checkout request, list requests. SCRUM-requests-checkout/return (record a physical handoff, OD-4)
+// AI-Assisted Areas: SCRUM-requests-create/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-requests-checkout/return (record a physical handoff, OD-4). SCRUM-123 (request detail)
 // Human Contributions: pending team review
 
 /**
  * Integration tests for `/api/requests` — the pieces of the checkout workflow that are implemented.
  *
- * Grows as more of SCRUM-requests-* lands; covers approve/deny and checkout/return so far.
+ * Grows as more of SCRUM-requests-* lands; covers submit, approve/deny, list, checkout/return and
+ * the detail read so far.
  */
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -47,6 +48,106 @@ async function createCheckedOutRequest(org) {
     patch: { state: 'CHECKED_OUT', checkedOutAt: new Date(), dueAt: approved.neededTo },
   });
 }
+
+describe('POST /api/requests (SCRUM-requests-create)', () => {
+  it('creates a PENDING request for an AVAILABLE unit and appends REQUEST_SUBMITTED', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+        note: 'for a demo',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.state).toBe('PENDING');
+    expect(res.body.id).toBeTruthy();
+    expect(res.body.requesterId).toBe(String(seed.a.member._id));
+
+    const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_SUBMITTED });
+    expect(audit.total).toBe(1);
+    expect(String(audit.items[0].targetId)).toBe(res.body.id);
+  });
+
+  it('a unit that is not AVAILABLE is refused with a readable 409', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.units[1]._id, // OUT in the fixture
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(res.body.error.message).toBe('That unit is no longer available');
+  });
+
+  it('a unit id in another organization returns 404, not 403', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.b.units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('a unit id that does not exist returns 404', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: '0'.repeat(24),
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(res.status).toBe(404);
+  });
+
+  it('requesterId in the body is rejected before it ever reaches the service (strict schema)', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.units[0]._id,
+        requesterId: String(seed.a.admin._id),
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('no audit event is appended when the submit fails', async () => {
+    await request(app).post('/api/requests').set('Cookie', accessCookieFor(seed.a.member)).send({
+      unitId: seed.a.units[1]._id, // OUT
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
+    const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_SUBMITTED });
+    expect(audit.total).toBe(0);
+  });
+
+  it('rejects a window where neededTo is not after neededFrom', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.units[0]._id,
+        neededFrom: '2026-11-05T00:00:00.000Z',
+        neededTo: '2026-11-01T00:00:00.000Z',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details[0]).toMatchObject({ path: 'neededTo' });
+  });
+});
 
 describe('POST /api/requests/:id/approve and /deny (SCRUM-requests-approve, SCRUM-requests-deny)', () => {
   it('approve moves PENDING -> APPROVED, holds the unit, and appends REQUEST_APPROVED', async () => {
@@ -281,98 +382,99 @@ describe('POST /api/requests/:id/return (SCRUM-requests-return, OD-4)', () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('INVALID_STATE_TRANSITION');
   });
-  describe('GET /api/requests (SCRUM-requests-list)', () => {
-    it("defaults to the caller's own requests for a MEMBER", async () => {
-      const res = await request(app)
-        .get('/api/requests')
-        .set('Cookie', accessCookieFor(seed.a.member));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(5);
-      expect(res.body.items.every((r) => r.requesterId === String(seed.a.member._id))).toBe(true);
-    });
+});
 
-    it("defaults to the caller's own requests for an ORG_ADMIN too, even though the org has more", async () => {
-      const res = await request(app)
-        .get('/api/requests')
-        .set('Cookie', accessCookieFor(seed.a.admin));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(0);
-      expect(res.body.items).toEqual([]);
-    });
+describe('GET /api/requests (SCRUM-requests-list)', () => {
+  it("defaults to the caller's own requests for a MEMBER", async () => {
+    const res = await request(app)
+      .get('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+    expect(res.body.items.every((r) => r.requesterId === String(seed.a.member._id))).toBe(true);
+  });
 
-    it('scope=org is ignored for a MEMBER: they still get only their own requests', async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org')
-        .set('Cookie', accessCookieFor(seed.a.member));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(5);
-    });
+  it("defaults to the caller's own requests for an ORG_ADMIN too, even though the org has more", async () => {
+    const res = await request(app)
+      .get('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.items).toEqual([]);
+  });
 
-    it('scope=org returns the whole organization for an APPROVER', async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org')
-        .set('Cookie', accessCookieFor(seed.a.approver));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(5);
-    });
+  it('scope=org is ignored for a MEMBER: they still get only their own requests', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
 
-    it('scope=org returns the whole organization for an ORG_ADMIN', async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org')
-        .set('Cookie', accessCookieFor(seed.a.admin));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(5);
-    });
+  it('scope=org returns the whole organization for an APPROVER', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
 
-    it('state=PENDING narrows the approval queue (scope=org) to the one pending request', async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org&state=PENDING')
-        .set('Cookie', accessCookieFor(seed.a.approver));
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBe(1);
-      expect(res.body.items[0].id).toBe(String(seed.a.request._id));
-      expect(res.body.items[0].state).toBe('PENDING');
-    });
+  it('scope=org returns the whole organization for an ORG_ADMIN', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(5);
+  });
 
-    it("state filters a MEMBER's own list too", async () => {
-      const res = await request(app)
-        .get('/api/requests?state=CHECKED_OUT')
-        .set('Cookie', accessCookieFor(seed.a.member));
-      expect(res.status).toBe(200);
-      // checkedOutRequest and projectorRequest are both CHECKED_OUT, both requested by seed.a.member.
-      expect(res.body.total).toBe(2);
-      expect(res.body.items.every((r) => r.state === 'CHECKED_OUT')).toBe(true);
-    });
+  it('state=PENDING narrows the approval queue (scope=org) to the one pending request', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&state=PENDING')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items[0].id).toBe(String(seed.a.request._id));
+    expect(res.body.items[0].state).toBe('PENDING');
+  });
 
-    it("never returns another organization's requests even with scope=org", async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org')
-        .set('Cookie', accessCookieFor(seed.a.admin));
-      expect(res.status).toBe(200);
-      const ids = res.body.items.map((r) => r.id);
-      expect(ids).not.toContain(String(seed.b.request._id));
-    });
+  it("state filters a MEMBER's own list too", async () => {
+    const res = await request(app)
+      .get('/api/requests?state=CHECKED_OUT')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    // checkedOutRequest and projectorRequest are both CHECKED_OUT, both requested by seed.a.member.
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.every((r) => r.state === 'CHECKED_OUT')).toBe(true);
+  });
 
-    it('paginates with page and limit', async () => {
-      const res = await request(app)
-        .get('/api/requests?scope=org&limit=2&page=2')
-        .set('Cookie', accessCookieFor(seed.a.approver));
-      expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ total: 5, page: 2, limit: 2 });
-      expect(res.body.items).toHaveLength(2);
-    });
+  it("never returns another organization's requests even with scope=org", async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((r) => r.id);
+    expect(ids).not.toContain(String(seed.b.request._id));
+  });
 
-    it('rejects an unknown state value with 400', async () => {
-      const res = await request(app)
-        .get('/api/requests?state=BOGUS')
-        .set('Cookie', accessCookieFor(seed.a.member));
-      expect(res.status).toBe(400);
-    });
+  it('paginates with page and limit', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&limit=2&page=2')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 5, page: 2, limit: 2 });
+    expect(res.body.items).toHaveLength(2);
+  });
 
-    it('unauthenticated gets 401', async () => {
-      const res = await request(app).get('/api/requests');
-      expect(res.status).toBe(401);
-    });
+  it('rejects an unknown state value with 400', async () => {
+    const res = await request(app)
+      .get('/api/requests?state=BOGUS')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(400);
+  });
+
+  it('unauthenticated gets 401', async () => {
+    const res = await request(app).get('/api/requests');
+    expect(res.status).toBe(401);
   });
 });
 
@@ -449,5 +551,108 @@ describe('GET /api/requests/:id (SCRUM-123)', () => {
   it('refuses an unauthenticated caller', async () => {
     const res = await request(app).get(`/api/requests/${seed.a.request._id}`);
     expect(res.status).toBe(401);
+  });
+
+  it("a denied request's timeline shows DENIED, not APPROVED", async () => {
+    // seed.a.request is PENDING; drive it to DENIED directly, bypassing the HTTP path.
+    const denied = await checkoutRepo.transition(seed.a.orgId, seed.a.request._id, {
+      expectedState: 'PENDING',
+      patch: { state: 'DENIED', decidedBy: seed.a.approver._id, decidedAt: new Date() },
+    });
+    const res = await get(denied._id, asMemberA());
+    expect(res.status).toBe(200);
+    expect(res.body.timeline.map((e) => e.event)).toEqual(['SUBMITTED', 'DENIED']);
+  });
+
+  it("a cancelled request's timeline includes CANCELLED, using the document's last update time", async () => {
+    const cancelled = await checkoutRepo.transition(seed.a.orgId, seed.a.request._id, {
+      expectedState: 'PENDING',
+      patch: { state: 'CANCELLED' },
+    });
+    const res = await get(cancelled._id, asMemberA());
+    expect(res.status).toBe(200);
+    expect(res.body.timeline.map((e) => e.event)).toEqual(['SUBMITTED', 'CANCELLED']);
+  });
+});
+
+describe('POST /api/requests/:id/cancel (SCRUM-requests-cancel)', () => {
+  it('cancels a PENDING request with no unit side-effect, and appends REQUEST_CANCELLED', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('CANCELLED');
+
+    const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id);
+    expect(unit.status).toBe('AVAILABLE');
+
+    const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_CANCELLED });
+    expect(audit.total).toBe(1);
+  });
+
+  it('cancels an APPROVED request and frees its HELD unit back to AVAILABLE', async () => {
+    const approved = await createApprovedRequest(seed.a);
+
+    const res = await request(app)
+      .post(`/api/requests/${approved._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('CANCELLED');
+
+    const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id);
+    expect(unit.status).toBe('AVAILABLE');
+  });
+
+  it('a MEMBER cannot cancel another member’s request (404, not 403)', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.b.member))
+      .send({});
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('an APPROVER cannot cancel a request that is not theirs, even though they can see it', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.approver))
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('a request in another organization returns 404', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.b.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('cancelling a CHECKED_OUT request returns 409', async () => {
+    const checkedOut = await createCheckedOutRequest(seed.a);
+    const res = await request(app)
+      .post(`/api/requests/${checkedOut._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVALID_STATE_TRANSITION');
+  });
+
+  it('cancelling an already-cancelled request returns 409 the second time', async () => {
+    const first = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(second.status).toBe(409);
   });
 });

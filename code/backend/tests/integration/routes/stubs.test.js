@@ -36,20 +36,13 @@ const stubs = [
   // No /api/assets route is here any more: SCRUM-115 implemented the two reads and SCRUM-134 the
   // four writes, so all six answer for real. Their acceptance criteria live in assets.test.js.
   // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
-  {
-    method: 'POST',
-    path: '/api/requests',
-    as: 'member',
-    body: { unitId: '0'.repeat(24), neededFrom: '2026-10-01', neededTo: '2026-10-05' },
-  },
+  // POST /api/requests is no longer here: SCRUM-requests-create implemented it — see requests.test.js.
   // GET /api/requests/:request is no longer here: SCRUM-123 implemented it — see requests.test.js.
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
-  { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },
-
+  // POST /api/requests/:request/cancel is no longer here: SCRUM-requests-cancel implemented it — see requests.test.js.
   // POST /api/requests/:request/checkout and /api/requests/:request/return are no longer here: SCRUM-120 implemented them — see
   // tests/integration/routes/requests.test.js.
-
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
   // criteria live in the un-skipped describe block below.
   // GET /api/users, POST /api/users/invite and PATCH /api/users/:id/role are no longer here: the
@@ -88,17 +81,8 @@ describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
 // The SCRUM-assets-* block is gone: SCRUM-115 shipped the reads and SCRUM-134 the writes, so every
 // one of its criteria is now a real test in assets.test.js.
 
-describe.skip('SCRUM-requests-*: checkout workflow (F4 state machine)', () => {
-  it(
-    'POST /api/requests creates a PENDING request for an AVAILABLE unit and appends REQUEST_SUBMITTED',
-  );
-  it(
-    'approve moves PENDING → APPROVED, sets the unit HELD, appends REQUEST_APPROVED (approver ≠ requester)',
-  );
-  it('deny moves PENDING → DENIED and appends REQUEST_DENIED');
-  it('cancel by the requester moves PENDING/APPROVED → CANCELLED and frees a HELD unit');
-  it('a MEMBER reading another member’s request gets 404');
-});
+// The SCRUM-requests-* acceptance criteria that used to be todos here are now real tests in
+// requests.test.js.
 
 describe('SCRUM-46: GET /api/audit', () => {
   /**

@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import * as checkout from '../../../src/services/checkout.service.js';
 import { REQUEST_STATE_LIST, UNIT_STATUS } from '../../../src/utils/constants.js';
-import { NotImplementedError, StateTransitionError } from '../../../src/utils/errors.js';
+import { StateTransitionError } from '../../../src/utils/errors.js';
 
 const allowed = [
   ['PENDING', 'APPROVED', UNIT_STATUS.HELD],
@@ -73,11 +73,6 @@ describe('checkout state machine (F4)', () => {
       'LOST',
       'RETURNED',
     ]);
-  });
-
-  // `get` is no longer here: SCRUM-123 implemented it — see requests.test.js.
-  it.each(['submit', 'cancel'])('handler %s is a Sprint 1 stub (501)', async (name) => {
-    await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
   });
 });
 

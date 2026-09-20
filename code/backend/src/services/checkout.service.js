@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny()/list() implemented (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented (SCRUM-requests-create, SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-cancel, SCRUM-requests-list, SCRUM-123)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -17,11 +17,11 @@
  * as the state change and its audit event, so a failed step can never leave a unit half-checked-out
  * (NFR-2).
  *
- * `approve`/`deny`/`checkout`/`returnUnit` are implemented: load the request by (orgId, id) → 404 if
- * absent, assertTransition, then write request + unit + audit inside one `withTransaction()`.
- * `approve`/`deny` additionally apply the organisation's approval policy (separation of duties);
- * `checkout`/`returnUnit` do not — access to them is gated entirely by the `requests:handoff`
- * permission at the route (OD-4). `submit`, `list`, `get`, `cancel` are still Sprint 1 stubs.
+ * `submit`/`approve`/`deny`/`cancel`/`checkout`/`returnUnit`/`get`/`list` are all implemented (see
+ * each one's own doc comment for how visibility or ownership is scoped). `approve`/`deny` apply the
+ * organisation's approval policy (separation of duties); `cancel` is stricter still — the requester
+ * only, no role-based exception; `checkout`/`returnUnit` do not check ownership at all — access to
+ * them is gated entirely by the `requests:handoff` permission at the route (OD-4).
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
@@ -39,9 +39,9 @@ import {
   UNIT_STATUS as U,
 } from '../utils/constants.js';
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
-  NotImplementedError,
   StateTransitionError,
 } from '../utils/errors.js';
 import { PERMISSIONS, roleHasPermission } from '../utils/permissions.js';
@@ -64,6 +64,9 @@ import { policyFor } from './policies/approvalPolicy.js';
  * CHECKED_OUT   → LOST         unit RETIRED       (Iteration 2)
  * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
  * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
+ *
+ * Reaching PENDING (submit()) has no row of its own here: opening a request does not touch the
+ * unit at all. That is a deliberate, still-open gap, not an oversight — see submit()'s doc comment.
  */
 export const TRANSITIONS = Object.freeze({
   [S.PENDING]: Object.freeze({
@@ -137,17 +140,63 @@ export function canTransition(from, to) {
 }
 
 /**
- * Open a checkout request (`POST /api/requests`) — not implemented yet.
+ * Open a checkout request (`POST /api/requests`).
  *
- * TODO(SCRUM-requests-create): the unit must be AVAILABLE at the moment of writing, and the request
- * is created PENDING with a REQUEST_SUBMITTED audit event in the same transaction.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * The unit must be AVAILABLE at the moment of writing: it is read and the request inserted inside
+ * one `withTransaction()`, so a submit can never act on a stale read of a unit some other operation
+ * (a retire, a concurrent approval on a different request) is changing at that instant.
+ *
+ * This does **not** stop two members from submitting separate PENDING requests against the same
+ * still-AVAILABLE unit at the same moment — reaching PENDING has no unit side-effect (see the
+ * TRANSITIONS table: a unit is only reserved on approval), so there is nothing to compare-and-set
+ * against here. That is the same "what happens to sibling PENDING requests" question already open
+ * since `approve()` shipped; this ticket does not resolve it, only the narrower race above.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {{ unitId: string, neededFrom: Date, neededTo: Date, note?: string, requestId?: string }} [input]
+ *   validated `createRequestBody`, plus the HTTP request id for audit correlation
+ * @returns {Promise<object>} the new PENDING request
+ * @throws {NotFoundError} (404) no such unit in this organisation
+ * @throws {ConflictError} (409) the unit is not AVAILABLE
  */
-export async function submit(_orgId, _actor, _input) {
-  throw new NotImplementedError(
-    'SCRUM-requests-create',
-    'Submitting requests is not implemented yet',
-  );
+export async function submit(orgId, actor, input = {}) {
+  return withTransaction(async (session) => {
+    const unit = await assetUnitRepo.findById(orgId, input.unitId, { session });
+    if (!unit) {
+      throw new NotFoundError('Unit not found');
+    }
+    if (unit.status !== U.AVAILABLE) {
+      throw new ConflictError('That unit is no longer available');
+    }
+
+    const created = await checkoutRequestRepo.create(
+      orgId,
+      {
+        unitId: input.unitId,
+        requesterId: actor.userId,
+        neededFrom: input.neededFrom,
+        neededTo: input.neededTo,
+        note: input.note ?? '',
+      },
+      { session },
+    );
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_SUBMITTED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: created._id,
+        before: null,
+        after: { state: S.PENDING, unitId: input.unitId },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return created;
+  });
 }
 
 /**
@@ -405,18 +454,70 @@ export async function deny(orgId, actor, requestId, input = {}) {
 }
 
 /**
- * Cancel a request (`POST /api/requests/:id/cancel`) — not implemented yet.
+ * Withdraw one's own request (`POST /api/requests/:id/cancel`).
  *
- * TODO(SCRUM-requests-cancel): the requester only, from PENDING or APPROVED. Cancelling an APPROVED
- * request must return its held unit to AVAILABLE, or the unit stays reserved for a request nobody
- * will collect.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * The requester only — no role-based exception, unlike `get()`. An APPROVER or ORG_ADMIN can see
+ * every request in the organisation, but seeing one and being allowed to withdraw it on someone
+ * else's behalf are different things, and this ticket grants only the first.
+ *
+ * **Anyone other than the requester gets 404, never 403** — extending the same reasoning `get()`
+ * uses (SR-2): a 403 would confirm to a non-owner that the request exists at all, and the route's
+ * permission (`requests:create`) is held by every member, so without this a member could probe any
+ * id in their own organisation and learn which ones exist from the 403/404 split alone.
+ *
+ * PENDING or APPROVED only — the table's own two `→ CANCELLED` rows enforce that: no third row
+ * exists, so `assertTransition` throws 409 for anything else (already CHECKED_OUT, already decided
+ * one way, or already terminal) without this function needing to special-case it.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ requestId?: string }} [input] the HTTP request id, for audit correlation
+ * @returns {Promise<object>} the cancelled request
+ * @throws {NotFoundError} (404) no such request, or the caller is not its requester
+ * @throws {StateTransitionError} (409) the request isn't PENDING/APPROVED (including a lost race)
  */
-export async function cancel(_orgId, _actor, _requestId) {
-  throw new NotImplementedError(
-    'SCRUM-requests-cancel',
-    'Cancelling requests is not implemented yet',
-  );
+export async function cancel(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request || String(request.requesterId) !== String(actor.userId)) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const { unitStatus } = assertTransition(request.state, S.CANCELLED);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: request.state,
+        patch: { state: S.CANCELLED },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.CANCELLED);
+    }
+
+    if (unitStatus) {
+      await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
+    }
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_CANCELLED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: request.state },
+        after: { state: S.CANCELLED },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }
 
 /**
