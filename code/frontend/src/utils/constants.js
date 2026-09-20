@@ -130,3 +130,10 @@ export const AUDIT_PAGE_SIZE = 25;
  * Within the API's `limit` ceiling of 100. Organisations are small, so most will only ever see one page.
  */
 export const MEMBERS_PAGE_SIZE = 25;
+
+/**
+ * Every asset unit condition, mirroring the backend's `returnBody` enum.
+ *
+ * Drives the return action's condition selector on the approval queue.
+ */
+export const UNIT_CONDITIONS = Object.freeze(['NEW', 'GOOD', 'FAIR', 'POOR']);
