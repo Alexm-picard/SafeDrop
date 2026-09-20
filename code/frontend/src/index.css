@@ -313,6 +313,60 @@ button.danger,
   font-size: 2rem;
   font-weight: 700;
 }
+/* A count that means someone has to act — today, an overdue loan. The label says so too: the colour
+   is never the only signal (NFR-12). */
+.stat--alert {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+.stat--alert dd {
+  color: var(--danger);
+}
+
+/* The dashboard's activity chart. One series, so one hue: the bars carry the accent colour and every
+   number stays in text colour. The axis and its labels are deliberately recessive — they orient the
+   reader without competing with the data. */
+.chart {
+  margin: 0 0 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.chart figcaption {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+.chart-svg {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+.chart-bar {
+  fill: var(--accent);
+}
+/* The hover target is the whole day column, so a one-pixel bar is still easy to point at. */
+.chart-hit {
+  fill: transparent;
+}
+.chart-hit:hover {
+  fill: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.chart-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-axis-label,
+.chart-peak {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: var(--sans);
+}
+.chart-peak {
+  fill: var(--text);
+  font-weight: 700;
+}
 
 /* A row of filter controls above a list. Wraps to one control per line on a narrow screen. */
 .filters {

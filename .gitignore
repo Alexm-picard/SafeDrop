@@ -28,3 +28,6 @@ Thumbs.db
 
 # Docker / runtime
 *.pid
+
+# Brag video output (generated locally)
+brag-output/

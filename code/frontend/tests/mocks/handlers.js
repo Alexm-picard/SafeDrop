@@ -9,7 +9,8 @@
  * The fixture users cover all three roles from one organisation, so role-based rendering can be tested
  * without building a user per test.
  *
- * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`, `members`), the
+ * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`, `activityDays`,
+ * `members`), the
  * builders (`errorResponse`, `notImplemented`, `meHandler`, `membersPage`) and the default `handlers`
  * array.
  */
@@ -40,12 +41,28 @@ export const memberUser = {
   name: 'Max Member',
   role: 'MEMBER',
 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * Thirty days of checkout activity ending today, as the API returns them: every day present, most of
+ * them zero, one clear busiest day. The counts follow a fixed pattern rather than random numbers, so
+ * a test can assert on the peak without knowing which date today is.
+ * @param {number} [days]
+ * @returns {Array<{ date: string, checkouts: number }>}
+ */
+export const activityDays = (days = 30) =>
+  Array.from({ length: days }, (_, index) => ({
+    date: new Date(Date.now() - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10),
+    checkouts: index === days - 3 ? 6 : index % 4 === 0 ? 2 : 0,
+  }));
 export const summary = {
   totalAssets: 12,
   checkedOut: 4,
   available: 7,
   held: 1,
   retired: 2,
+  pendingRequests: 3,
+  overdue: 2,
+  activity: activityDays(),
 };
 /**
  * Three assets for the caller's org, matching what the real API serialises: an `id` rather than

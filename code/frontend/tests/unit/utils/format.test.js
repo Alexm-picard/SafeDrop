@@ -13,13 +13,20 @@
  * rather than as `Invalid Date`, `NaN`, or an exception.
  */
 import { describe, expect, it } from 'vitest';
-import { formatCount, formatDate, humanize, pluralize } from '../../../src/utils/format';
+import { formatCount, formatDate, formatDay, humanize, pluralize } from '../../../src/utils/format';
 describe('format', () => {
   it('formatDate handles dates, strings and garbage', () => {
     expect(formatDate('2026-10-01T12:00:00Z')).toMatch(/2026/);
     expect(formatDate(new Date('2026-10-01T12:00:00Z'))).toMatch(/Oct/);
     expect(formatDate(null)).toBe('—');
     expect(formatDate('not a date')).toBe('—');
+  });
+  it('formatDay renders the API’s day buckets in UTC', () => {
+    // Read as UTC, not local: west of Greenwich, a local reading would show this as Sep 19.
+    expect(formatDay('2026-09-20')).toBe('Sep 20');
+    expect(formatDay(null)).toBe('—');
+    expect(formatDay('')).toBe('—');
+    expect(formatDay('not a date')).toBe('—');
   });
   it('formatCount and pluralize', () => {
     expect(formatCount(1234)).toBe('1,234');

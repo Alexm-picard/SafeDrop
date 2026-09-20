@@ -11,9 +11,20 @@
  * Alongside the usual tenant-scoped reads, this repository owns `transition()`, the conditional
  * write that makes the request state machine safe under concurrency.
  *
- * Exports: `create`, `findById`, `listForRequester`, `list`, `transition`.
+ * The dashboard's three aggregate reads live here too (`countByState`, `countOverdue`,
+ * `countCheckoutsByDay`): they are counts over the whole collection rather than documents anyone
+ * gets to see, so they never load requests into memory just to length them.
+ *
+ * Filters that this file builds with query operators are wrapped in `mongoose.trusted()`, because
+ * `sanitizeFilter` is on globally (config/db.js) and would otherwise neutralise them — an overdue
+ * count that silently returned zero would be worse than one that failed.
+ *
+ * Exports: `create`, `findById`, `listForRequester`, `list`, `transition`, `countByState`,
+ * `countOverdue`, `countCheckoutsByDay`.
  */
+import mongoose from 'mongoose';
 import { CheckoutRequest } from '../models/CheckoutRequest.js';
+import { REQUEST_STATE, REQUEST_STATE_LIST } from '../utils/constants.js';
 
 /**
  * Open a new checkout request. It starts PENDING via the schema default.
@@ -110,4 +121,77 @@ export async function transition(orgId, requestId, { expectedState, patch }, { s
     { $set: patch },
     { returnDocument: 'after', runValidators: true, session },
   );
+}
+
+/**
+ * Count requests per state for one tenant — the pending figure on the admin dashboard.
+ *
+ * Mirrors `assetUnit.repository.countByStatus`: the aggregation returns only the states that occur,
+ * so the result is merged onto a zero-filled map of every state and a caller can read
+ * `counts.PENDING` without checking whether the key exists. `orgId` is cast explicitly because an
+ * aggregation `$match` gets no schema casting, and a string would match nothing.
+ * @param {string} orgId
+ * @returns {Promise<Record<string, number>>} every state key, zero when absent
+ */
+export async function countByState(orgId) {
+  const rows = await CheckoutRequest.aggregate([
+    { $match: { orgId: new mongoose.Types.ObjectId(String(orgId)) } },
+    { $group: { _id: '$state', count: { $sum: 1 } } },
+  ]);
+  const counts = Object.fromEntries(REQUEST_STATE_LIST.map((state) => [state, 0]));
+  for (const row of rows) {
+    counts[row._id] = row.count;
+  }
+  return counts;
+}
+
+/**
+ * Count the checkouts that are still out and whose due date has passed (SCRUM-102, AT1).
+ *
+ * "Still out" is CHECKED_OUT or OVERDUE: those are the two states in which the organisation does not
+ * have the item back. RETURNED and LOST are excluded — a late return that has arrived is no longer
+ * something the admin can chase, and a lost item is a different problem with its own state.
+ *
+ * A request with no `dueAt` cannot be counted: MongoDB compares within a BSON type, so null never
+ * matches `$lt: <date>`. That is the intended reading — a request that was never handed over has no
+ * due date to be late against.
+ * @param {string} orgId
+ * @param {Date} [asOf] the instant to measure lateness against; defaults to now
+ * @returns {Promise<number>}
+ */
+export async function countOverdue(orgId, asOf = new Date()) {
+  return CheckoutRequest.countDocuments({
+    orgId,
+    state: mongoose.trusted({ $in: [REQUEST_STATE.CHECKED_OUT, REQUEST_STATE.OVERDUE] }),
+    dueAt: mongoose.trusted({ $lt: asOf }),
+  });
+}
+
+/**
+ * Count checkouts per calendar day over a window — the dashboard's activity chart.
+ *
+ * Grouped by `checkedOutAt`, the moment the item physically changed hands, which is what "checkout
+ * activity" means; the request's own creation date would count intent rather than movement. Days are
+ * UTC so that the buckets do not shift with the server's timezone, and the caller zero-fills the days
+ * that produced no rows.
+ * @param {string} orgId
+ * @param {{ from: Date, to: Date }} window half-open: `from` included, `to` excluded
+ * @returns {Promise<Record<string, number>>} `YYYY-MM-DD` → count, only for days with checkouts
+ */
+export async function countCheckoutsByDay(orgId, { from, to }) {
+  const rows = await CheckoutRequest.aggregate([
+    {
+      $match: {
+        orgId: new mongoose.Types.ObjectId(String(orgId)),
+        checkedOutAt: { $gte: from, $lt: to },
+      },
+    },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$checkedOutAt', timezone: 'UTC' } },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+  return Object.fromEntries(rows.map((row) => [row._id, row.count]));
 }
