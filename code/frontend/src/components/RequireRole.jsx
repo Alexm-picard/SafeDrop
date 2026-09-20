@@ -15,7 +15,9 @@ import { Navigate, Outlet } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import { ROUTES } from '../utils/constants';
 /**
- * Render the protected content when the caller's role is in `roles`, otherwise redirect home.
+ * Render the protected content when the caller's role is in `roles`, otherwise redirect to the
+ * catalogue — the one screen every signed-in role may see. Not the landing page at `/`: someone who
+ * is already signed in should stay inside the application.
  *
  * Works both as a layout route (rendering an `<Outlet/>`) and as a wrapper around explicit children,
  * so a single page can be guarded without adding a route level. The redirect carries `denied` in
@@ -26,7 +28,7 @@ import { ROUTES } from '../utils/constants';
 export function RequireRole({ roles, children }) {
   const { role } = useAuth();
   if (!role || !roles.includes(role)) {
-    return <Navigate to={ROUTES.home} replace state={{ denied: true }} />;
+    return <Navigate to={ROUTES.catalog} replace state={{ denied: true }} />;
   }
   return children ?? <Outlet />;
 }

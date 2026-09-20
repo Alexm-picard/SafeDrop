@@ -71,11 +71,13 @@ describe('Layout', () => {
     }
   });
 
-  it('signs out and goes to /login', async () => {
+  it('signs out and goes to the landing page', async () => {
     const user = userEvent.setup();
     const { router, value } = renderLayout(adminUser);
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
     expect(value.logout).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    // The landing page, not the login form: someone who has just signed out is not necessarily
+    // trying to sign back in.
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 });

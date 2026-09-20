@@ -24,9 +24,11 @@ describe('landingFor', () => {
   });
 
   it('falls back to the catalog for an unknown, missing or null role', () => {
-    expect(landingFor('SUPER_ADMIN')).toBe(ROUTES.home);
-    expect(landingFor(undefined)).toBe(ROUTES.home);
-    expect(landingFor(null)).toBe(ROUTES.home);
+    // Not `/`: that is the public landing page, and signing in must end inside the application.
+    expect(landingFor('SUPER_ADMIN')).toBe(ROUTES.catalog);
+    expect(landingFor(undefined)).toBe(ROUTES.catalog);
+    expect(landingFor(null)).toBe(ROUTES.catalog);
+    expect(ROUTES.catalog).not.toBe(ROUTES.home);
   });
 
   it('covers every role the SPA knows about', () => {

@@ -46,7 +46,7 @@ cp .env.example .env        # optional for local dev: every variable has a dev-o
 docker compose up --build   # mongo (replica set) + mongo-init + backend (runs migrations, then dev server) + frontend
 ```
 
-- Frontend: <http://localhost:5173> — the first screen is the login page; use **Create an organization** to bootstrap the first admin.
+- Frontend: <http://localhost:5173> — the first screen is the public landing page; **Sign in** goes to the login form and **Create an organization** bootstraps the first admin. The signed-in catalog lives at `/catalog`.
 - Backend: <http://localhost:4000> (`/health` is a public probe: 200 when the API and its database are up, 503 when the database is unreachable).
 - Mongo from the host: `mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true`.
 

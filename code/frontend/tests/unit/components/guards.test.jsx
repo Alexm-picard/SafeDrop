@@ -8,8 +8,8 @@
 /**
  * Tests for the route guards.
  *
- * `RequireRole`: the right roles get through, the wrong ones and a missing role are redirected home
- * with the denial notice.
+ * `RequireRole`: the right roles get through, the wrong ones and a missing role are redirected to the
+ * catalogue with the denial notice.
  *
  * `RequireAuth`: the `loading` state must render a loading indicator rather than a redirect — treating
  * an unresolved session as "signed out" would bounce an authenticated user to the login page on every
@@ -23,6 +23,7 @@ import { adminUser, approverUser, memberUser } from '../../mocks/handlers';
 import { renderWithAuth } from '../../utils/render';
 const Secret = () => <h1>Secret</h1>;
 const Home = () => <h1>Home</h1>;
+const Catalog = () => <h1>Catalog</h1>;
 const Login = () => <h1>Login</h1>;
 describe('RequireRole', () => {
   it.each([
@@ -47,13 +48,14 @@ describe('RequireRole', () => {
             ),
           },
           { path: '/home', element: <Home /> },
+          { path: '/catalog', element: <Catalog /> },
         ],
       },
     );
     if (allowed) {
       expect(await screen.findByRole('heading', { name: 'Secret' })).toBeInTheDocument();
     } else {
-      await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+      await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
       expect(screen.queryByRole('heading', { name: 'Secret' })).not.toBeInTheDocument();
       expect(router.state.location.state).toEqual({ denied: true });
     }
@@ -75,10 +77,11 @@ describe('RequireRole', () => {
               </RequireRole>
             ),
           },
+          { path: '/catalog', element: <Catalog /> },
         ],
       },
     );
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
   });
 });
 describe('RequireAuth', () => {
