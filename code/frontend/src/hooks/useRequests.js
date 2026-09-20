@@ -28,3 +28,16 @@ export function useRequests(params = {}) {
   );
   return useApiResource(fetcher);
 }
+
+/**
+ * Load one checkout request with its asset, unit, requester and history (SCRUM-123).
+ *
+ * The API decides visibility: someone else's request comes back as a 404 rather than a 403, so the
+ * page renders its not-found state without having to reason about who the viewer is.
+ * @param {string} id
+ * @returns {{ status: string, data: unknown, error: unknown, reload: () => void }}
+ */
+export function useRequest(id) {
+  const fetcher = useCallback((signal) => requestsApi.get(id, signal), [id]);
+  return useApiResource(fetcher);
+}

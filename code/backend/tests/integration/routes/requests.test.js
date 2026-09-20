@@ -375,3 +375,79 @@ describe('POST /api/requests/:id/return (SCRUM-requests-return, OD-4)', () => {
     });
   });
 });
+
+describe('GET /api/requests/:id (SCRUM-123)', () => {
+  const get = (id, cookie) => request(app).get(`/api/requests/${id}`).set('Cookie', cookie);
+  const asMemberA = () => accessCookieFor(seed.a.member);
+  const asApproverA = () => accessCookieFor(seed.a.approver);
+
+  it('gives the requester their request with the asset, unit, person and history', async () => {
+    // Built here rather than taken from the fixture: the seeded rows carry back-dated decision
+    // timestamps, which is fine for them but makes "oldest first" impossible to assert.
+    const built = await createCheckedOutRequest(seed.a);
+    const res = await get(built._id, asMemberA());
+
+    expect(res.status).toBe(200);
+    expect(res.body.request).toMatchObject({
+      id: String(built._id),
+      state: 'CHECKED_OUT',
+    });
+    // The ids are resolved for the screen: a detail page showing raw ObjectIds is useless.
+    expect(res.body.unit).toMatchObject({ id: String(built.unitId) });
+    expect(res.body.asset).toMatchObject({ id: String(seed.a.asset._id), name: seed.a.asset.name });
+    expect(res.body.requester).toEqual({
+      id: String(seed.a.member._id),
+      name: seed.a.member.name,
+      email: seed.a.member.email,
+    });
+    // Only the fields the screen needs: no password hash, no role, nothing internal.
+    expect(Object.keys(res.body.requester).sort()).toEqual(['email', 'id', 'name']);
+
+    // The history reads oldest first and covers what actually happened.
+    const events = res.body.timeline.map((entry) => entry.event);
+    expect(events).toEqual(['SUBMITTED', 'APPROVED', 'CHECKED_OUT']);
+    const times = res.body.timeline.map((entry) => Date.parse(entry.at));
+    expect(times).toEqual([...times].sort((x, y) => x - y));
+  });
+
+  it('lets an approver open anyone’s request in their organization', async () => {
+    const res = await get(seed.a.request._id, asApproverA());
+    expect(res.status).toBe(200);
+    expect(res.body.request.id).toBe(String(seed.a.request._id));
+  });
+
+  it('answers 404, not 403, for another member’s request (SR-2)', async () => {
+    // Asked as a plain member who is not the requester. Org B's member serves: they hold
+    // requests:read:own and nothing more, which is the case that must not leak.
+    const res = await get(seed.a.request._id, accessCookieFor(seed.b.member));
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 404 for a request in another organization, even for an approver (SR-2)', async () => {
+    const res = await get(seed.b.request._id, asApproverA());
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 404 for an id that never existed, in the same shape', async () => {
+    const missing = await get('0'.repeat(24), asMemberA());
+    const foreign = await get(seed.b.request._id, asMemberA());
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toMatchObject({
+      code: 'NOT_FOUND',
+      message: foreign.body.error.message,
+    });
+  });
+
+  it('rejects an id that is not an ObjectId with 400', async () => {
+    const res = await get('not-an-id', asMemberA());
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses an unauthenticated caller', async () => {
+    const res = await request(app).get(`/api/requests/${seed.a.request._id}`);
+    expect(res.status).toBe(401);
+  });
+});

@@ -51,7 +51,7 @@ const stubs = [
     as: 'member',
     body: { unitId: '0'.repeat(24), neededFrom: '2026-10-01', neededTo: '2026-10-05' },
   },
-  { method: 'GET', path: '/api/requests/:request', as: 'member' },
+  // GET /api/requests/:request is no longer here: SCRUM-123 implemented it — see requests.test.js.
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
   { method: 'POST', path: '/api/requests/:request/cancel', as: 'member' },

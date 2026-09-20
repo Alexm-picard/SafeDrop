@@ -75,7 +75,8 @@ describe('checkout state machine (F4)', () => {
     ]);
   });
 
-  it.each(['submit', 'get', 'cancel'])('handler %s is a Sprint 1 stub (501)', async (name) => {
+  // `get` is no longer here: SCRUM-123 implemented it — see requests.test.js.
+  it.each(['submit', 'cancel'])('handler %s is a Sprint 1 stub (501)', async (name) => {
     await expect(checkout[name]()).rejects.toBeInstanceOf(NotImplementedError);
   });
 });

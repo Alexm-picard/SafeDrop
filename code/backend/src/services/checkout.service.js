@@ -27,9 +27,11 @@
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
  */
 import { withTransaction } from '../config/db.js';
+import * as assetRepo from '../repositories/asset.repository.js';
 import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
 import * as checkoutRequestRepo from '../repositories/checkoutRequest.repository.js';
 import * as organizationRepo from '../repositories/organization.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
 import {
   AUDIT_ACTION,
   AUDIT_TARGET_TYPE,
@@ -178,14 +180,92 @@ export async function list(orgId, actor, query = {}) {
 }
 
 /**
- * Read one checkout request (`GET /api/requests/:id`) — not implemented yet.
+ * Read one checkout request with everything the detail screen shows (`GET /api/requests/:id`).
  *
- * TODO(SCRUM-requests-read): a MEMBER may read only their own; someone else's must answer 404, not
- * 403, since a 403 would confirm the request exists.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * Who may see it is decided the same way `list()` decides scope, and for the same reason: holding
+ * `requests:decide` means the whole organisation's requests are your business, and everyone else
+ * sees only their own.
+ *
+ * **Someone else's request is a 404, never a 403.** A 403 would confirm that the id exists, which
+ * is exactly what a member probing for other people's requests wants to learn (SR-2). The same
+ * answer covers an id from another organisation and an id that never existed.
+ *
+ * The asset, unit, requester and decider are read alongside the request because a detail screen
+ * that showed raw ids would be useless, and four concurrent lookups are cheaper than four round
+ * trips from the browser. Each is tenant-scoped in its own right, so a dangling reference resolves
+ * to null rather than reaching across organisations.
+ *
+ * The timeline is derived from the request's own timestamps rather than from the audit log: the
+ * audit trail needs `audit:read`, which a member does not hold, and the request document already
+ * records when each transition happened.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @returns {Promise<{ request: object, asset: object|null, unit: object|null, requester: object|null, decidedBy: object|null, timeline: Array<{ at: Date, event: string }> }>}
+ * @throws {NotFoundError} (404) when no such request is visible to this caller
  */
-export async function get(_orgId, _actor, _requestId) {
-  throw new NotImplementedError('SCRUM-requests-read', 'Reading a request is not implemented yet');
+export async function get(orgId, actor, requestId) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  const maySeeAny = roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
+  if (!request || (!maySeeAny && String(request.requesterId) !== String(actor.userId))) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const unit = await assetUnitRepo.findById(orgId, request.unitId);
+  const [asset, requester, decidedBy] = await Promise.all([
+    unit ? assetRepo.findById(orgId, unit.assetId) : null,
+    userRepo.findById(orgId, request.requesterId),
+    request.decidedBy ? userRepo.findById(orgId, request.decidedBy) : null,
+  ]);
+
+  return {
+    request,
+    asset,
+    unit,
+    requester: requester ? publicPerson(requester) : null,
+    decidedBy: decidedBy ? publicPerson(decidedBy) : null,
+    timeline: timelineOf(request),
+  };
+}
+
+/**
+ * The fields of a person the detail screen may show.
+ *
+ * An allow-list rather than the whole document: the requester's role or the date they joined is
+ * nobody else's business on this screen, and copying by name means a field added to the user schema
+ * later is not exposed here by accident.
+ * @param {object} user
+ * @returns {{ id: string, name: string, email: string }}
+ */
+function publicPerson(user) {
+  return { id: String(user._id), name: user.name, email: user.email };
+}
+
+/**
+ * Turn a request's timestamps into what happened to it, oldest first.
+ *
+ * Only entries whose timestamp exists are included, so the list reads as a history rather than a
+ * form with blanks. `dueAt` is deliberately absent: it is a deadline, not something that happened,
+ * and the screen shows it next to the state instead.
+ * @param {object} request
+ * @returns {Array<{ at: Date, event: string }>}
+ */
+function timelineOf(request) {
+  const entries = [
+    { at: request.createdAt, event: 'SUBMITTED' },
+    {
+      at: request.decidedAt,
+      event: request.state === S.DENIED ? 'DENIED' : 'APPROVED',
+    },
+    { at: request.checkedOutAt, event: 'CHECKED_OUT' },
+    { at: request.returnedAt, event: 'RETURNED' },
+  ];
+  // A cancellation leaves no timestamp of its own, so the document's last write is the best
+  // evidence of when it happened. Only shown when the request actually is cancelled.
+  if (request.state === S.CANCELLED) {
+    entries.push({ at: request.updatedAt, event: 'CANCELLED' });
+  }
+  return entries.filter((entry) => Boolean(entry.at)).sort((a, b) => a.at - b.at);
 }
 
 /**

@@ -37,6 +37,7 @@ export const ROUTES = Object.freeze({
   catalog: '/',
   asset: (id) => `/assets/${id}`,
   myRequests: '/requests',
+  request: (id) => `/requests/${id}`,
   admin: '/admin',
   approvals: '/admin/approvals',
   users: '/admin/users',
