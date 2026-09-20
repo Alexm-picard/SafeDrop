@@ -45,12 +45,7 @@ const stubs = [
   { method: 'POST', path: '/api/assets/:asset/retire', as: 'admin' },
   { method: 'POST', path: '/api/assets/:asset/units', as: 'admin', body: { tag: 'cam-001' } },
   // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
-  {
-    method: 'POST',
-    path: '/api/requests',
-    as: 'member',
-    body: { unitId: '0'.repeat(24), neededFrom: '2026-10-01', neededTo: '2026-10-05' },
-  },
+  // POST /api/requests is no longer here: SCRUM-requests-create implemented it — see requests.test.js.
   // GET /api/requests/:request is no longer here: SCRUM-123 implemented it — see requests.test.js.
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
@@ -103,16 +98,11 @@ describe.skip('SCRUM-assets-*: asset catalogue', () => {
   it('POST /api/assets/:id/units rejects a duplicate tag within the org with 409');
 });
 
+// approve, deny, "POST /api/requests creates a PENDING request..." and "a MEMBER reading another
+// member's request gets 404" are no longer here: SCRUM-119, SCRUM-requests-create and SCRUM-123
+// implemented them — see requests.test.js. Only cancel is still unbuilt (SCRUM-requests-cancel).
 describe.skip('SCRUM-requests-*: checkout workflow (F4 state machine)', () => {
-  it(
-    'POST /api/requests creates a PENDING request for an AVAILABLE unit and appends REQUEST_SUBMITTED',
-  );
-  it(
-    'approve moves PENDING → APPROVED, sets the unit HELD, appends REQUEST_APPROVED (approver ≠ requester)',
-  );
-  it('deny moves PENDING → DENIED and appends REQUEST_DENIED');
   it('cancel by the requester moves PENDING/APPROVED → CANCELLED and frees a HELD unit');
-  it('a MEMBER reading another member’s request gets 404');
 });
 
 describe('SCRUM-46: GET /api/audit', () => {

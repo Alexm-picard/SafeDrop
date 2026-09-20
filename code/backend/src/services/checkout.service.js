@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; approve()/deny()/list() implemented (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/list()/get() implemented (SCRUM-requests-create, SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list, SCRUM-123)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -17,11 +17,11 @@
  * as the state change and its audit event, so a failed step can never leave a unit half-checked-out
  * (NFR-2).
  *
- * `approve`/`deny`/`checkout`/`returnUnit` are implemented: load the request by (orgId, id) → 404 if
- * absent, assertTransition, then write request + unit + audit inside one `withTransaction()`.
- * `approve`/`deny` additionally apply the organisation's approval policy (separation of duties);
- * `checkout`/`returnUnit` do not — access to them is gated entirely by the `requests:handoff`
- * permission at the route (OD-4). `submit`, `list`, `get`, `cancel` are still Sprint 1 stubs.
+ * `submit`/`approve`/`deny`/`checkout`/`returnUnit` are implemented; `get`/`list` are implemented too
+ * (see their own doc comments for how visibility is scoped). `approve`/`deny` additionally apply the
+ * organisation's approval policy (separation of duties); `checkout`/`returnUnit` do not — access to
+ * them is gated entirely by the `requests:handoff` permission at the route (OD-4). `cancel` is still
+ * a Sprint 1 stub (SCRUM-requests-cancel, tracked separately from SCRUM-requests-create).
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
@@ -39,6 +39,7 @@ import {
   UNIT_STATUS as U,
 } from '../utils/constants.js';
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   NotImplementedError,
@@ -64,6 +65,9 @@ import { policyFor } from './policies/approvalPolicy.js';
  * CHECKED_OUT   → LOST         unit RETIRED       (Iteration 2)
  * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
  * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
+ *
+ * Reaching PENDING (submit()) has no row of its own here: opening a request does not touch the
+ * unit at all. That is a deliberate, still-open gap, not an oversight — see submit()'s doc comment.
  */
 export const TRANSITIONS = Object.freeze({
   [S.PENDING]: Object.freeze({
@@ -137,17 +141,63 @@ export function canTransition(from, to) {
 }
 
 /**
- * Open a checkout request (`POST /api/requests`) — not implemented yet.
+ * Open a checkout request (`POST /api/requests`).
  *
- * TODO(SCRUM-requests-create): the unit must be AVAILABLE at the moment of writing, and the request
- * is created PENDING with a REQUEST_SUBMITTED audit event in the same transaction.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * The unit must be AVAILABLE at the moment of writing: it is read and the request inserted inside
+ * one `withTransaction()`, so a submit can never act on a stale read of a unit some other operation
+ * (a retire, a concurrent approval on a different request) is changing at that instant.
+ *
+ * This does **not** stop two members from submitting separate PENDING requests against the same
+ * still-AVAILABLE unit at the same moment — reaching PENDING has no unit side-effect (see the
+ * TRANSITIONS table: a unit is only reserved on approval), so there is nothing to compare-and-set
+ * against here. That is the same "what happens to sibling PENDING requests" question already open
+ * since `approve()` shipped; this ticket does not resolve it, only the narrower race above.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {{ unitId: string, neededFrom: Date, neededTo: Date, note?: string, requestId?: string }} [input]
+ *   validated `createRequestBody`, plus the HTTP request id for audit correlation
+ * @returns {Promise<object>} the new PENDING request
+ * @throws {NotFoundError} (404) no such unit in this organisation
+ * @throws {ConflictError} (409) the unit is not AVAILABLE
  */
-export async function submit(_orgId, _actor, _input) {
-  throw new NotImplementedError(
-    'SCRUM-requests-create',
-    'Submitting requests is not implemented yet',
-  );
+export async function submit(orgId, actor, input = {}) {
+  return withTransaction(async (session) => {
+    const unit = await assetUnitRepo.findById(orgId, input.unitId, { session });
+    if (!unit) {
+      throw new NotFoundError('Unit not found');
+    }
+    if (unit.status !== U.AVAILABLE) {
+      throw new ConflictError('That unit is no longer available');
+    }
+
+    const created = await checkoutRequestRepo.create(
+      orgId,
+      {
+        unitId: input.unitId,
+        requesterId: actor.userId,
+        neededFrom: input.neededFrom,
+        neededTo: input.neededTo,
+        note: input.note ?? '',
+      },
+      { session },
+    );
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_SUBMITTED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: created._id,
+        before: null,
+        after: { state: S.PENDING, unitId: input.unitId },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return created;
+  });
 }
 
 /**
