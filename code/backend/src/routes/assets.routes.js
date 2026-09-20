@@ -24,25 +24,45 @@ import { createRouter, defineRoute } from './define.js';
 import { emptyBody, idParams, pagination } from './schemas.js';
 
 /**
- * Body for creating an asset: name, category, and optional description and image URL.
+ * What each asset field may contain, with no defaults attached.
+ *
+ * The single definition the create and update schemas are both built from, so the two can never
+ * disagree about what a field may hold — adding a field here makes it both creatable and updatable
+ * under the same rules.
  *
  * `imageUrl` is parsed as a URL rather than a string, so a `javascript:` or `data:` value cannot be
  * stored and later rendered by the frontend as an image source.
  */
-export const assetBody = z.object({
+const assetFields = {
   name: z.string().trim().min(1).max(120),
   category: z.string().trim().min(1).max(60),
-  description: z.string().trim().max(2000).default(''),
-  imageUrl: z.url().max(2048).nullable().default(null),
+  description: z.string().trim().max(2000),
+  imageUrl: z.url().max(2048).nullable(),
+};
+
+/**
+ * Body for creating an asset: name, category, and optional description and image URL.
+ *
+ * The two optional fields carry defaults, so an asset created without them is stored with an empty
+ * description and no image rather than with those keys missing.
+ */
+export const assetBody = z.object({
+  ...assetFields,
+  description: assetFields.description.default(''),
+  imageUrl: assetFields.imageUrl.default(null),
 });
 
 /**
- * Body for updating an asset: every field of `assetBody`, all optional.
+ * Body for updating an asset: every field of `assetBody`, all optional — and **no defaults**.
  *
- * Derived from `assetBody` with `.partial()` so the two can never disagree about what a field may
- * contain — adding a field to the create schema automatically makes it updatable under the same rules.
+ * This is built from `assetFields` rather than as `assetBody.partial()`, which is the obvious
+ * spelling and is wrong. `.partial()` makes each key optional but leaves the `.default()` wrappers
+ * in place, so `{ name: 'X' }` parses to `{ name: 'X', description: '', imageUrl: null }` — and a
+ * PATCH meant to rename an asset would silently wipe its description and image. A patch schema must
+ * distinguish "not mentioned" from "set to the default"; defaults belong only where a record is
+ * being created.
  */
-export const assetPatch = assetBody.partial();
+export const assetPatch = z.object(assetFields).partial();
 
 /**
  * Query for listing assets: pagination, an optional category filter, and `includeRetired`.
