@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/list()/get() implemented (SCRUM-requests-create, SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-list, SCRUM-123)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented (SCRUM-requests-create, SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-cancel, SCRUM-requests-list, SCRUM-123)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -17,11 +17,11 @@
  * as the state change and its audit event, so a failed step can never leave a unit half-checked-out
  * (NFR-2).
  *
- * `submit`/`approve`/`deny`/`checkout`/`returnUnit` are implemented; `get`/`list` are implemented too
- * (see their own doc comments for how visibility is scoped). `approve`/`deny` additionally apply the
- * organisation's approval policy (separation of duties); `checkout`/`returnUnit` do not — access to
- * them is gated entirely by the `requests:handoff` permission at the route (OD-4). `cancel` is still
- * a Sprint 1 stub (SCRUM-requests-cancel, tracked separately from SCRUM-requests-create).
+ * `submit`/`approve`/`deny`/`cancel`/`checkout`/`returnUnit`/`get`/`list` are all implemented (see
+ * each one's own doc comment for how visibility or ownership is scoped). `approve`/`deny` apply the
+ * organisation's approval policy (separation of duties); `cancel` is stricter still — the requester
+ * only, no role-based exception; `checkout`/`returnUnit` do not check ownership at all — access to
+ * them is gated entirely by the `requests:handoff` permission at the route (OD-4).
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
  * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
@@ -42,7 +42,6 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-  NotImplementedError,
   StateTransitionError,
 } from '../utils/errors.js';
 import { PERMISSIONS, roleHasPermission } from '../utils/permissions.js';
@@ -455,18 +454,70 @@ export async function deny(orgId, actor, requestId, input = {}) {
 }
 
 /**
- * Cancel a request (`POST /api/requests/:id/cancel`) — not implemented yet.
+ * Withdraw one's own request (`POST /api/requests/:id/cancel`).
  *
- * TODO(SCRUM-requests-cancel): the requester only, from PENDING or APPROVED. Cancelling an APPROVED
- * request must return its held unit to AVAILABLE, or the unit stays reserved for a request nobody
- * will collect.
- * @throws {NotImplementedError} (501) until the ticket is delivered
+ * The requester only — no role-based exception, unlike `get()`. An APPROVER or ORG_ADMIN can see
+ * every request in the organisation, but seeing one and being allowed to withdraw it on someone
+ * else's behalf are different things, and this ticket grants only the first.
+ *
+ * **Anyone other than the requester gets 404, never 403** — extending the same reasoning `get()`
+ * uses (SR-2): a 403 would confirm to a non-owner that the request exists at all, and the route's
+ * permission (`requests:create`) is held by every member, so without this a member could probe any
+ * id in their own organisation and learn which ones exist from the 403/404 split alone.
+ *
+ * PENDING or APPROVED only — the table's own two `→ CANCELLED` rows enforce that: no third row
+ * exists, so `assertTransition` throws 409 for anything else (already CHECKED_OUT, already decided
+ * one way, or already terminal) without this function needing to special-case it.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ requestId?: string }} [input] the HTTP request id, for audit correlation
+ * @returns {Promise<object>} the cancelled request
+ * @throws {NotFoundError} (404) no such request, or the caller is not its requester
+ * @throws {StateTransitionError} (409) the request isn't PENDING/APPROVED (including a lost race)
  */
-export async function cancel(_orgId, _actor, _requestId) {
-  throw new NotImplementedError(
-    'SCRUM-requests-cancel',
-    'Cancelling requests is not implemented yet',
-  );
+export async function cancel(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request || String(request.requesterId) !== String(actor.userId)) {
+    throw new NotFoundError('Request not found');
+  }
+
+  const { unitStatus } = assertTransition(request.state, S.CANCELLED);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: request.state,
+        patch: { state: S.CANCELLED },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.CANCELLED);
+    }
+
+    if (unitStatus) {
+      await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
+    }
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.REQUEST_CANCELLED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: request.state },
+        after: { state: S.CANCELLED },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
 }
 
 /**

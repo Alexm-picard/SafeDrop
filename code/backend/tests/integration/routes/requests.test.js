@@ -574,3 +574,85 @@ describe('GET /api/requests/:id (SCRUM-123)', () => {
     expect(res.body.timeline.map((e) => e.event)).toEqual(['SUBMITTED', 'CANCELLED']);
   });
 });
+
+describe('POST /api/requests/:id/cancel (SCRUM-requests-cancel)', () => {
+  it('cancels a PENDING request with no unit side-effect, and appends REQUEST_CANCELLED', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('CANCELLED');
+
+    const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id);
+    expect(unit.status).toBe('AVAILABLE');
+
+    const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_CANCELLED });
+    expect(audit.total).toBe(1);
+  });
+
+  it('cancels an APPROVED request and frees its HELD unit back to AVAILABLE', async () => {
+    const approved = await createApprovedRequest(seed.a);
+
+    const res = await request(app)
+      .post(`/api/requests/${approved._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('CANCELLED');
+
+    const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id);
+    expect(unit.status).toBe('AVAILABLE');
+  });
+
+  it('a MEMBER cannot cancel another member’s request (404, not 403)', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.b.member))
+      .send({});
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('an APPROVER cannot cancel a request that is not theirs, even though they can see it', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.approver))
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('a request in another organization returns 404', async () => {
+    const res = await request(app)
+      .post(`/api/requests/${seed.b.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(res.status).toBe(404);
+  });
+
+  it('cancelling a CHECKED_OUT request returns 409', async () => {
+    const checkedOut = await createCheckedOutRequest(seed.a);
+    const res = await request(app)
+      .post(`/api/requests/${checkedOut._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('INVALID_STATE_TRANSITION');
+  });
+
+  it('cancelling an already-cancelled request returns 409 the second time', async () => {
+    const first = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(`/api/requests/${seed.a.request._id}/cancel`)
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({});
+    expect(second.status).toBe(409);
+  });
+});
