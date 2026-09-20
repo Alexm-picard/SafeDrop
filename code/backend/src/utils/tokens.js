@@ -139,11 +139,21 @@ export function generateOpaqueToken() {
 }
 
 /**
- * Hash a refresh token into the form stored in the database.
+ * Hash an opaque token into the form stored in the database.
+ *
+ * Used for refresh tokens and for password-reset tokens (SCRUM-22): both are values this server
+ * minted with `generateOpaqueToken`, never anything a person chose.
  *
  * A plain SHA-256 is right here, unlike for passwords: the input is 256 bits of randomness, so
  * there is nothing to brute-force or guess, and a fast digest keeps refresh cheap. The point is
- * that a stolen database row cannot be presented as a session.
+ * that a stolen database row cannot be presented as a session or a reset link.
+ *
+ * **CodeQL flags this as `js/insufficient-password-hash` (high) on the password-reset path**,
+ * because the token reaches `passwordResetEmail` and the query treats anything password-shaped as
+ * a password. It is a false positive: bcrypt exists to slow down guessing at low-entropy human
+ * passwords, and there is nothing to guess in 256 bits of CSPRNG output. Deliberately not
+ * "fixed" by running bcrypt over a random token, which would cost work and buy nothing. Re-check
+ * this reasoning if a *user-chosen* secret is ever passed here.
  * @param {string} raw the token as handed to the client
  * @returns {string} hex-encoded SHA-256 digest
  */

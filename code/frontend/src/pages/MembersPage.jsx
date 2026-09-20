@@ -447,6 +447,26 @@ export function MembersPage() {
                   ),
               },
               { key: 'joined', header: 'Joined', render: (m) => formatDate(m.createdAt) },
+              {
+                key: 'password',
+                header: 'Password',
+                render: (m) =>
+                  m.id === me?.id ? (
+                    // An admin resets their own password through the change-password screen; the
+                    // API refuses this route aimed at yourself (SCRUM-36).
+                    <span className="hint">—</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={changingId === m.id}
+                      aria-expanded={resetTarget?.id === m.id}
+                      onClick={() => setResetTarget(resetTarget?.id === m.id ? null : m)}
+                    >
+                      {m.mustChangePassword ? 'Set again' : 'Reset password'}
+                    </button>
+                  ),
+              },
             ]}
             rows={data.items}
             getRowId={(m) => m.id}

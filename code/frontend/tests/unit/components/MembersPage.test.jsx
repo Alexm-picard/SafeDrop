@@ -122,13 +122,15 @@ describe('MembersPage: the list', () => {
     expect(screen.getByLabelText('Role for Max Member')).toHaveValue('MEMBER');
   });
 
-  it('shows exactly name, email, role and join date for each member', async () => {
+  it('shows exactly name, email, role, join date and the password action for each member', async () => {
     await renderLoaded();
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
       'Name',
       'Email',
       'Role',
       'Joined',
+      // The reset action, added with SCRUM-36; the column holds a button, never a password.
+      'Password',
     ]);
     // Oldest first, as the API returns them: the founding admin is at the top.
     expect(dataRows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
@@ -148,7 +150,14 @@ describe('MembersPage: the list', () => {
 
   it('never shows a password or hash: the list has no such data to show', async () => {
     await renderLoaded();
-    expect(screen.getByRole('table').textContent).not.toMatch(/password|hash|\$2[aby]\$/i);
+    const table = screen.getByRole('table').textContent;
+    // The word itself now appears as the column header and the "Reset password" button, so the
+    // check is for what must never be rendered: a hash, or anything labelled as a stored password.
+    expect(table).not.toMatch(/\$2[aby]\$/);
+    expect(table).not.toMatch(/hash/i);
+    expect(table).not.toMatch(/password:\s*\S/i);
+    // And the API never sends one to render.
+    expect(JSON.stringify(members)).not.toMatch(/password/i);
   });
 
   it('marks the signed-in admin as "(you)" and gives them no role control', async () => {
