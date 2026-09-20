@@ -47,6 +47,10 @@ export const AUDIT_ACTION = freezeEnum([
   'ASSET_RETIRED',
   'USER_ROLE_CHANGED',
   'USER_INVITED',
+  // A completed password reset (SCRUM-22). The *request* for a link is not audited: it is
+  // unauthenticated and anyone can trigger it for any address, so recording it would let a stranger
+  // write rows into a tenant's audit log. Changing the password is the state change worth keeping.
+  'USER_PASSWORD_RESET',
   'ORG_CREATED',
 ]);
 export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));

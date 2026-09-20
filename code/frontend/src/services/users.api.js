@@ -52,3 +52,14 @@ export const invite = (input) => apiRequest('/api/users/invite', { method: 'POST
  */
 export const changeRole = (userId, role) =>
   apiRequest(`/api/users/${userId}/role`, { method: 'PATCH', body: { role } });
+/**
+ * Set a member's password on their behalf (SCRUM-36).
+ *
+ * The member is flagged so that password only opens the change-password screen, so the admin is
+ * handing over a way in, not a credential to keep.
+ * @param {string} userId
+ * @param {string} password
+ * @returns {Promise<{ user: object }>}
+ */
+export const setPassword = (userId, password) =>
+  apiRequest(`/api/users/${userId}/password`, { method: 'POST', body: { password } });

@@ -29,6 +29,17 @@ const userSchema = createSchema(
     passwordHash: { type: String, required: true, select: false },
     name: { type: String, required: true, trim: true, minlength: 1, maxlength: 120 },
     role: { type: String, required: true, enum: ROLE_LIST, default: ROLES.MEMBER },
+    // True while the account is using a password somebody else chose — the initial password an
+    // admin set at invitation, or one they set again through a reset. The API refuses every route
+    // but change-password until the person picks their own, so an admin never keeps working
+    // knowledge of a member's credentials (SCRUM-22).
+    mustChangePassword: { type: Boolean, required: true, default: false },
+    // Password reset (SCRUM-22). Only the SHA-256 of the token is stored, so a database dump does
+    // not hand anyone a working reset link, and both fields are select:false for the same reason
+    // the password hash is. They are cleared the moment the reset is used, which is what makes a
+    // link single-use.
+    resetTokenHash: { type: String, default: null, select: false },
+    resetTokenExpiresAt: { type: Date, default: null, select: false },
   },
   { collection: 'users' },
 );

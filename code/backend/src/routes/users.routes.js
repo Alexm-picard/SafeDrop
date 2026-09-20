@@ -42,6 +42,14 @@ export const inviteBody = z.object({
  */
 export const roleBody = z.object({ role: z.enum(ROLE_LIST) });
 
+/**
+ * Body for `POST /api/users/:id/password`: the password an admin is setting for a member.
+ *
+ * Same strength rules as at invitation — this is a creation path, not a comparison — and the
+ * account is flagged so the member must replace it at their next sign-in (SCRUM-22, SCRUM-36).
+ */
+export const setPasswordBody = z.object({ password });
+
 export const usersRouter = createRouter();
 
 defineRoute(
@@ -73,4 +81,14 @@ defineRoute(
     schemas: { params: idParams, body: roleBody },
   },
   users.changeRole,
+);
+defineRoute(
+  usersRouter,
+  {
+    method: 'POST',
+    path: '/:id/password',
+    permission: PERMISSIONS.USERS_MANAGE,
+    schemas: { params: idParams, body: setPasswordBody },
+  },
+  users.setPassword,
 );

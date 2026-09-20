@@ -151,7 +151,10 @@ the Render API, so the session cookies stay first-party (SDD §6.3).
 | `MONGODB_URI` | Atlas connection string (secret) |
 | `JWT_ACCESS_SECRET` | secret, at least 32 characters |
 | `CORS_ORIGINS` | `https://safe-drop-five.vercel.app` |
-| `APP_BASE_URL` | `https://safe-drop-five.vercel.app` (base of invitation links) |
+| `APP_BASE_URL` | `https://safe-drop-five.vercel.app` (base of password-reset links) |
+| `MAIL_PROVIDER` | `resend` or `brevo` — `console` sends nothing, so staging must not use it |
+| `MAIL_API_KEY` | the provider's API key (secret) |
+| `MAIL_FROM` | the sender the provider has verified, e.g. `SafeDrop <no-reply@…>` |
 | `COOKIE_SECURE` | `true` |
 | `TRUST_PROXY` | `1` per SDD §6.8, which is also the production default when unset (see the known issue below) |
 

@@ -65,7 +65,13 @@ export function LoginPage() {
         email: email.trim(),
         password,
       });
-      navigate(from ?? landingFor(user?.role), { replace: true });
+      // A password an admin chose only opens one door (SCRUM-22); `from` does not apply.
+      navigate(
+        user?.mustChangePassword ? ROUTES.changePassword : (from ?? landingFor(user?.role)),
+        {
+          replace: true,
+        },
+      );
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -76,6 +82,11 @@ export function LoginPage() {
     <main id="main" className="auth-page">
       <h1>Sign in to {APP_NAME}</h1>
       <form className="card" onSubmit={onSubmit} noValidate>
+        {location.state?.passwordReset ? (
+          <div role="status" className="alert">
+            Your password has been reset. Sign in with the new one.
+          </div>
+        ) : null}
         {error ? (
           <div role="alert" className="alert">
             {error}
@@ -124,6 +135,9 @@ export function LoginPage() {
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      <p>
+        <Link to={ROUTES.forgotPassword}>Forgot password?</Link>
+      </p>
       <p>
         New here? <Link to={ROUTES.setup}>Create an organization</Link>
       </p>

@@ -28,6 +28,7 @@ import { afterAll, afterEach, beforeAll, inject } from 'vitest';
 import { up as upInitial } from '../migrations/20260916000000-initial-indexes.js';
 import { up as upInviteIndex } from '../migrations/20260919000000-invite-token-index.js';
 import { up as upRemoveInviteIndex } from '../migrations/20260920000000-remove-invite-token-index.js';
+import { up as upResetTokenIndex } from '../migrations/20260920100000-password-reset-token-index.js';
 import { configureMongoose } from '../src/config/db.js';
 
 beforeAll(async () => {
@@ -42,6 +43,7 @@ beforeAll(async () => {
   await upInitial(mongoose.connection.db);
   await upInviteIndex(mongoose.connection.db);
   await upRemoveInviteIndex(mongoose.connection.db);
+  await upResetTokenIndex(mongoose.connection.db);
 });
 
 afterEach(async () => {

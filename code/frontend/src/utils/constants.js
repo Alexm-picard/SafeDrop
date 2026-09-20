@@ -33,9 +33,15 @@ export const ROLE_LABELS = Object.freeze({
 export const ROUTES = Object.freeze({
   home: '/',
   login: '/login',
+  forgotPassword: '/forgot-password',
+  // The API builds the mailed link on this path, so the two must agree (backend APP_BASE_URL).
+  resetPassword: '/reset-password',
+  changePassword: '/change-password',
   setup: '/setup',
   catalog: '/',
   asset: (id) => `/assets/${id}`,
+  assetNew: '/admin/assets/new',
+  assetEdit: (id) => `/assets/${id}/edit`,
   myRequests: '/requests',
   request: (id) => `/requests/${id}`,
   admin: '/admin',
@@ -118,6 +124,20 @@ export const REQUEST_STATES = Object.freeze([
   'RETURNED',
   'LOST',
 ]);
+/**
+ * The conditions a physical unit can be in, mirroring the backend's `ASSET_CONDITION_LIST`.
+ *
+ * Drives the add-unit form's dropdown. The route's `unitBody` schema rejects anything outside this
+ * set with a 400, so a value that drifts from the backend becomes a failed request rather than a
+ * silently wrong record. Kept in the backend's order, best first.
+ */
+export const ASSET_CONDITIONS = Object.freeze(['NEW', 'GOOD', 'FAIR', 'POOR']);
+/**
+ * The condition a new unit starts in, matching `unitBody`'s default.
+ *
+ * Named rather than inlined so the form's initial value and the server's default cannot drift apart.
+ */
+export const DEFAULT_ASSET_CONDITION = 'GOOD';
 /**
  * Rows per page on the audit log.
  *
