@@ -489,6 +489,28 @@ export const handlers = [
   http.get('*/api/requests', ({ request }) =>
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
   ),
+  // Opening a request (SCRUM-124). Answers as the finished backend will, not as it does today: the
+  // service behind this route is still a 501 stub owned by SCRUM-requests-create. A test that wants
+  // the "somebody else took it" race overrides this with its own 409.
+  http.post('*/api/requests', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      {
+        id: '6aab2a45c6e457e01ac0973f',
+        orgId: org.id,
+        requesterId: memberUser.id,
+        state: 'PENDING',
+        decidedBy: null,
+        decidedAt: null,
+        decisionNote: '',
+        checkedOutAt: null,
+        dueAt: null,
+        returnedAt: null,
+        ...body,
+      },
+      { status: 201 },
+    );
+  }),
   http.get('*/api/requests/:id', ({ params }) => {
     const found = checkoutRequests.find((r) => r.id === params.id);
     if (!found) {
