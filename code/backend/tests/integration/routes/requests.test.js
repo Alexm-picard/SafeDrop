@@ -125,14 +125,11 @@ describe('POST /api/requests (SCRUM-requests-create)', () => {
   });
 
   it('no audit event is appended when the submit fails', async () => {
-    await request(app)
-      .post('/api/requests')
-      .set('Cookie', accessCookieFor(seed.a.member))
-      .send({
-        unitId: seed.a.units[1]._id, // OUT
-        neededFrom: '2026-11-01T00:00:00.000Z',
-        neededTo: '2026-11-05T00:00:00.000Z',
-      });
+    await request(app).post('/api/requests').set('Cookie', accessCookieFor(seed.a.member)).send({
+      unitId: seed.a.units[1]._id, // OUT
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
     const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_SUBMITTED });
     expect(audit.total).toBe(0);
   });
