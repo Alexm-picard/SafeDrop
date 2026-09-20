@@ -1,0 +1,128 @@
+# AI-USAGE SUMMARY
+# Tools: Claude Code
+# Overall AI Contribution: ~90%
+# AI-Assisted Areas: scheduled OWASP ZAP baseline scan of staging, report artifacts, severity gate
+# Human Contributions: pending team review
+# Notes: Written for SCRUM-126 (SPPP DAST; SR-5, SR-6, SR-13). Must be reviewed and tested by the owning team member before merge.
+#
+# Dynamic application security testing (SPPP §5a DAST).
+#
+# The SPPP names OWASP ZAP as the project's DAST tool and requires a scan of staging before a release
+# is promoted. CodeQL reads the source, `npm audit` reads the dependency tree; this is the only check
+# that exercises the deployed system over the network, which is what SR-5 (HTTPS, HSTS, secure
+# cookies) and SR-6 (injection, XSS) are verified against.
+#
+# NOT on pull requests, on purpose. A baseline scan takes minutes, needs staging to be awake, and
+# staging only ever holds `main` — so a PR scan would report on code the PR does not contain.
+#
+# The scan is ZAP's *baseline* mode: it crawls and runs passive rules only. It never submits attack
+# payloads, so it is safe to point at a live environment. Active scanning belongs in a separate,
+# deliberately triggered job against a throwaway database, not here.
+
+name: DAST (OWASP ZAP)
+
+on:
+  schedule:
+    - cron: '0 7 * * 1' # weekly, Monday 07:00 UTC — an hour after CodeQL
+  push:
+    tags: ['v*'] # before a release is promoted (SPPP)
+  workflow_dispatch: # and on demand
+
+permissions:
+  contents: read
+
+env:
+  # Pinned rather than :stable so a scan result is reproducible and a new ZAP release cannot turn
+  # the build red on its own schedule. Bump deliberately, and re-triage what the new version finds.
+  ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.17.0
+
+jobs:
+  baseline:
+    # The deploy mirror (Alexm-picard/SafeDrop) carries this workflow too; only scan from here.
+    if: github.repository == 'BUMETCS673/CS673OLF26P3'
+    name: ZAP baseline — ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one target failing must not hide the other's report
+      matrix:
+        include:
+          - name: spa
+            url: https://safe-drop-five.vercel.app
+          # Seeded at /health, not at the API root: the root is a 404 (there is no page there), and
+          # ZAP's spider needs a real response to start from. It still cannot discover /api/*, which
+          # has no links and needs a session — see the coverage limits in doc/zap-triage.md.
+          - name: api
+            url: https://safedrop-ony6.onrender.com/health
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wake staging
+        # Render's free tier stops the API after 15 minutes idle and takes ~20 s to start again. A
+        # scan that begins during that window reads the timeouts as findings, so knock first. The
+        # SPA is on Vercel and always warm, but its /api/* rewrite reaches the same sleeping API.
+        run: |
+          curl -sS --fail --max-time 120 --retry 3 --retry-all-errors \
+            https://safedrop-ony6.onrender.com/health
+
+      - name: ZAP baseline scan
+        # -I: warnings alone do not fail the run. The severity gate below decides that instead, so
+        # that "fails on high severity" is one explicit rule here rather than ZAP's exit codes.
+        # -c: the rule file records which alerts the team has formally accepted (see doc/zap-triage.md).
+        run: |
+          mkdir -p reports && chmod 777 reports
+          docker run --rm \
+            -v "$PWD/reports:/zap/wrk:rw" \
+            -v "$PWD/.zap:/zap/conf:ro" \
+            "$ZAP_IMAGE" zap-baseline.py \
+            -t "${{ matrix.url }}" \
+            -c /zap/conf/rules.tsv \
+            -r "${{ matrix.name }}.html" \
+            -J "${{ matrix.name }}.json" \
+            -w "${{ matrix.name }}.md" \
+            -m 5 -I
+
+      - name: Upload report
+        if: always() # a scan that fails the gate is exactly the one whose report is wanted
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-${{ matrix.name }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Severity gate
+        if: always()
+        # ZAP's riskcode: 3 High, 2 Medium, 1 Low, 0 Informational. The agreed threshold (SCRUM-126)
+        # is that High fails the build and everything else is reported for triage — otherwise the
+        # job would pass whatever it found, which is the failure mode this ticket exists to fix.
+        run: |
+          report="reports/${{ matrix.name }}.json"
+          if [ ! -f "$report" ]; then
+            echo "::error::no ZAP report at $report — the scan did not complete"
+            exit 1
+          fi
+          # The JSON report lists every alert, including ones rules.tsv marks IGNORE (that setting
+          # only changes ZAP's own console output). So the summary filters the accepted ones out to
+          # stay actionable, while the High gate below deliberately counts them: accepting noise is
+          # not a way to accept a high-severity finding.
+          ignored=$(awk -F'\t' '!/^#/ && $2=="IGNORE" {print $1}' .zap/rules.tsv | jq -R . | jq -s -c .)
+          high=$(jq '[.site[].alerts[] | select((.riskcode | tonumber) >= 3)] | length' "$report")
+          {
+            echo "### ZAP baseline — ${{ matrix.name }}"
+            echo ""
+            echo "Target: ${{ matrix.url }}"
+            echo ""
+            echo "Open alerts (accepted ones in .zap/rules.tsv excluded):"
+            echo ""
+            jq -r --argjson ignored "$ignored" \
+              '[.site[].alerts[] | select(([.pluginid] | inside($ignored)) | not)]
+               | sort_by(-(.riskcode | tonumber))
+               | map("- **\(.riskdesc)** \(.name) (rule \(.pluginid), \(.instances | length) instance(s))")
+               | join("\n")' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$high" -gt 0 ]; then
+            echo "::error::$high high-severity ZAP finding(s) against ${{ matrix.url }}"
+            exit 1
+          fi
+          echo "No high-severity findings."

@@ -195,14 +195,14 @@ describe('HTTP layer: org A addressing org B', () => {
       method: 'POST',
       path: '/api/requests/:id/checkout',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-checkout',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/return',
       target: (s) => s.request._id,
-      implemented: false,
+      implemented: true,
       ticket: 'SCRUM-requests-return',
     },
     {

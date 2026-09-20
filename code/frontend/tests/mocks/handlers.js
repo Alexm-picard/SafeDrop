@@ -183,7 +183,10 @@ export function auditPage(search) {
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
 }
 /**
- * Three checkout requests for the caller's org, one per state the approval queue actually exercises.
+ * Four checkout requests for the caller's org, one per state the approval queue actually exercises:
+ * PENDING (approve/deny), APPROVED (checkout), CHECKED_OUT (return), and DENIED — a terminal state
+ * with no action, so a test can prove the actions column renders nothing rather than merely having
+ * no row to check.
  */
 export const checkoutRequests = [
   {
@@ -232,6 +235,22 @@ export const checkoutRequests = [
     decisionNote: '',
     checkedOutAt: '2026-09-01T00:00:00.000Z',
     dueAt: '2026-09-14T00:00:00.000Z',
+    returnedAt: null,
+  },
+  {
+    id: '6aab2a45c6e457e01ac0973d',
+    orgId: org.id,
+    unitId: '6aab2a45c6e457e01ac0972a',
+    requesterId: memberUser.id,
+    state: 'DENIED',
+    neededFrom: '2026-08-01T00:00:00.000Z',
+    neededTo: '2026-08-10T00:00:00.000Z',
+    note: '',
+    decidedBy: approverUser.id,
+    decidedAt: '2026-07-31T00:00:00.000Z',
+    decisionNote: 'Not eligible',
+    checkedOutAt: null,
+    dueAt: null,
     returnedAt: null,
   },
 ];
@@ -433,6 +452,14 @@ export const handlers = [
   http.post('*/api/requests/:id/deny', ({ params }) => {
     const found = checkoutRequests.find((r) => r.id === params.id);
     return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'DENIED' });
+  }),
+  http.post('*/api/requests/:id/checkout', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'CHECKED_OUT' });
+  }),
+  http.post('*/api/requests/:id/return', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'RETURNED' });
   }),
   http.get('*/api/users', ({ request }) =>
     HttpResponse.json(membersPage(new URL(request.url).searchParams)),

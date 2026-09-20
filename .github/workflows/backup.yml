@@ -1,0 +1,124 @@
+# AI-USAGE SUMMARY
+# Tools: Claude Code
+# Overall AI Contribution: ~90%
+# AI-Assisted Areas: daily encrypted mongodump of the staging Atlas database, verified round trip, artifact retention
+# Human Contributions: pending team review
+# Notes: Written for SCRUM-127 (NFR-3, SDD OD-7). Must be reviewed and tested by the owning team member before merge.
+#
+# Daily database export (NFR-3, SDD OD-7).
+#
+# The Atlas free tier has no built-in backups, so OD-7 chose "free tier plus a scheduled export
+# job". This is that job: a `mongodump` of staging, encrypted, kept as a workflow artifact.
+#
+# THE REPOSITORY IS PUBLIC, and so are its artifacts. A plain dump here would publish every user
+# record, email address and audit event to anyone who can read the repo. The archive is therefore
+# encrypted with AES-256 before it is uploaded, and the passphrase lives only in the secret store.
+# Do not remove that step, and do not add a step that prints the dump.
+#
+# Restoring is documented in code/docs/backups.md, which also records the restore test that
+# proves the procedure works.
+
+name: Backup (daily database export)
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # daily, 05:00 UTC — quiet hours for a class project
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    # The deploy mirror carries this workflow too, and it holds no secrets: only back up from here.
+    if: github.repository == 'BUMETCS673/CS673OLF26P3'
+    name: Export and encrypt
+    runs-on: ubuntu-latest
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI_STAGING }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+
+    steps:
+      - name: Check the secrets exist
+        # Deliberately a failure, not a skip. A nightly job that goes green without producing a
+        # backup is the same trap as a health check that cannot see the database: reassuring and
+        # wrong. If this fails, set the two secrets (see code/docs/backups.md).
+        run: |
+          missing=
+          [ -z "$MONGODB_URI" ] && missing="$missing MONGODB_URI_STAGING"
+          [ -z "$BACKUP_PASSPHRASE" ] && missing="$missing BACKUP_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::no backup was taken — missing repository secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Dump the database
+        # mongodump ships in the mongo image, so the tool version is pinned with the image and is
+        # the same one code/docs/backups.md tells you to restore with. --archive --gzip makes it
+        # a single file.
+        run: |
+          mkdir -p backup
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          docker run --rm -i mongo:7 mongodump --uri="$MONGODB_URI" --archive --gzip \
+            > "backup/safedrop-$stamp.archive.gz" 2> backup/dump.log
+          if [ ! -s "backup/safedrop-$stamp.archive.gz" ]; then
+            echo "::error::mongodump produced an empty archive"
+            # Job logs on a public repository are public. A connection error can quote the URI, so
+            # anything between "://" and "@" is masked before the log is printed.
+            sed -n '1,40p' backup/dump.log | sed -E 's#(://)[^@[:space:]]*@#\1***:***@#g'
+            exit 1
+          fi
+
+      - name: Encrypt
+        # AES-256 with PBKDF2. openssl enc gives no integrity guarantee of its own, so the SHA-256
+        # of the plaintext archive travels with it and the restore procedure checks it.
+        run: |
+          cd backup
+          sha256sum "safedrop-$STAMP.archive.gz" | awk '{print $1}' > "safedrop-$STAMP.sha256"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -pass env:BACKUP_PASSPHRASE \
+            -in "safedrop-$STAMP.archive.gz" \
+            -out "safedrop-$STAMP.archive.gz.enc"
+
+      - name: Verify the encrypted copy decrypts
+        # A backup nobody has opened is a hope, not a backup. Decrypt what is about to be uploaded
+        # and check it byte for byte before the plaintext is deleted.
+        run: |
+          cd backup
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -pass env:BACKUP_PASSPHRASE \
+            -in "safedrop-$STAMP.archive.gz.enc" -out roundtrip.gz
+          echo "$(cat "safedrop-$STAMP.sha256")  roundtrip.gz" | sha256sum --check --status
+          echo "round trip verified"
+          rm -f roundtrip.gz "safedrop-$STAMP.archive.gz"
+
+      - name: Upload the encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: safedrop-backup-${{ env.STAMP }}
+          path: |
+            backup/*.archive.gz.enc
+            backup/*.sha256
+          retention-days: 30 # the agreed retention (code/docs/backups.md)
+          if-no-files-found: error
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Database export"
+            echo ""
+            if [ -f "backup/safedrop-$STAMP.archive.gz.enc" ]; then
+              echo "- Artifact: \`safedrop-backup-$STAMP\` (kept 30 days)"
+              echo "- Encrypted size: $(du -h "backup/safedrop-$STAMP.archive.gz.enc" | cut -f1)"
+              echo "- SHA-256 of the plaintext archive: \`$(cat "backup/safedrop-$STAMP.sha256")\`"
+              echo ""
+              echo "Collections dumped:"
+              echo ""
+              grep -oE 'done dumping [^ ]+ \([0-9]+ document' backup/dump.log \
+                | sed -E 's/done dumping (.*) \(([0-9]+) document/- \1: \2 documents/' || true
+            else
+              echo "No backup was produced. See the failing step above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

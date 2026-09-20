@@ -34,6 +34,17 @@ describe('app-wide middleware', () => {
     expect(res.headers['x-powered-by']).toBeUndefined();
   });
 
+  it('forbids caching of every response, public or authenticated (SCRUM-126)', async () => {
+    // The ZAP baseline scan of staging reported API responses as storable and cacheable. A cached
+    // /health would report a verdict that was true minutes ago, and a cached /api response would
+    // leave one tenant's data in a shared cache.
+    const health = await request(app).get('/health');
+    expect(health.headers['cache-control']).toBe('no-store');
+    const unauthorized = await request(app).get('/api/auth/me');
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers['cache-control']).toBe('no-store');
+  });
+
   it('unknown routes return the standard 404 shape (401 first for unauthenticated /api calls)', async () => {
     const unauthenticated = await request(app).get('/api/nope');
     expect(unauthenticated.status).toBe(401);

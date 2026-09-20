@@ -32,6 +32,7 @@ import {
   members,
   membersPage,
 } from '../../mocks/handlers';
+import { formatDate } from '../../../src/utils/format';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 
@@ -119,6 +120,35 @@ describe('MembersPage: the list', () => {
     expect(screen.queryByText('ORG_ADMIN')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Role for Ann Approver')).toHaveValue('APPROVER');
     expect(screen.getByLabelText('Role for Max Member')).toHaveValue('MEMBER');
+  });
+
+  it('shows exactly name, email, role and join date for each member', async () => {
+    await renderLoaded();
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Name',
+      'Email',
+      'Role',
+      'Joined',
+    ]);
+    // Oldest first, as the API returns them: the founding admin is at the top.
+    expect(dataRows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
+      'Ada Admin (you)',
+      'Ann Approver',
+      'Max Member',
+    ]);
+    // Each row carries that member's email and the date they joined.
+    const first = within(dataRows()[0]).getAllByRole('cell');
+    expect(first[1]).toHaveTextContent('ada@acme.test');
+    expect(first[2]).toHaveTextContent('Organization admin');
+    expect(first[3]).toHaveTextContent(formatDate(members[0].createdAt));
+    expect(within(dataRows()[2]).getAllByRole('cell')[3]).toHaveTextContent(
+      formatDate(members[2].createdAt),
+    );
+  });
+
+  it('never shows a password or hash: the list has no such data to show', async () => {
+    await renderLoaded();
+    expect(screen.getByRole('table').textContent).not.toMatch(/password|hash|\$2[aby]\$/i);
   });
 
   it('marks the signed-in admin as "(you)" and gives them no role control', async () => {
