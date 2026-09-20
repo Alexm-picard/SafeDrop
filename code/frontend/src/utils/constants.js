@@ -31,6 +31,8 @@ export const ROLE_LABELS = Object.freeze({
  * One definition per URL, so a link cannot drift from the route table in router.jsx.
  */
 export const ROUTES = Object.freeze({
+  // The public landing page. Everything a signed-in user does lives under its own path, so that `/`
+  // can stay the page a first-time visitor lands on.
   home: '/',
   login: '/login',
   forgotPassword: '/forgot-password',
@@ -38,7 +40,7 @@ export const ROUTES = Object.freeze({
   resetPassword: '/reset-password',
   changePassword: '/change-password',
   setup: '/setup',
-  catalog: '/',
+  catalog: '/catalog',
   asset: (id) => `/assets/${id}`,
   assetNew: '/admin/assets/new',
   assetEdit: (id) => `/assets/${id}/edit`,
@@ -70,12 +72,13 @@ export const LANDING_BY_ROLE = Object.freeze({
  * The path to land on for a role, falling back to the catalogue.
  *
  * The fallback matters: a role added on the backend before this map is updated must still land
- * somewhere every signed-in user may see, rather than on `undefined`.
+ * somewhere every signed-in user may see, rather than on `undefined`. It is the catalogue rather than
+ * `/`, because `/` is the public landing page — signing in should end inside the application.
  * @param {string|null|undefined} role
  * @returns {string}
  */
 export function landingFor(role) {
-  return LANDING_BY_ROLE[role] ?? ROUTES.home;
+  return LANDING_BY_ROLE[role] ?? ROUTES.catalog;
 }
 
 /**

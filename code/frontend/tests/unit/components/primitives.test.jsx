@@ -102,6 +102,6 @@ describe('TicketPlaceholder and NotFoundPage', () => {
     });
     render(<RouterProvider router={router} />);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Page not found');
-    expect(screen.getByRole('link', { name: /catalog/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /catalog/i })).toHaveAttribute('href', '/catalog');
   });
 });

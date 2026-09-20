@@ -23,7 +23,7 @@ describe('routes', () => {
     // SCRUM-119 shipped their endpoints and screens, so they render real data rather than a
     // placeholder. CatalogPage.test.jsx, AssetDetailPage.test.jsx and ApprovalQueuePage.test.jsx
     // cover them properly.
-    ['/', 'Catalog', null],
+    ['/catalog', 'Catalog', null],
     [`/assets/${assets[0].id}`, assets[0].name, null],
     ['/requests', 'My requests', null],
     ['/admin', 'Dashboard', null],
@@ -45,7 +45,7 @@ describe('routes', () => {
   });
   it('a MEMBER is bounced from /admin to the catalog with a notice', async () => {
     const { router } = renderApp('/admin', authenticatedState(memberUser));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
     expect(
       screen.getAllByRole('alert').some((a) => /do not have access/.test(a.textContent ?? '')),
@@ -55,7 +55,7 @@ describe('routes', () => {
     'a $role is bounced from /admin/users to the catalog, with a notice saying why',
     async (person) => {
       const { router } = renderApp('/admin/users', authenticatedState(person));
-      await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+      await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
       expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
       // The permission-denied state: the destination explains, rather than silently dropping them.
       expect(
@@ -73,7 +73,7 @@ describe('routes', () => {
     { role: 'APPROVER', person: approverUser, route: `/assets/${assets[0].id}/edit` },
   ])('a $role is bounced from $route to the catalog', async ({ person, route }) => {
     const { router } = renderApp(route, authenticatedState(person));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
   });
 

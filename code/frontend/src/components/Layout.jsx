@@ -23,8 +23,10 @@ import { APP_NAME, ROLE_LABELS, ROLES, ROUTES } from '../utils/constants';
 /**
  * Render the shell and the active route inside it.
  *
- * Signing out awaits `logout()` before navigating, so the session is gone before the login page
+ * Signing out awaits `logout()` before navigating, so the session is gone before the next page
  * appears; navigating with `replace` keeps a signed-out user from stepping Back into the application.
+ * The destination is the landing page rather than the login form: someone who has just left is not
+ * necessarily trying to get back in.
  * @returns {JSX.Element}
  */
 export function Layout() {
@@ -34,7 +36,7 @@ export function Layout() {
   const isAdmin = role === ROLES.ORG_ADMIN;
   const onSignOut = async () => {
     await logout();
-    navigate(ROUTES.login, { replace: true });
+    navigate(ROUTES.home, { replace: true });
   };
   return (
     <>
@@ -42,7 +44,7 @@ export function Layout() {
         Skip to content
       </a>
       <header className="app-header">
-        <Link to={ROUTES.home} className="brand">
+        <Link to={ROUTES.catalog} className="brand">
           {APP_NAME}
         </Link>
         <nav aria-label="Primary">

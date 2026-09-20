@@ -22,7 +22,7 @@ export function NotFoundPage() {
     <main id="main" className="auth-page">
       <h1>Page not found</h1>
       <p>
-        <Link to={ROUTES.home}>Back to the catalog</Link>
+        <Link to={ROUTES.catalog}>Back to the catalog</Link>
       </p>
     </main>
   );

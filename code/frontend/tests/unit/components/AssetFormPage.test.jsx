@@ -132,7 +132,7 @@ describe('AssetFormPage — create', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
     expect(called).toBe(false);
   });
 });

@@ -8,9 +8,9 @@
 /**
  * The route table: every URL the SPA serves, and the guards wrapped around them.
  *
- * The nesting is the access model. `/login` and `/setup` sit outside everything, since they are
- * reachable without a session. Everything else is inside `RequireAuth` (a session is needed) and then
- * `Layout` (the shell with navigation). Within that, `RequireRole` wraps the admin areas: the approval
+ * The nesting is the access model. The landing page at `/`, `/login` and `/setup` sit outside
+ * everything, since they are reachable without a session. Everything else is inside `RequireAuth` (a
+ * session is needed) and then `Layout` (the shell with navigation). Within that, `RequireRole` wraps the admin areas: the approval
  * queue for APPROVER and ORG_ADMIN, the dashboard, members and audit log for ORG_ADMIN alone.
  *
  * Those role checks are **usability only** — they keep people out of pages that would only show them
@@ -31,6 +31,7 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
@@ -44,6 +45,9 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage';
  * The catch-all `*` is last, so an unknown URL renders NotFoundPage instead of matching nothing.
  */
 export const routes = [
+  // The first thing a visitor sees. Public, and outside Layout: the shell's navigation is for people
+  // who are signed in, and every link in it would only bounce a visitor to the login page.
+  { path: '/', element: <LandingPage /> },
   { path: '/login', element: <LoginPage /> },
   // Outside RequireAuth, like login: someone who cannot sign in has no session to guard (SCRUM-22).
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
@@ -58,7 +62,7 @@ export const routes = [
       {
         element: <Layout />,
         children: [
-          { index: true, element: <CatalogPage /> },
+          { path: 'catalog', element: <CatalogPage /> },
           { path: 'assets/:id', element: <AssetDetailPage /> },
           { path: 'requests', element: <MyRequestsPage /> },
           // Not role-gated: the API decides who may see a given request, answering 404 for one
