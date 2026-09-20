@@ -161,3 +161,17 @@ export const MEMBERS_PAGE_SIZE = 25;
  * Drives the return action's condition selector on the approval queue.
  */
 export const UNIT_CONDITIONS = Object.freeze(['NEW', 'GOOD', 'FAIR', 'POOR']);
+
+/**
+ * The physical-unit lifecycle, mirroring the backend's `UNIT_STATUS` (SDD §2.4 AssetUnit.status).
+ *
+ * Only `AVAILABLE` is currently read — it is what decides whether a unit can be requested — but the
+ * whole enum is mirrored so the next screen that needs a status compares against a named value
+ * rather than a bare string.
+ */
+export const UNIT_STATUS = Object.freeze({
+  AVAILABLE: 'AVAILABLE',
+  HELD: 'HELD',
+  OUT: 'OUT',
+  RETIRED: 'RETIRED',
+});
