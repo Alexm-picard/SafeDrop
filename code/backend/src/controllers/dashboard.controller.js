@@ -13,7 +13,8 @@
 import * as dashboardService from '../services/dashboard.service.js';
 
 /**
- * `GET /api/dashboard/summary` — counts of units by status for the caller's organisation.
+ * `GET /api/dashboard/summary` — inventory, workflow and 30-day activity figures for the caller's
+ * organisation (SCRUM-102).
  *
  * Takes nothing but the tenant: the route declares no schemas, so any query parameter a client adds
  * is rejected as a 400 before reaching here.

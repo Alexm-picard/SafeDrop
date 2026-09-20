@@ -16,6 +16,13 @@
  * surprisingly expensive in a list.
  */
 const dateFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+// UTC, because the values it formats are the API's `YYYY-MM-DD` day buckets: rendering those in the
+// browser's timezone would shift a day westward of Greenwich onto the day before.
+const dayFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
 const numberFormatter = new Intl.NumberFormat('en-US');
 /**
  * Format a date for display: `"Sep 16, 2026, 7:00 PM"`.
@@ -31,6 +38,21 @@ export function formatDate(value) {
   }
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : dateFormatter.format(date);
+}
+/**
+ * Format one of the API's day buckets for an axis or a table: `'2026-09-20'` → `"Sep 20"`.
+ *
+ * The year is left off deliberately — these appear thirty at a time along an axis, where it would be
+ * the same on nearly every label and is already given by the chart's own description.
+ * @param {string|null|undefined} value a `YYYY-MM-DD` date
+ * @returns {string} the formatted day, or `'—'`
+ */
+export function formatDay(value) {
+  if (!value) {
+    return '—';
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? '—' : dayFormatter.format(date);
 }
 /**
  * Format a number with thousands separators.

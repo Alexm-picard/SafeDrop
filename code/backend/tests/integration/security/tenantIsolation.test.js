@@ -109,15 +109,31 @@ describe('HTTP layer: org A addressing org B', () => {
   const asAdminA = (req) =>
     req.set('Cookie', accessCookieFor(seed.a.admin)).set('Content-Type', 'application/json');
 
-  it('dashboard summary counts only org A even when org B has more units', async () => {
+  it('dashboard summary counts only org A even when org B has more units and requests', async () => {
     await assetUnitRepo.create(seed.b.orgId, {
       assetId: seed.b.asset._id,
       tag: 'b-extra',
       status: UNIT_STATUS.AVAILABLE,
     });
+    await checkoutRepo.create(seed.b.orgId, {
+      unitId: seed.b.units[0]._id,
+      requesterId: seed.b.member._id,
+      neededFrom: new Date(),
+      neededTo: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      note: '',
+    });
     const res = await asAdminA(request(app).get('/api/dashboard/summary'));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ totalAssets: 7, checkedOut: 2, available: 4, held: 1, retired: 1 });
+    // Org A's own figures, unmoved: the fixture gives each organisation the same shape of data, so a
+    // query missing its orgId filter would show doubled counts here.
+    expect(res.body).toMatchObject({
+      totalAssets: 7,
+      checkedOut: 2,
+      available: 4,
+      held: 1,
+      retired: 1,
+      pendingRequests: 1,
+    });
   });
 
   it('an orgId smuggled in the query string is ignored', async () => {
