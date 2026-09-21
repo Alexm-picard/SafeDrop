@@ -15,6 +15,7 @@ import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { useAuditEvents } from '../hooks/useAuditLog';
+import { useMembers } from '../hooks/useMembers';
 import {
   AUDIT_ACTIONS,
   AUDIT_PAGE_SIZE,
@@ -23,7 +24,16 @@ import {
 } from '../utils/constants';
 import { formatDate, humanize, pluralize } from '../utils/format';
 /** The filter state when nothing is selected. Empty strings, because they are `<select>`/`<input>` values. */
-const NO_FILTERS = Object.freeze({ action: '', targetType: '', from: '', to: '' });
+const NO_FILTERS = Object.freeze({ actorId: '', action: '', targetType: '', from: '', to: '' });
+/**
+ * How many members to load for the actor filter and the name lookup.
+ *
+ * 100 is the API's maximum page size, so this is one request rather than a paging loop. An
+ * organisation with more members than this would have a short dropdown and would fall back to
+ * showing ids for the people beyond it — acceptable while an organisation is one team, and the
+ * reason the name lookup below degrades to the id rather than showing nothing.
+ */
+const ACTOR_LIMIT = 100;
 /**
  * Turn an empty string into `undefined` so the API layer leaves the parameter out altogether.
  *
@@ -66,6 +76,7 @@ export function AuditLogPage() {
     () => ({
       page,
       limit: AUDIT_PAGE_SIZE,
+      actorId: omitEmpty(filters.actorId),
       action: omitEmpty(filters.action),
       targetType: omitEmpty(filters.targetType),
       from: dayBoundary(filters.from, 'start'),
@@ -74,6 +85,15 @@ export function AuditLogPage() {
     [page, filters],
   );
   const { status, data, error, reload } = useAuditEvents(params);
+  // The member list feeds both the actor dropdown and the name lookup in the table. An audit row
+  // stores only the actor's id — deliberately, so a later rename cannot rewrite history — but
+  // "who did this" has to read as a person, so the name is resolved here at display time.
+  const { data: memberData } = useMembers({ limit: ACTOR_LIMIT });
+  const actors = useMemo(() => memberData?.items ?? [], [memberData]);
+  const actorNameById = useMemo(
+    () => new Map(actors.map((actor) => [actor.id, actor.name])),
+    [actors],
+  );
   const updateFilter = useCallback((key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
@@ -97,6 +117,21 @@ export function AuditLogPage() {
         aria-label="Filter audit events"
         onSubmit={(e) => e.preventDefault()}
       >
+        <div className="field">
+          <label htmlFor="filter-actor">Member</label>
+          <select
+            id="filter-actor"
+            value={filters.actorId}
+            onChange={(e) => updateFilter('actorId', e.target.value)}
+          >
+            <option value="">All members</option>
+            {actors.map((actor) => (
+              <option key={actor.id} value={actor.id}>
+                {actor.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="field">
           <label htmlFor="filter-action">Action</label>
           <select
@@ -179,10 +214,15 @@ export function AuditLogPage() {
               {
                 key: 'actor',
                 header: 'Actor',
+                // Name first, because "who" is the question this screen is read for. The role is the
+                // authority they acted with *at the time*, stored on the row, so it is not looked up
+                // from the member list — a later promotion must not rewrite the record. The id is the
+                // fallback for an actor the member list does not cover: someone who has since left,
+                // or, past ACTOR_LIMIT, someone simply not on the loaded page.
                 render: (e) => (
                   <>
-                    {ROLE_LABELS[e.actorRole] ?? e.actorRole}
-                    <span className="meta"> {e.actorId}</span>
+                    {actorNameById.get(e.actorId) ?? e.actorId}
+                    <span className="meta"> {ROLE_LABELS[e.actorRole] ?? e.actorRole}</span>
                   </>
                 ),
               },

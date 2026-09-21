@@ -152,11 +152,15 @@ export function assetsPage(search) {
 export const auditEvents = Array.from({ length: 30 }, (_, i) => {
   const actions = ['ASSET_CHECKED_OUT', 'REQUEST_APPROVED', 'ASSET_RETURNED'];
   const action = actions[i % actions.length];
+  // Ten events each, in blocks rather than round-robin. Round-robin over three actors would line up
+  // exactly with the three-action cycle, so "filtered by actor" and "filtered by action" would select
+  // the same rows and neither test could tell the two filters apart.
+  const actor = [adminUser, approverUser, memberUser][Math.floor(i / 10)];
   return {
     id: `6aab2a45c6e457e01ac09${String(700 + i).padStart(4, '0')}`,
     orgId: org.id,
-    actorId: adminUser.id,
-    actorRole: 'ORG_ADMIN',
+    actorId: actor.id,
+    actorRole: actor.role,
     action,
     targetType: action === 'REQUEST_APPROVED' ? 'CheckoutRequest' : 'AssetUnit',
     targetId: `6aab2a45c6e457e01ac09${String(800 + i).padStart(4, '0')}`,
@@ -176,11 +180,15 @@ export const auditEvents = Array.from({ length: 30 }, (_, i) => {
  * @returns {{ items: object[], total: number, page: number, limit: number }}
  */
 export function auditPage(search) {
+  const actorId = search.get('actorId');
   const action = search.get('action');
   const targetType = search.get('targetType');
   const from = search.get('from');
   const to = search.get('to');
   const filtered = auditEvents.filter((e) => {
+    if (actorId && e.actorId !== actorId) {
+      return false;
+    }
     if (action && e.action !== action) {
       return false;
     }
