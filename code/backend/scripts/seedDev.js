@@ -21,7 +21,7 @@ import { CheckoutRequest } from '../src/models/CheckoutRequest.js';
 import { Organization } from '../src/models/Organization.js';
 import { User } from '../src/models/User.js';
 import { connectDb, disconnectDb } from '../src/config/db.js';
-import { seedTwoOrgs, TEST_PASSWORD } from '../tests/helpers/seedTwoOrgs.js';
+import { seedAssetHistory, seedTwoOrgs, TEST_PASSWORD } from '../tests/helpers/seedTwoOrgs.js';
 
 dotenv.config({ path: ['.env', '../../.env'] });
 
@@ -77,8 +77,13 @@ function printOrgSummary(key, org) {
     );
   }
 
-  console.log('  Audit event:');
+  console.log('  Audit events:');
   console.log(`    ${org.audit.action}  (id: ${org.audit._id})`);
+  // The laptop's chain of custody (SCRUM-39). Printed as a count rather than a list: the point of
+  // the demo is that the screen shows them, and nine more lines here would bury the credentials.
+  console.log(
+    `    + ${org.assetHistory.length} events on ${org.asset.name} — open /assets/${org.asset._id} as the admin to see them`,
+  );
 }
 
 async function main() {
@@ -104,6 +109,11 @@ async function main() {
     }
 
     const seed = await seedTwoOrgs();
+    // The fixture leaves one audit event per org; the demo needs an asset with a story on it
+    // (SCRUM-39). Done here rather than inside the fixture so the integration tests, which count
+    // audit rows, are not coupled to demo data.
+    seed.a.assetHistory = await seedAssetHistory(seed.a);
+    seed.b.assetHistory = await seedAssetHistory(seed.b);
     console.log(`\nShared password for all seeded users: ${TEST_PASSWORD}`);
     printOrgSummary('a', seed.a);
     printOrgSummary('b', seed.b);
