@@ -81,9 +81,10 @@ describe('GET /api/dashboard/summary (SCRUM-103)', () => {
     expect(body).toMatchObject({
       totalAssets: 7,
       checkedOut: 2,
-      available: 4,
+      available: 3,
       held: 1,
       retired: 1,
+      requested: 1,
     });
   });
 
@@ -290,6 +291,6 @@ describe('GET /api/dashboard/summary: caching (SCRUM-102)', () => {
     const res = await request(app)
       .get('/api/dashboard/summary')
       .set('Cookie', accessCookieFor(seed.b.admin));
-    expect(res.body).toMatchObject({ totalAssets: 8, available: 5 });
+    expect(res.body).toMatchObject({ totalAssets: 8, available: 4 });
   });
 });

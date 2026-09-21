@@ -96,7 +96,7 @@ describe('GET /api/assets/:id (SCRUM-115)', () => {
     expect(res.body).toMatchObject({ id: String(seed.a.asset._id), name: 'Laptop a' });
     expect(res.body.units).toHaveLength(3);
     const byTag = Object.fromEntries(res.body.units.map((u) => [u.tag, u.status]));
-    expect(byTag).toMatchObject({ 'a-001': 'AVAILABLE', 'a-002': 'OUT', 'a-003': 'HELD' });
+    expect(byTag).toMatchObject({ 'a-001': 'REQUESTED', 'a-002': 'OUT', 'a-003': 'HELD' });
     expect(res.body.units.every((u) => typeof u.id === 'string')).toBe(true);
   });
 
@@ -260,7 +260,7 @@ describe('POST /api/assets/:id/retire (SCRUM-134)', () => {
   });
 
   it('refuses with 409 while a unit is OUT or HELD, and writes nothing', async () => {
-    // The laptop's units are AVAILABLE, OUT and HELD.
+    // The laptop's units are REQUESTED, OUT and HELD.
     const res = await request(app)
       .post(`/api/assets/${seed.a.asset._id}/retire`)
       .set('Cookie', accessCookieFor(seed.a.admin))
@@ -269,12 +269,36 @@ describe('POST /api/assets/:id/retire (SCRUM-134)', () => {
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
     // The admin screen shows this verbatim, so it has to name the reason.
-    expect(res.body.error.message).toMatch(/checked out or held/i);
+    expect(res.body.error.message).toMatch(/checked out, held, or requested/i);
 
     const unchanged = await assetRepo.findById(seed.a.orgId, seed.a.asset._id);
     expect(unchanged.retiredAt).toBeNull();
     const events = await auditRepo.query(seed.a.orgId, { action: 'ASSET_RETIRED' });
     expect(events.total).toBe(0);
+  });
+
+  it('refuses with 409 while a unit is REQUESTED, and writes nothing', async () => {
+    const asset = retirableAsset(seed.a);
+    const submitRes = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(submitRes.status).toBe(201);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/retire`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+
+    const unchanged = await assetRepo.findById(seed.a.orgId, asset._id);
+    expect(unchanged.retiredAt).toBeNull();
   });
 
   it('refuses to retire twice rather than moving the date', async () => {

@@ -37,11 +37,16 @@ import { record as recordAudit } from './audit.service.js';
 /**
  * The unit statuses that block retiring the asset they belong to.
  *
- * `OUT` is in someone's hands and `HELD` is promised to someone; retiring the asset would leave a
- * borrowed item with nothing to return it to. `AVAILABLE` and `RETIRED` units are no obstacle —
+ * `OUT` is in someone's hands, `HELD` is promised to someone, and `REQUESTED` has an undecided
+ * request sitting on it — retiring the asset out from under any of the three would leave that
+ * request or loan with nothing to resolve to. `AVAILABLE` and `RETIRED` units are no obstacle —
  * nobody is relying on them.
  */
-const BLOCKING_UNIT_STATUSES = Object.freeze([UNIT_STATUS.OUT, UNIT_STATUS.HELD]);
+const BLOCKING_UNIT_STATUSES = Object.freeze([
+  UNIT_STATUS.OUT,
+  UNIT_STATUS.HELD,
+  UNIT_STATUS.REQUESTED,
+]);
 
 /**
  * Is this the duplicate-key error MongoDB raises against a unique index?
@@ -203,10 +208,11 @@ export async function update(orgId, actor, assetId, patch = {}) {
  * catalogue. That is why the route is a POST to `/retire` rather than a DELETE — historical requests
  * still have to resolve to the thing they borrowed.
  *
- * **Refused while any unit is OUT or HELD.** Retiring an asset somebody is holding would leave a
- * borrowed item with nothing to return it to. The count is read inside the transaction, so a
- * checkout committing between the check and the write cannot slip past it; the message names the
- * reason because the admin screen shows it verbatim.
+ * **Refused while any unit is OUT, HELD or REQUESTED.** Retiring an asset somebody is holding, or
+ * that has an undecided request on it, would leave that loan or request with nothing to resolve
+ * to. The count is read inside the transaction, so a checkout or a submit committing between the
+ * check and the write cannot slip past it; the message names the reason because the admin screen
+ * shows it verbatim.
  *
  * **Retiring twice is a 409, not a silent success.** The repository's filter requires
  * `retiredAt: null`, so the second caller learns it lost the race rather than quietly moving the
@@ -217,7 +223,7 @@ export async function update(orgId, actor, assetId, patch = {}) {
  * @param {{ requestId?: string }} [input] the HTTP request id for audit correlation
  * @returns {Promise<object>} the retired asset
  * @throws {NotFoundError} (404) absent, or owned by another organisation
- * @throws {ConflictError} (409) already retired, or a unit is still OUT or HELD
+ * @throws {ConflictError} (409) already retired, or a unit is still OUT, HELD or REQUESTED
  */
 export async function retire(orgId, actor, assetId, input = {}) {
   const { requestId } = input;
@@ -238,7 +244,7 @@ export async function retire(orgId, actor, assetId, input = {}) {
     );
     if (blocking > 0) {
       throw new ConflictError(
-        'Cannot retire an asset while one of its units is checked out or held',
+        'Cannot retire an asset while one of its units is checked out, held, or requested',
       );
     }
 
