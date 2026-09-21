@@ -13,6 +13,10 @@
  * adding units. Retiring is a POST to `/:id/retire` rather than a DELETE because it is a soft delete —
  * the asset stays, with a retirement date, so historical requests still resolve.
  *
+ * `GET /:id/history` is the exception to that split: it reads, but behind `audit:read` rather than
+ * `assets:read`. What it returns is the audit trail, filtered to one asset, so it is governed by who
+ * may read the trail — not by who may see the asset in the catalogue (SCRUM-29).
+ *
  * Exports: `assetsRouter`, and the `assetBody` / `assetPatch` / `listQuery` / `unitBody` schemas for
  * reuse in tests.
  */
@@ -133,6 +137,18 @@ defineRoute(
     schemas: { params: idParams, body: emptyBody.optional() },
   },
   assets.retire,
+);
+defineRoute(
+  assetsRouter,
+  {
+    method: 'GET',
+    path: '/:id/history',
+    // `audit:read`, not `assets:read`: this is the audit trail reached by a different question, and a
+    // member who may browse the catalogue may not read who has held what (SCRUM-29 AT-3, SR-2).
+    permission: PERMISSIONS.AUDIT_READ,
+    schemas: { params: idParams, query: pagination },
+  },
+  assets.history,
 );
 defineRoute(
   assetsRouter,

@@ -14,9 +14,8 @@
  * asset.service.js.
  *
  * `req.id` travels with every write so the resulting audit event can be traced back to the request
- * that caused it.
- *
- * The service functions are Sprint 1 stubs, so these routes currently answer 501 with their ticket id.
+ * that caused it. The reads take no actor and no `req.id`: looking at the catalogue is not an
+ * auditable event.
  */
 import * as assetService from '../services/asset.service.js';
 
@@ -89,4 +88,16 @@ export async function addUnit(req, res) {
       requestId: req.id,
     }),
   );
+}
+
+/**
+ * `GET /api/assets/:id/history` — one asset's complete chain of custody (SCRUM-29).
+ *
+ * A read, so no actor and no `req.id`: nothing is recorded about reading the record. Who may call it
+ * is settled by the route's `audit:read` permission, which only an ORG_ADMIN holds.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function history(req, res) {
+  res.status(200).json(await assetService.history(req.orgId, req.params.id, req.query));
 }

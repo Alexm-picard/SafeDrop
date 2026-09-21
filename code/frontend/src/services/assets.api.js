@@ -77,3 +77,15 @@ export const addUnit = (id, input) =>
     method: 'POST',
     body: input,
   });
+/**
+ * Read one asset's complete chain of custody (ORG_ADMIN — SCRUM-29).
+ *
+ * Read-only, like the audit trail it draws from: there is no call here to change or remove an
+ * event, because the API exposes none (SR-8).
+ * @param {string} id asset id
+ * @param {{ page?: number, limit?: number }} [params]
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ asset: object, items: object[], total: number, page: number, limit: number }>}
+ */
+export const history = (id, params = {}, signal) =>
+  apiRequest(`/api/assets/${encodeURIComponent(id)}/history${query(params)}`, { signal });

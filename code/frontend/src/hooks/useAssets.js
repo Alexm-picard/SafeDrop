@@ -40,3 +40,21 @@ export function useAsset(id) {
   const fetcher = useCallback((signal) => assetsApi.get(id, signal), [id]);
   return useApiResource(fetcher);
 }
+/**
+ * Load a page of one asset's chain of custody (SCRUM-29).
+ *
+ * `page` and `limit` are destructured out before being used as dependencies, for the same reason as
+ * `useAssets`: an object literal at the call site is a new reference on every render, and depending
+ * on it would refetch the history every time the asset page re-rendered for any reason at all.
+ * @param {string} id asset id from the route
+ * @param {{ page?: number, limit?: number }} [params]
+ * @returns {{ status: string, data: unknown, error: unknown, reload: () => void }}
+ */
+export function useAssetHistory(id, params = {}) {
+  const { page, limit } = params;
+  const fetcher = useCallback(
+    (signal) => assetsApi.history(id, { page, limit }, signal),
+    [id, page, limit],
+  );
+  return useApiResource(fetcher);
+}

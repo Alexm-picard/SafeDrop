@@ -29,6 +29,7 @@
 import { useCallback, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { AddUnitForm } from '../components/AddUnitForm';
+import { AssetHistory } from '../components/AssetHistory';
 import { ConfirmAction } from '../components/ConfirmAction';
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
@@ -207,6 +208,13 @@ export function AssetDetailPage() {
             />
           ) : null}
           {isAdmin && !isRetired ? <AddUnitForm assetId={id} onAdded={onUnitAdded} /> : null}
+          {/*
+            SCRUM-29. Rendered for an admin only, and for a retired asset too: a retired laptop is
+            exactly the one somebody asks about afterwards, so its history outlives its circulation.
+            The role check here is usability — the API enforces `audit:read` itself (SR-1), and the
+            component explains a 403 rather than failing, in case this is reached another way.
+          */}
+          {isAdmin ? <AssetHistory assetId={id} /> : null}
         </>
       ) : null}
     </>

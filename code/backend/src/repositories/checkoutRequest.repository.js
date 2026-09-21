@@ -19,8 +19,8 @@
  * `sanitizeFilter` is on globally (config/db.js) and would otherwise neutralise them — an overdue
  * count that silently returned zero would be worse than one that failed.
  *
- * Exports: `create`, `findById`, `listForRequester`, `list`, `transition`, `countByState`,
- * `countOverdue`, `countCheckoutsByDay`.
+ * Exports: `create`, `findById`, `listForRequester`, `list`, `listIdsForUnits`, `transition`,
+ * `countByState`, `countOverdue`, `countCheckoutsByDay`.
  */
 import mongoose from 'mongoose';
 import { CheckoutRequest } from '../models/CheckoutRequest.js';
@@ -100,6 +100,33 @@ export async function list(orgId, { state, page = 1, limit = 50 } = {}) {
     CheckoutRequest.countDocuments(filter),
   ]);
   return { items, total, page, limit };
+}
+
+/**
+ * The ids of every request ever made for any of `unitIds` (SCRUM-29).
+ *
+ * Ids only, because the caller wants them as audit targets rather than as requests to display —
+ * loading whole documents to read one field off each would pull a unit's entire borrowing history
+ * into memory to build a list of object ids. Unbounded on purpose for the same reason: this has to
+ * be *every* request, or the asset's history would silently begin partway through, and the rows it
+ * returns are 12 bytes each.
+ *
+ * Not filtered by state: a denied or cancelled request is part of what happened to the asset, and an
+ * investigation into a missing item is exactly when a refused request matters.
+ * @param {string} orgId
+ * @param {unknown[]} unitIds units of one asset, already resolved within this tenant
+ * @returns {Promise<import('mongoose').Types.ObjectId[]>}
+ */
+export async function listIdsForUnits(orgId, unitIds) {
+  if (unitIds.length === 0) {
+    return [];
+  }
+  // `sanitizeFilter` is on globally and rewrites operators it did not put there; this one is ours.
+  const docs = await CheckoutRequest.find({
+    orgId,
+    unitId: mongoose.trusted({ $in: unitIds }),
+  }).select('_id');
+  return docs.map((doc) => doc._id);
 }
 
 /**
