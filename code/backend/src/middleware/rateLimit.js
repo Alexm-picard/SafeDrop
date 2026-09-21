@@ -96,13 +96,65 @@ export function createPasswordResetRateLimiter({
 export const passwordResetRateLimiter = createPasswordResetRateLimiter();
 
 /**
- * Clear every counter of the shared limiter.
+ * The window the organisation-creation limit is measured over (SCRUM-114).
  *
- * Test-only helper. Without it, a test that exercises failed logins would leave the limiter tripped
- * for whatever runs next in the same process.
+ * An hour rather than the fifteen minutes the auth limiters use. Creating an organisation is a
+ * once-ever action for a legitimate caller, so the budget can be both small and slow to refill
+ * without ever inconveniencing a real one — where a login limit has to refill quickly enough that
+ * someone who mistyped their password is not locked out for the afternoon.
+ */
+export const ORG_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Build the limiter for the public organisation bootstrap route (SCRUM-114, SR-12).
+ *
+ * **`skipSuccessfulRequests` is false, and that is the entire point of this limiter existing.**
+ * Reusing `authRateLimiter` here would look right and do nothing: it skips successful requests, and
+ * every spam organisation *succeeds* — the successes are the attack. A limiter that counts only
+ * failures would leave the route exactly as open as it was.
+ *
+ * `POST /api/organizations` is public and creates a tenant plus its first ORG_ADMIN, so without a cap
+ * it is both unbounded anonymous tenant creation and a cheap CPU-exhaustion vector: each call runs
+ * bcrypt at cost 12, which measured at roughly 330ms of single-threaded CPU per anonymous request.
+ *
+ * GET and OPTIONS are skipped so a CORS preflight, or any read route added under this prefix later,
+ * cannot spend the budget that exists to bound writes.
+ * @param {{ limit?: number, windowMs?: number }} [options]
+ * @returns {import('express').RequestHandler & { reset: () => void }}
+ */
+export function createOrgCreateRateLimiter({
+  limit = env.RATE_LIMIT_ORG_CREATE_MAX,
+  windowMs = ORG_CREATE_RATE_LIMIT_WINDOW_MS,
+} = {}) {
+  const store = new MemoryStore();
+  const limiter = rateLimit({
+    windowMs,
+    limit,
+    store,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    // Counts successes. See the note above: this is the difference between this limiter and the
+    // auth one, and reusing the auth one instead would be a no-op against the actual threat.
+    skipSuccessfulRequests: false,
+    skip: (req) => req.method === 'GET' || req.method === 'OPTIONS',
+    handler: (_req, _res, next) => next(new RateLimitError()),
+    validate: env.isTest ? false : { trustProxy: false },
+  });
+  limiter.reset = () => store.resetAll();
+  return limiter;
+}
+
+export const orgCreateRateLimiter = createOrgCreateRateLimiter();
+
+/**
+ * Clear every counter of the shared limiters.
+ *
+ * Test-only helper. Without it, a test that exercises failed logins — or that creates an
+ * organisation — would leave a limiter tripped for whatever runs next in the same process.
  * @returns {void}
  */
 export function resetAuthRateLimiter() {
   authRateLimiter.reset();
   passwordResetRateLimiter.reset();
+  orgCreateRateLimiter.reset();
 }

@@ -19,6 +19,7 @@
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';
+import { env } from '../../../src/config/env.js';
 import { AuditEvent } from '../../../src/models/AuditEvent.js';
 import { Organization } from '../../../src/models/Organization.js';
 import { RefreshToken } from '../../../src/models/RefreshToken.js';
@@ -137,6 +138,76 @@ describe('POST /api/organizations (SCRUM-100)', () => {
     expect(res.body.error.code).toBe('INTERNAL_ERROR');
     expect(res.body.error.message).not.toContain('simulated');
     expect(await countAll()).toEqual({ orgs: 0, users: 0, audits: 0, tokens: 0 });
+  });
+});
+
+describe('POST /api/organizations: anonymous creation is capped per IP (SCRUM-114, SR-12)', () => {
+  /** A distinct organisation each call, so nothing is refused for being a duplicate. */
+  const distinct = (i) => ({
+    ...valid(),
+    orgName: `Acme ${i}`,
+    adminEmail: `ada${i}@acme.test`,
+  });
+
+  it('answers 429 in the API error shape once the cap is exceeded', async () => {
+    for (let i = 0; i < env.RATE_LIMIT_ORG_CREATE_MAX; i += 1) {
+      const res = await request(app).post('/api/organizations').send(distinct(i));
+      expect(res.status).toBe(201);
+    }
+
+    const limited = await request(app)
+      .post('/api/organizations')
+      .send(distinct(env.RATE_LIMIT_ORG_CREATE_MAX));
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe('RATE_LIMITED');
+    expect(limited.headers.ratelimit).toBeDefined();
+  });
+
+  it('counts successful creations, not just rejected ones', async () => {
+    // The regression this whole ticket exists to prevent. `authRateLimiter` sets
+    // `skipSuccessfulRequests`, so mounting *it* here would look like a fix and change nothing:
+    // every spam organisation succeeds, and a limiter that counts only failures would never fire.
+    // Each call below is a 201, so only a limiter counting successes can reach the cap.
+    for (let i = 0; i < env.RATE_LIMIT_ORG_CREATE_MAX; i += 1) {
+      expect((await request(app).post('/api/organizations').send(distinct(i))).status).toBe(201);
+    }
+    expect(await Organization.countDocuments()).toBe(env.RATE_LIMIT_ORG_CREATE_MAX);
+
+    const limited = await request(app).post('/api/organizations').send(distinct(99));
+    expect(limited.status).toBe(429);
+    // Refused before the handler, so no tenant and no admin account were created by that call.
+    expect(await Organization.countDocuments()).toBe(env.RATE_LIMIT_ORG_CREATE_MAX);
+    expect(await User.countDocuments()).toBe(env.RATE_LIMIT_ORG_CREATE_MAX);
+  });
+
+  it('spends the budget on failed attempts too, so malformed spam is bounded as well', async () => {
+    // A caller who cannot even produce a valid body should not get unlimited attempts: the cost
+    // being bounded is the request handling itself, not only the successful creation.
+    for (let i = 0; i < env.RATE_LIMIT_ORG_CREATE_MAX; i += 1) {
+      const res = await request(app)
+        .post('/api/organizations')
+        .send({ ...valid(), orgName: '!!' });
+      expect(res.status).toBe(400);
+    }
+
+    const limited = await request(app).post('/api/organizations').send(valid());
+    expect(limited.status).toBe(429);
+    expect(await countAll()).toEqual({ orgs: 0, users: 0, audits: 0, tokens: 0 });
+  });
+
+  it('leaves the auth limiter’s own budget untouched', async () => {
+    // The two limiters are separate stores. Exhausting this one must not lock anybody out of
+    // logging in — which a single shared limiter across both public routes would do.
+    const signup = await request(app).post('/api/organizations').send(distinct(0));
+    expect(signup.status).toBe(201);
+    for (let i = 1; i <= env.RATE_LIMIT_ORG_CREATE_MAX; i += 1) {
+      await request(app).post('/api/organizations').send(distinct(i));
+    }
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ orgSlug: 'acme-0', email: 'ada0@acme.test', password: valid().adminPassword });
+    expect(login.status).toBe(200);
   });
 });
 

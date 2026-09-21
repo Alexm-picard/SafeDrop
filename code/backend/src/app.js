@@ -27,7 +27,11 @@ import { requirePasswordChange } from './middleware/requirePasswordChange.js';
 import { denyByDefault } from './middleware/authorize.js';
 import { createCors } from './middleware/cors.js';
 import { createErrorHandler, notFound } from './middleware/errorHandler.js';
-import { authRateLimiter, passwordResetRateLimiter } from './middleware/rateLimit.js';
+import {
+  authRateLimiter,
+  orgCreateRateLimiter,
+  passwordResetRateLimiter,
+} from './middleware/rateLimit.js';
 import { requestId } from './middleware/requestId.js';
 import { scopeTenant } from './middleware/scopeTenant.js';
 import {
@@ -65,7 +69,8 @@ export const JSON_BODY_LIMIT = '100kb';
  *     `/health` is registered here, deliberately outside `/api`: a health probe needs no session
  *     and belongs to no tenant. It pings the database, so it answers 503 when the process is up
  *     but could not serve a real request.
- *  4. `authRateLimiter` on `/api/auth` only — brute-force protection where credentials are checked.
+ *  4. `authRateLimiter` on `/api/auth` and `orgCreateRateLimiter` on `/api/organizations` — the
+ *     public routes are the ones an anonymous caller can spend resources on, so both are capped.
  *  5. `authenticate` on `/api` — the access cookie becomes `req.auth`, or the request is refused.
  *  5b. `requirePasswordChange` on `/api` — a session using an admin-set password may only change
  *     it, log out, or read `/me`.
@@ -120,6 +125,11 @@ export function createApp({ config = env, skipRouteAssertion = false } = {}) {
   //    counts failures — would never count them (SCRUM-22).
   app.use(['/api/auth/forgot-password', '/api/auth/reset-password'], passwordResetRateLimiter);
   app.use('/api/auth', authRateLimiter);
+  // The third public route needs its own limiter for the same reason the reset pair does, but
+  // inverted: those routes never fail, this one never *needs* to. `POST /api/organizations` creates
+  // a tenant and its first admin anonymously, so the successes are the abuse, and a limiter that
+  // skips them — as the auth one does — would leave the route wide open (SCRUM-114, SR-12).
+  app.use('/api/organizations', orgCreateRateLimiter);
 
   // 5. Verify the access cookie → req.auth (public routes pass through).
   app.use('/api', authenticate);
