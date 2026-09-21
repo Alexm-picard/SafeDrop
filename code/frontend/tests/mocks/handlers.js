@@ -11,7 +11,7 @@
  *
  * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`, `activityDays`,
  * `members`), the
- * builders (`errorResponse`, `notImplemented`, `meHandler`, `membersPage`) and the default `handlers`
+ * builders (`errorResponse`, `notImplemented`, `meHandler`, `membersPage`, `assetHistoryPage`) and the default `handlers`
  * array.
  */
 import { http, HttpResponse } from 'msw';
@@ -207,6 +207,53 @@ export function auditPage(search) {
   const limit = Number(search.get('limit') ?? 25);
   const start = (page - 1) * limit;
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
+/**
+ * 30 history events for the first asset — enough to page at the UI's 25 per page (SCRUM-29).
+ *
+ * The shape matches what `GET /api/assets/:id/history` serialises: an audit event plus the resolved
+ * `actor` and the `unitTag` of the unit it concerned. Three actors and two target types, so a test
+ * can tell "shows the actor's display name" from "shows whatever the first row happened to hold",
+ * and an asset-level event with `unitTag: null` proves the unit column is omitted rather than faked.
+ */
+export const assetHistoryEvents = Array.from({ length: 30 }, (_, i) => {
+  const actors = [adminUser, approverUser, memberUser];
+  const actor = actors[i % actors.length];
+  const isAssetLevel = i === 29;
+  return {
+    id: `6aab2a45c6e457e01ac09${String(900 + i).padStart(4, '0')}`,
+    orgId: org.id,
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: isAssetLevel ? 'ASSET_CREATED' : ['ASSET_CHECKED_OUT', 'ASSET_RETURNED'][i % 2],
+    targetType: isAssetLevel ? 'Asset' : 'AssetUnit',
+    targetId: isAssetLevel ? assets[0].id : assetUnits[assets[0].id][i % 2].id,
+    before: null,
+    after: null,
+    requestId: `req-h-${i}`,
+    // One event per day, walking backwards from a fixed date so the order is stable.
+    timestamp: new Date(Date.UTC(2026, 8, 18) - i * 86_400_000).toISOString(),
+    actor: { id: actor.id, name: actor.name, role: actor.role },
+    unitTag: isAssetLevel ? null : assetUnits[assets[0].id][i % 2].tag,
+  };
+});
+/**
+ * Apply the pagination the real history endpoint applies, around the asset it belongs to.
+ * @param {URLSearchParams} search
+ * @param {object[]} [events]
+ * @returns {{ asset: object, items: object[], total: number, page: number, limit: number }}
+ */
+export function assetHistoryPage(search, events = assetHistoryEvents) {
+  const page = Number(search.get('page') ?? 1);
+  const limit = Number(search.get('limit') ?? 25);
+  const start = (page - 1) * limit;
+  return {
+    asset: { id: assets[0].id, name: assets[0].name, category: assets[0].category },
+    items: events.slice(start, start + limit),
+    total: events.length,
+    page,
+    limit,
+  };
 }
 /**
  * Four checkout requests for the caller's org, one per state the approval queue actually exercises:
@@ -460,6 +507,9 @@ export const handlers = [
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
+  ),
+  http.get('*/api/assets/:id/history', ({ request }) =>
+    HttpResponse.json(assetHistoryPage(new URL(request.url).searchParams)),
   ),
   http.get('*/api/assets/:id', ({ params }) => {
     const asset = assets.find((a) => a.id === params.id);

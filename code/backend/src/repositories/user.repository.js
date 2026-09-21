@@ -22,9 +22,10 @@
  * Reads that feed a decision made inside a transaction take an optional `{ session }`, so they see the
  * same snapshot as the writes that follow them.
  *
- * Exports: `create`, `findById`, `findByEmail`, `findByEmailWithPassword`, `findRole`, `updateRole`,
- * `list`, `countByOrg`, `countByRole`, `findByIdWithPassword`, `setPassword`.
+ * Exports: `create`, `findById`, `findByIds`, `findByEmail`, `findByEmailWithPassword`, `findRole`,
+ * `updateRole`, `list`, `countByOrg`, `countByRole`, `findByIdWithPassword`, `setPassword`.
  */
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 
 /**
@@ -67,6 +68,29 @@ export async function create(
  */
 export async function findById(orgId, userId, { session } = {}) {
   return User.findOne({ _id: userId, orgId }).session(session ?? null);
+}
+
+/**
+ * Fetch several users by id in one query, scoped to the tenant (SCRUM-29).
+ *
+ * For turning a page of audit events into names. Each event stores only the actor's id — deliberately,
+ * so a later rename cannot rewrite history — but a screen showing "who did this" has to show a person,
+ * not a hex string. Doing that one `findById` per row is the N+1 query this exists to avoid: a page of
+ * 25 events by 3 people is one query here, not 25.
+ *
+ * Ids that do not resolve are simply absent from the result. A caller must not treat a missing id as
+ * an error: an audit row outlives the account that made it, which is the point of an audit row.
+ * @param {string} orgId
+ * @param {unknown[]} userIds may contain duplicates; they are de-duplicated here
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function findByIds(orgId, userIds) {
+  const unique = [...new Set(userIds.map(String))];
+  if (unique.length === 0) {
+    return [];
+  }
+  // `sanitizeFilter` is on globally and neutralises operators it did not build; this one is ours.
+  return User.find({ orgId, _id: mongoose.trusted({ $in: unique }) });
 }
 
 /**

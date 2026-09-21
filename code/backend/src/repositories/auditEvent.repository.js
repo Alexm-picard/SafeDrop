@@ -58,15 +58,38 @@ export async function append(orgId, event, { session } = {}) {
  * The date range is wrapped in `mongoose.trusted()` because `sanitizeFilter` is on globally: it
  * strips query operators out of filter *values* to defeat injection, so operators the server builds
  * itself must be marked as ours.
+ *
+ * `targets` is the one filter that is not a single value: it takes groups of
+ * `{ type, ids }` and matches an event that belongs to **any** of them. One thing in the world is
+ * usually several rows here — an asset's story is told partly against the asset, partly against each
+ * of its units, and partly against the requests made for them (SCRUM-29) — so a caller that needs
+ * the whole story needs one query over all three rather than three queries it then has to merge and
+ * re-sort. Every id in it must already have been resolved inside this tenant by the caller; this
+ * function does not check where they came from, and `orgId` in the filter is what stops a stray id
+ * from another organisation matching anything.
  * @param {string} orgId
- * @param {{ targetType?: string, targetId?: string, actorId?: string, action?: string, from?: Date, to?: Date, page?: number, limit?: number }} [filters]
+ * @param {{ targetType?: string, targetId?: string, actorId?: string, action?: string, from?: Date, to?: Date, targets?: Array<{ type: string, ids: unknown[] }>, page?: number, limit?: number }} [filters]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export async function query(
   orgId,
-  { targetType, targetId, actorId, action, from, to, page = 1, limit = 50 } = {},
+  { targetType, targetId, actorId, action, from, to, targets, page = 1, limit = 50 } = {},
 ) {
   const filter = { orgId };
+  if (targets) {
+    const groups = targets.filter((group) => group.ids.length > 0);
+    if (groups.length === 0) {
+      // Nothing to match. Returning early rather than building `$or: []`, which MongoDB rejects
+      // outright — an asset with no units and no requests is an ordinary empty history, not an error.
+      return { items: [], total: 0, page, limit };
+    }
+    filter.$or = groups.map((group) => ({
+      targetType: group.type,
+      // Ours, not the client's: `sanitizeFilter` would otherwise rewrite `$in` into an equality
+      // test against the literal object and the query would silently match nothing.
+      targetId: mongoose.trusted({ $in: group.ids }),
+    }));
+  }
   if (targetType) {
     filter.targetType = targetType;
   }

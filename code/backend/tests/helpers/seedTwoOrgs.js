@@ -287,6 +287,100 @@ async function seedOrg(key) {
 }
 
 /**
+ * Append a realistic chain of custody over one organisation's laptop, for the demo (SCRUM-39).
+ *
+ * **Deliberately not part of `seedOrg`.** The fixture is shared by every integration test, and several
+ * of them count audit events; folding these rows in would change those totals and couple unrelated
+ * suites to this demo data. `scripts/seedDev.js` calls it, the tests do not — a test that wants a
+ * history builds exactly the events it asserts on.
+ *
+ * Every row matches a state the fixture actually left behind, so the trail and the data agree: the
+ * OUT unit has a submission, an approval and a checkout; the HELD unit has a submission and an
+ * approval; the REQUESTED unit has a submission and nothing more. Inventing a return for a unit that
+ * is still checked out would make the demo screen tell a story the database contradicts.
+ *
+ * The events land a moment apart rather than days apart, because `AuditEvent` re-stamps `timestamp`
+ * on every insert path (SR-8) — not even a seed script can place a row in the past. The order is
+ * still exact: appends are awaited in sequence, and the read sorts on `_id` where timestamps tie.
+ * @param {object} org one half of the `seedTwoOrgs` result
+ * @returns {Promise<object[]>} the appended events, oldest first
+ */
+export async function seedAssetHistory(org) {
+  const { orgId, admin, approver, member, asset, units } = org;
+  const timeline = [
+    {
+      actor: admin,
+      action: AUDIT_ACTION.ASSET_CREATED,
+      type: AUDIT_TARGET_TYPE.Asset,
+      id: asset._id,
+    },
+    {
+      actor: admin,
+      action: AUDIT_ACTION.ASSET_UPDATED,
+      type: AUDIT_TARGET_TYPE.AssetUnit,
+      id: units[1]._id,
+    },
+    {
+      actor: member,
+      action: AUDIT_ACTION.REQUEST_SUBMITTED,
+      type: AUDIT_TARGET_TYPE.CheckoutRequest,
+      id: org.checkedOutRequest._id,
+    },
+    {
+      actor: approver,
+      action: AUDIT_ACTION.REQUEST_APPROVED,
+      type: AUDIT_TARGET_TYPE.CheckoutRequest,
+      id: org.checkedOutRequest._id,
+    },
+    {
+      actor: approver,
+      action: AUDIT_ACTION.ASSET_CHECKED_OUT,
+      type: AUDIT_TARGET_TYPE.AssetUnit,
+      id: units[1]._id,
+    },
+    {
+      actor: member,
+      action: AUDIT_ACTION.REQUEST_SUBMITTED,
+      type: AUDIT_TARGET_TYPE.CheckoutRequest,
+      id: org.heldRequest._id,
+    },
+    {
+      actor: approver,
+      action: AUDIT_ACTION.REQUEST_APPROVED,
+      type: AUDIT_TARGET_TYPE.CheckoutRequest,
+      id: org.heldRequest._id,
+    },
+    {
+      actor: member,
+      action: AUDIT_ACTION.REQUEST_SUBMITTED,
+      type: AUDIT_TARGET_TYPE.CheckoutRequest,
+      id: org.request._id,
+    },
+    {
+      actor: admin,
+      action: AUDIT_ACTION.ASSET_UPDATED,
+      type: AUDIT_TARGET_TYPE.Asset,
+      id: asset._id,
+    },
+  ];
+  const appended = [];
+  for (const entry of timeline) {
+    // Sequential, not `Promise.all`: the order these are written in is the order the history reads
+    // back in, and a parallel append would leave it to chance.
+    appended.push(
+      await auditRepo.append(orgId, {
+        actorId: entry.actor._id,
+        actorRole: entry.actor.role,
+        action: entry.action,
+        targetType: entry.type,
+        targetId: entry.id,
+      }),
+    );
+  }
+  return appended;
+}
+
+/**
  * Seed both organisations and return them as `{ a, b, password }`.
  *
  * Org A is conventionally the caller and org B the one that must remain invisible to it. The

@@ -13,12 +13,13 @@
  * together or not at all, so the trail cannot end up describing something that was rolled back, nor
  * miss something that happened.
  *
- * The read path is `list()`, and the asymmetry between the two is deliberate: there is a function to
- * append and a function to read, and none to change or remove. That holds all the way down —
- * `auditEvent.repository.js` exposes only those two, and `models/AuditEvent.js` throws on every
- * mutating Mongoose operation (SR-8).
+ * The read path is `list()` (the whole trail, narrowed by filters) and `listForTargets()` (one
+ * thing's complete history), and the asymmetry against `record()` is deliberate: there are functions
+ * to append and to read, and none to change or remove. That holds all the way down —
+ * `auditEvent.repository.js` exposes only `append` and `query`, and `models/AuditEvent.js` throws on
+ * every mutating Mongoose operation (SR-8).
  *
- * Exports: `record(orgId, event, options)`, `list(orgId, filters)`.
+ * Exports: `record(orgId, event, options)`, `list(orgId, filters)`, `listForTargets(orgId, targets, page)`.
  */
 import * as auditRepo from '../repositories/auditEvent.repository.js';
 
@@ -89,4 +90,30 @@ export async function list(orgId, filters = {}) {
     page,
     limit,
   });
+}
+
+/**
+ * Read every audit event recorded against any of `targets`, newest first (SCRUM-29).
+ *
+ * The read behind one thing's complete history. `list()` answers "what happened in this
+ * organisation", narrowed by one filter at a time; this answers "what happened to *this*", where the
+ * thing in question is spread across several audit targets. An asset is the case that motivated it:
+ * its own row records creation and edits, its units record checkouts and returns, and the requests
+ * made for those units record submission, approval and denial. Fetching the three separately and
+ * merging them in the caller would page wrongly — page 1 of each is not page 1 of the union — so the
+ * union is formed in the query and paginated once.
+ *
+ * `orgId` is the caller's own, from `scopeTenant` and never from the request (SR-2). The target ids
+ * are the caller's responsibility to have resolved within this tenant first; combined with `orgId` in
+ * the filter, an id that belongs elsewhere matches nothing rather than leaking a row.
+ *
+ * Who may call this is settled upstream by the route's `audit:read` permission, so there is no role
+ * logic here — the same division as `list()`.
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {Array<{ type: string, ids: unknown[] }>} targets groups of audit targets; an event matching any of them is included
+ * @param {{ page?: number, limit?: number }} [page]
+ * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
+ */
+export async function listForTargets(orgId, targets, { page, limit } = {}) {
+  return auditRepo.query(orgId, { targets, page, limit });
 }

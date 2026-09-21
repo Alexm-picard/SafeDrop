@@ -30,9 +30,11 @@
 import { withTransaction } from '../config/db.js';
 import * as assetRepo from '../repositories/asset.repository.js';
 import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
+import * as checkoutRequestRepo from '../repositories/checkoutRequest.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE, UNIT_STATUS } from '../utils/constants.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
-import { record as recordAudit } from './audit.service.js';
+import { listForTargets, record as recordAudit } from './audit.service.js';
 
 /**
  * The unit statuses that block retiring the asset they belong to.
@@ -337,4 +339,87 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
     );
     return unit.toJSON();
   });
+}
+
+/**
+ * One asset's complete chain of custody (`GET /api/assets/:id/history`, SCRUM-29).
+ *
+ * The question this answers is the product's core promise: who held this, when, and who let them.
+ * Today that answer lives in somebody's inbox; here it is one query.
+ *
+ * **An asset's story is not stored in one place.** Audit events are recorded against whichever
+ * target the action really concerned, so the asset's own row carries creation, edits and retirement;
+ * each *unit* carries the checkouts and returns, because a checkout is of one physical item and not
+ * of the catalogue entry; and each *request* carries submission, approval, denial and cancellation.
+ * Reading only the asset's own rows would return three entries and none of the borrowing — which is
+ * the part somebody reading a chain of custody came for. So all three are resolved and queried as
+ * one union, paginated once (AT-1).
+ *
+ * **404 before anything else (AT-2).** The asset is resolved by `(orgId, assetId)` first, so an id
+ * from another organisation and an id that never existed are indistinguishable — both 404, never
+ * 403. A 403 would confirm the asset exists somewhere, which is the existence leak SR-2 prohibits,
+ * and it would confirm it *before* any history is read.
+ *
+ * **Nothing here can alter what it reads (AT-3).** The path down is `listForTargets` →
+ * `auditRepo.query` → `find`, and there is no update or delete anywhere in the audit repository to
+ * reach even by mistake (SR-8).
+ *
+ * Actor names are resolved in a single batch lookup and attached per row, because the screen must
+ * show a person rather than an object id. `actorId` and `actorRole` stay on the row as stored: the
+ * name is a convenience for reading, while the id is the evidence, and the role is the authority the
+ * actor held *at the time*, which a later promotion cannot rewrite.
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {string} assetId validated as an object id by the route's `idParams` schema
+ * @param {{ page?: number, limit?: number }} [query] validated by the route's `pagination` schema
+ * @returns {Promise<{ asset: object, items: object[], total: number, page: number, limit: number }>}
+ *   the events newest first, each with `actor: { id, name, role }`
+ * @throws {NotFoundError} (404) absent, or owned by another organisation
+ */
+export async function history(orgId, assetId, query = {}) {
+  const asset = await assetRepo.findById(orgId, assetId);
+  if (!asset) {
+    throw new NotFoundError('Asset not found');
+  }
+
+  const units = await assetUnitRepo.listByAsset(orgId, assetId);
+  const unitIds = units.map((unit) => unit._id);
+  const requestIds = await checkoutRequestRepo.listIdsForUnits(orgId, unitIds);
+
+  const page = await listForTargets(
+    orgId,
+    [
+      { type: AUDIT_TARGET_TYPE.Asset, ids: [asset._id] },
+      { type: AUDIT_TARGET_TYPE.AssetUnit, ids: unitIds },
+      { type: AUDIT_TARGET_TYPE.CheckoutRequest, ids: requestIds },
+    ],
+    query,
+  );
+
+  const actors = await userRepo.findByIds(
+    orgId,
+    page.items.map((event) => event.actorId),
+  );
+  const nameById = new Map(actors.map((user) => [String(user._id), user.name]));
+  // A unit's tag is what a person calls the thing ("Laptop #247"); its id is not. Resolving it here
+  // keeps the row self-describing, so the screen does not have to cross-reference the unit list.
+  const tagById = new Map(units.map((unit) => [String(unit._id), unit.tag]));
+
+  return {
+    asset: { id: String(asset._id), name: asset.name, category: asset.category },
+    ...page,
+    items: page.items.map((event) => {
+      const json = event.toJSON();
+      return {
+        ...json,
+        actor: {
+          id: json.actorId,
+          // A deleted account still has to read as something. The id is already on the row, so the
+          // fallback says what is true — the person is gone — rather than repeating it as a name.
+          name: nameById.get(String(event.actorId)) ?? 'Former member',
+          role: json.actorRole,
+        },
+        unitTag: tagById.get(String(event.targetId)) ?? null,
+      };
+    }),
+  };
 }
