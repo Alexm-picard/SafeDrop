@@ -18,7 +18,7 @@
 const freezeEnum = (values) => Object.freeze(Object.fromEntries(values.map((v) => [v, v])));
 
 /** Physical-unit lifecycle (SDD §2.4 AssetUnit.status). */
-export const UNIT_STATUS = freezeEnum(['AVAILABLE', 'HELD', 'OUT', 'RETIRED']);
+export const UNIT_STATUS = freezeEnum(['AVAILABLE', 'HELD', 'OUT', 'RETIRED', 'REQUESTED']);
 export const UNIT_STATUS_LIST = Object.freeze(Object.keys(UNIT_STATUS));
 
 /** Checkout request state machine (SDD §2.4 CheckoutRequest.state, arch review F4). */

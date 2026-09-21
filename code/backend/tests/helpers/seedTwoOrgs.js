@@ -95,7 +95,7 @@ async function seedOrg(key) {
     await assetUnitRepo.create(orgId, {
       assetId: asset._id,
       tag: `${key}-001`,
-      status: UNIT_STATUS.AVAILABLE,
+      status: UNIT_STATUS.REQUESTED,
     }),
     await assetUnitRepo.create(orgId, {
       assetId: asset._id,

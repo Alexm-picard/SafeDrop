@@ -55,7 +55,7 @@ describe('POST /api/requests (SCRUM-requests-create)', () => {
       .post('/api/requests')
       .set('Cookie', accessCookieFor(seed.a.member))
       .send({
-        unitId: seed.a.units[0]._id,
+        unitId: seed.a.extraAssets[0].units[0]._id,
         neededFrom: '2026-11-01T00:00:00.000Z',
         neededTo: '2026-11-05T00:00:00.000Z',
         note: 'for a demo',
@@ -69,6 +69,69 @@ describe('POST /api/requests (SCRUM-requests-create)', () => {
     const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_SUBMITTED });
     expect(audit.total).toBe(1);
     expect(String(audit.items[0].targetId)).toBe(res.body.id);
+  });
+
+  it('reserves the unit (AVAILABLE -> REQUESTED) on submit', async () => {
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(res.status).toBe(201);
+
+    const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.extraAssets[0].units[0]._id);
+    expect(unit.status).toBe('REQUESTED');
+  });
+
+  it('a second submit for the same now-REQUESTED unit is refused with 409', async () => {
+    const first = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(first.status).toBe(201);
+
+    const second = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.approver))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-06T00:00:00.000Z',
+        neededTo: '2026-11-10T00:00:00.000Z',
+      });
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('CONFLICT');
+    expect(second.body.error.message).toBe('That unit is no longer available');
+  });
+
+  it('denying releases a unit that submit() had reserved back to AVAILABLE', async () => {
+    const submitRes = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-01T00:00:00.000Z',
+        neededTo: '2026-11-05T00:00:00.000Z',
+      });
+    expect(submitRes.status).toBe(201);
+    expect(
+      (await assetUnitRepo.findById(seed.a.orgId, seed.a.extraAssets[0].units[0]._id)).status,
+    ).toBe('REQUESTED');
+
+    const denyRes = await request(app)
+      .post(`/api/requests/${submitRes.body.id}/deny`)
+      .set('Cookie', accessCookieFor(seed.a.approver))
+      .send({});
+    expect(denyRes.status).toBe(200);
+    expect(
+      (await assetUnitRepo.findById(seed.a.orgId, seed.a.extraAssets[0].units[0]._id)).status,
+    ).toBe('AVAILABLE');
   });
 
   it('a unit that is not AVAILABLE is refused with a readable 409', async () => {
@@ -168,7 +231,7 @@ describe('POST /api/requests/:id/approve and /deny (SCRUM-requests-approve, SCRU
     expect(String(audit.items[0].targetId)).toBe(String(seed.a.request._id));
   });
 
-  it('deny moves PENDING -> DENIED with no unit side-effect, and appends REQUEST_DENIED', async () => {
+  it('deny moves PENDING -> DENIED, releases the unit back to AVAILABLE, and appends REQUEST_DENIED', async () => {
     const res = await request(app)
       .post(`/api/requests/${seed.a.request._id}/deny`)
       .set('Cookie', accessCookieFor(seed.a.approver))
@@ -576,7 +639,7 @@ describe('GET /api/requests/:id (SCRUM-123)', () => {
 });
 
 describe('POST /api/requests/:id/cancel (SCRUM-requests-cancel)', () => {
-  it('cancels a PENDING request with no unit side-effect, and appends REQUEST_CANCELLED', async () => {
+  it('cancels a PENDING request, releases the unit back to AVAILABLE, and appends REQUEST_CANCELLED', async () => {
     const res = await request(app)
       .post(`/api/requests/${seed.a.request._id}/cancel`)
       .set('Cookie', accessCookieFor(seed.a.member))

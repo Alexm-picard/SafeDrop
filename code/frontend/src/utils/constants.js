@@ -165,13 +165,15 @@ export const UNIT_CONDITIONS = Object.freeze(['NEW', 'GOOD', 'FAIR', 'POOR']);
 /**
  * The physical-unit lifecycle, mirroring the backend's `UNIT_STATUS` (SDD §2.4 AssetUnit.status).
  *
- * Only `AVAILABLE` is currently read — it is what decides whether a unit can be requested — but the
- * whole enum is mirrored so the next screen that needs a status compares against a named value
- * rather than a bare string.
+ * `REQUESTED` means a PENDING request already exists for this unit — it is what keeps a second
+ * member from requesting the same unit while the first request is undecided. It is read the same
+ * way `AVAILABLE` is: the "Request this" button and the retire guard both key off it via `humanize`
+ * and a direct equality check, not a bespoke label map.
  */
 export const UNIT_STATUS = Object.freeze({
   AVAILABLE: 'AVAILABLE',
   HELD: 'HELD',
   OUT: 'OUT',
   RETIRED: 'RETIRED',
+  REQUESTED: 'REQUESTED',
 });

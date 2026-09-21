@@ -101,7 +101,7 @@ describe('repository layer: orgId is always the first argument and always scopes
     expect(audit.total).toBe(1);
     expect(String(audit.items[0].orgId)).toBe(seed.a.orgId);
     const counts = await assetUnitRepo.countByStatus(seed.a.orgId);
-    expect(counts).toEqual({ AVAILABLE: 4, HELD: 1, OUT: 2, RETIRED: 1 });
+    expect(counts).toEqual({ AVAILABLE: 3, HELD: 1, OUT: 2, RETIRED: 1, REQUESTED: 1 });
   });
 });
 
@@ -129,9 +129,10 @@ describe('HTTP layer: org A addressing org B', () => {
     expect(res.body).toMatchObject({
       totalAssets: 7,
       checkedOut: 2,
-      available: 4,
+      available: 3,
       held: 1,
       retired: 1,
+      requested: 1,
       pendingRequests: 1,
     });
   });

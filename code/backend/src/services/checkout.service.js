@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented (SCRUM-requests-create, SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-cancel, SCRUM-requests-list, SCRUM-123)
+// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -55,8 +55,8 @@ import { policyFor } from './policies/approvalPolicy.js';
  *
  * from          → to           unit side-effect   audit action
  * PENDING       → APPROVED     unit HELD          REQUEST_APPROVED
- * PENDING       → DENIED       (none)             REQUEST_DENIED
- * PENDING       → CANCELLED    (none)             REQUEST_CANCELLED
+ * PENDING       → DENIED       unit AVAILABLE     REQUEST_DENIED
+ * PENDING       → CANCELLED    unit AVAILABLE     REQUEST_CANCELLED
  * APPROVED      → CANCELLED    unit AVAILABLE     REQUEST_CANCELLED
  * APPROVED      → CHECKED_OUT  unit OUT           ASSET_CHECKED_OUT
  * CHECKED_OUT   → RETURNED     unit AVAILABLE     ASSET_RETURNED
@@ -65,14 +65,17 @@ import { policyFor } from './policies/approvalPolicy.js';
  * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
  * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
  *
- * Reaching PENDING (submit()) has no row of its own here: opening a request does not touch the
- * unit at all. That is a deliberate, still-open gap, not an oversight — see submit()'s doc comment.
+ * Reaching PENDING (submit()) is the one transition with no row here: it moves a unit from AVAILABLE
+ * to REQUESTED, but that is a creation, not a move between two existing request states, so it has no
+ * (from, to) pair to sit in this table. See submit()'s own doc comment. PENDING → DENIED and
+ * PENDING → CANCELLED both release that reservation back to AVAILABLE — nothing was ever HELD, but
+ * something was REQUESTED, and it must stop being so.
  */
 export const TRANSITIONS = Object.freeze({
   [S.PENDING]: Object.freeze({
     [S.APPROVED]: Object.freeze({ unitStatus: U.HELD }),
-    [S.DENIED]: Object.freeze({ unitStatus: null }),
-    [S.CANCELLED]: Object.freeze({ unitStatus: null }),
+    [S.DENIED]: Object.freeze({ unitStatus: U.AVAILABLE }),
+    [S.CANCELLED]: Object.freeze({ unitStatus: U.AVAILABLE }),
   }),
   [S.APPROVED]: Object.freeze({
     [S.CANCELLED]: Object.freeze({ unitStatus: U.AVAILABLE }),
@@ -142,22 +145,23 @@ export function canTransition(from, to) {
 /**
  * Open a checkout request (`POST /api/requests`).
  *
- * The unit must be AVAILABLE at the moment of writing: it is read and the request inserted inside
- * one `withTransaction()`, so a submit can never act on a stale read of a unit some other operation
- * (a retire, a concurrent approval on a different request) is changing at that instant.
+ * The unit is moved AVAILABLE -> REQUESTED with a compare-and-set write, inside the same transaction
+ * as the request insert: if two members submit for the same unit at the same moment, the read they
+ * both do can agree it's AVAILABLE, but only one of their writes can actually flip it, because the
+ * write itself re-checks the status at the database rather than trusting the earlier read. The loser
+ * gets the same 409 a request against an already-unavailable unit gets — from its point of view, it
+ * simply lost the race.
  *
- * This does **not** stop two members from submitting separate PENDING requests against the same
- * still-AVAILABLE unit at the same moment — reaching PENDING has no unit side-effect (see the
- * TRANSITIONS table: a unit is only reserved on approval), so there is nothing to compare-and-set
- * against here. That is the same "what happens to sibling PENDING requests" question already open
- * since `approve()` shipped; this ticket does not resolve it, only the narrower race above.
+ * This does not, on its own, stop a *second* member from filing a request against a unit that is
+ * still genuinely AVAILABLE while a first request sits undecided elsewhere — it only ensures a given
+ * unit can never back two PENDING requests at once, which is exactly what "REQUESTED" now means.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {{ unitId: string, neededFrom: Date, neededTo: Date, note?: string, requestId?: string }} [input]
  *   validated `createRequestBody`, plus the HTTP request id for audit correlation
  * @returns {Promise<object>} the new PENDING request
  * @throws {NotFoundError} (404) no such unit in this organisation
- * @throws {ConflictError} (409) the unit is not AVAILABLE
+ * @throws {ConflictError} (409) the unit is not AVAILABLE, including a lost race
  */
 export async function submit(orgId, actor, input = {}) {
   return withTransaction(async (session) => {
@@ -166,6 +170,17 @@ export async function submit(orgId, actor, input = {}) {
       throw new NotFoundError('Unit not found');
     }
     if (unit.status !== U.AVAILABLE) {
+      throw new ConflictError('That unit is no longer available');
+    }
+
+    const reserved = await assetUnitRepo.updateStatusIfCurrent(
+      orgId,
+      input.unitId,
+      { from: U.AVAILABLE, to: U.REQUESTED },
+      { session },
+    );
+    if (!reserved) {
+      // Someone else's submit reserved this unit between our read and this write.
       throw new ConflictError('That unit is no longer available');
     }
 
@@ -390,8 +405,9 @@ export async function approve(orgId, actor, requestId, input = {}) {
 /**
  * Deny a request (`POST /api/requests/:id/deny`).
  *
- * PENDING -> DENIED with no unit side-effect — nothing was ever held — plus the REQUEST_DENIED
- * audit event in the same transaction. Same policy check and race protection as `approve`.
+ * PENDING -> DENIED, releasing the unit `submit()` reserved back to AVAILABLE, plus the
+ * REQUEST_DENIED audit event in the same transaction. Same policy check and race protection as
+ * `approve`.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} requestId
@@ -414,7 +430,7 @@ export async function deny(orgId, actor, requestId, input = {}) {
     throw new ForbiddenError(decision.reason ?? 'Not allowed to decide this request');
   }
 
-  assertTransition(request.state, S.DENIED);
+  const { unitStatus } = assertTransition(request.state, S.DENIED);
 
   return withTransaction(async (session) => {
     const updated = await checkoutRequestRepo.transition(
@@ -434,6 +450,8 @@ export async function deny(orgId, actor, requestId, input = {}) {
     if (!updated) {
       throw new StateTransitionError(request.state, S.DENIED);
     }
+
+    await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
 
     await auditService.record(
       orgId,
@@ -467,7 +485,9 @@ export async function deny(orgId, actor, requestId, input = {}) {
  *
  * PENDING or APPROVED only — the table's own two `→ CANCELLED` rows enforce that: no third row
  * exists, so `assertTransition` throws 409 for anything else (already CHECKED_OUT, already decided
- * one way, or already terminal) without this function needing to special-case it.
+ * one way, or already terminal) without this function needing to special-case it. Either source
+ * state releases the unit back to AVAILABLE — REQUESTED for a still-PENDING request, HELD for an
+ * APPROVED one — both rows now carry `unitStatus: AVAILABLE`.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} requestId
