@@ -44,4 +44,9 @@ Three things it enforces, so no feature has to remember them:
 Configuration lives in `.env` (`FOUNDRY_*`). The feature is off by default, and enabling it without
 an endpoint, key and deployment fails the boot rather than degrading to a 503 on every search.
 
+`prompts/asset-search.md` — the system prompt for the `asset-search` agent, kept here rather than
+only in the Foundry portal because a prompt is where this feature's safety rules live: it should be
+reviewable and diffable like any other security control. It also records why the agent is **not**
+connected to MongoDB directly, and the request contract the search service has to build.
+
 Still to come: the feature services themselves, and the `SearchQueryLog` model.
