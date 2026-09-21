@@ -30,6 +30,7 @@ import { up as upInviteIndex } from '../migrations/20260919000000-invite-token-i
 import { up as upRemoveInviteIndex } from '../migrations/20260920000000-remove-invite-token-index.js';
 import { up as upResetTokenIndex } from '../migrations/20260920100000-password-reset-token-index.js';
 import { configureMongoose } from '../src/config/db.js';
+import { resetAuthRateLimiter } from '../src/middleware/rateLimit.js';
 
 beforeAll(async () => {
   const uri = inject('mongoUri');
@@ -50,6 +51,12 @@ afterEach(async () => {
   // Driver-level wipe (bypasses model hooks on purpose; the audit model forbids Mongoose deletes).
   const collections = await mongoose.connection.db.collections();
   await Promise.all(collections.map((c) => c.deleteMany({})));
+  // Rate-limit counters live in process memory, not the database, so wiping collections does not
+  // clear them. Every test file shares one process: without this, a file that creates a handful of
+  // organisations leaves the SCRUM-114 limiter tripped and the *next* test fails with a 429 that has
+  // nothing to do with what it was testing. Reset here rather than per file so no future test has to
+  // know the limiter exists.
+  resetAuthRateLimiter();
 });
 
 afterAll(async () => {

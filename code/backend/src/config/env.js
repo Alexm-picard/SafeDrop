@@ -56,6 +56,10 @@ export const envSchema = z
     COOKIE_SECURE: boolString('false'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug']).default('info'),
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
+    // How many organisations one IP may create per hour (SR-12, SCRUM-114). Far lower than the auth
+    // limit because the two protect against different things: that one bounds guessing, this one
+    // bounds *successful* use of a public route that creates a tenant and an admin account each time.
+    RATE_LIMIT_ORG_CREATE_MAX: z.coerce.number().int().positive().default(5),
     // Number of reverse-proxy hops to trust for req.ip (Render: 1). Default: 1 in production, 0 otherwise.
     TRUST_PROXY: z.coerce.number().int().min(0).optional(),
     // The SPA's public origin. The password-reset link is built on it, so a wrong value here sends
