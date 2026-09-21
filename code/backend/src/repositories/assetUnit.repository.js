@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped AssetUnit persistence and the status aggregation behind the dashboard (SDD §2.4, SCRUM-103)
+// AI-Assisted Areas: tenant-scoped AssetUnit persistence and the status aggregation behind the dashboard (SDD §2.4, SCRUM-102)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 

@@ -1,12 +1,12 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: SCRUM-101 organisation bootstrap: org + first admin + ORG_CREATED audit in one transaction; validation creates nothing
+// AI-Assisted Areas: SCRUM-100 organisation bootstrap: org + first admin + ORG_CREATED audit in one transaction; validation creates nothing
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
- * Integration tests for `POST /api/organizations` (SCRUM-101), the public bootstrap route.
+ * Integration tests for `POST /api/organizations` (SCRUM-100), the public bootstrap route.
  *
  * Proves that one call creates an organisation, its first ORG_ADMIN and an ORG_CREATED audit event,
  * and signs the admin in.
@@ -46,7 +46,7 @@ const countAll = async () => ({
   tokens: await RefreshToken.countDocuments(),
 });
 
-describe('POST /api/organizations (SCRUM-101)', () => {
+describe('POST /api/organizations (SCRUM-100)', () => {
   it('creates the organisation, its first ORG_ADMIN and an ORG_CREATED audit event, and logs the admin in', async () => {
     const res = await request(app).post('/api/organizations').send(valid());
     expect(res.status).toBe(201);

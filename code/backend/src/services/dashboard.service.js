@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: admin dashboard summary aggregated from AssetUnit.status (SCRUM-103); pending/overdue
+// AI-Assisted Areas: admin dashboard summary aggregated from AssetUnit.status (SCRUM-102); pending/overdue
 //   counts, the 30-day activity series and the 60-second cache (SCRUM-102); now includes REQUESTED units
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.

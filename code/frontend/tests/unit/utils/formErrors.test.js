@@ -44,7 +44,7 @@ describe('fieldErrorsOf', () => {
 
   it('returns nothing for an error that names no field, so the caller falls back to a banner', () => {
     expect(fieldErrorsOf(apiError(undefined))).toEqual({});
-    expect(fieldErrorsOf(apiError({ ticket: 'SCRUM-assets-create' }))).toEqual({});
+    expect(fieldErrorsOf(apiError({ ticket: 'SCRUM-134' }))).toEqual({});
   });
 
   it('keeps the per-field message when both shapes name the same field', () => {

@@ -1,13 +1,13 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: SCRUM-103 dashboard summary: counts from AssetUnit.status, ORG_ADMIN only;
-//   SCRUM-102 pending/overdue counts, 30-day activity series, 60-second cache, AT1 + AT2
+// AI-Assisted Areas: SCRUM-102 dashboard summary: counts from AssetUnit.status, ORG_ADMIN only,
+//   pending/overdue counts, 30-day activity series, 60-second cache, AT1 + AT2
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
- * Integration tests for `GET /api/dashboard/summary` (SCRUM-103, SCRUM-102).
+ * Integration tests for `GET /api/dashboard/summary` (SCRUM-102).
  *
  * The suite proves the whole stack end to end — route, permission, controller, service, repository
  * aggregations — and pins the counting rules the story argues about: retired units are out of
@@ -75,7 +75,7 @@ async function checkOutUnit(orgId, { unitId, requesterId, checkedOutAt, dueAt })
   });
 }
 
-describe('GET /api/dashboard/summary (SCRUM-103)', () => {
+describe('GET /api/dashboard/summary (SCRUM-102)', () => {
   it('returns the inventory counts for the admin’s org', async () => {
     const body = await readSummary(seed.a);
     expect(body).toMatchObject({

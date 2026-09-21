@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: approval queue wired to approve/deny/checkout/return (SCRUM-requests-approve, SCRUM-requests-deny, SCRUM-requests-checkout, SCRUM-requests-return, SCRUM-requests-list)
+// AI-Assisted Areas: approval queue wired to approve/deny/checkout/return (SCRUM-119, SCRUM-119, SCRUM-120, SCRUM-120, SCRUM-119)
 // Human Contributions: pending team review
 
 /**

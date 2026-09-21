@@ -1,13 +1,13 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: SCRUM-requests-create/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-requests-checkout/return (record a physical handoff, OD-4). SCRUM-123 (request detail)
+// AI-Assisted Areas: SCRUM-135/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-120/return (record a physical handoff, OD-4). SCRUM-123 (request detail)
 // Human Contributions: pending team review
 
 /**
  * Integration tests for `/api/requests` — the pieces of the checkout workflow that are implemented.
  *
- * Grows as more of SCRUM-requests-* lands; covers submit, approve/deny, list, checkout/return and
+ * Grows as more of the checkout epic lands; covers submit, approve/deny, list, checkout/return and
  * the detail read so far.
  */
 import request from 'supertest';
@@ -49,7 +49,7 @@ async function createCheckedOutRequest(org) {
   });
 }
 
-describe('POST /api/requests (SCRUM-requests-create)', () => {
+describe('POST /api/requests (SCRUM-135)', () => {
   it('creates a PENDING request for an AVAILABLE unit and appends REQUEST_SUBMITTED', async () => {
     const res = await request(app)
       .post('/api/requests')
@@ -212,7 +212,7 @@ describe('POST /api/requests (SCRUM-requests-create)', () => {
   });
 });
 
-describe('POST /api/requests/:id/approve and /deny (SCRUM-requests-approve, SCRUM-requests-deny)', () => {
+describe('POST /api/requests/:id/approve and /deny (SCRUM-119, SCRUM-119)', () => {
   it('approve moves PENDING -> APPROVED, holds the unit, and appends REQUEST_APPROVED', async () => {
     const res = await request(app)
       .post(`/api/requests/${seed.a.request._id}/approve`)
@@ -317,7 +317,7 @@ describe('POST /api/requests/:id/approve and /deny (SCRUM-requests-approve, SCRU
   });
 });
 
-describe('POST /api/requests/:id/checkout (SCRUM-requests-checkout, OD-4)', () => {
+describe('POST /api/requests/:id/checkout (SCRUM-120, OD-4)', () => {
   it('moves APPROVED -> CHECKED_OUT, sets the unit OUT and dueAt, and appends ASSET_CHECKED_OUT', async () => {
     const approved = await createApprovedRequest(seed.a);
 
@@ -382,7 +382,7 @@ describe('POST /api/requests/:id/checkout (SCRUM-requests-checkout, OD-4)', () =
   });
 });
 
-describe('POST /api/requests/:id/return (SCRUM-requests-return, OD-4)', () => {
+describe('POST /api/requests/:id/return (SCRUM-120, OD-4)', () => {
   it('moves CHECKED_OUT -> RETURNED, sets the unit AVAILABLE, records the condition, and appends ASSET_RETURNED', async () => {
     const checkedOut = await createCheckedOutRequest(seed.a);
 
@@ -447,7 +447,7 @@ describe('POST /api/requests/:id/return (SCRUM-requests-return, OD-4)', () => {
   });
 });
 
-describe('GET /api/requests (SCRUM-requests-list)', () => {
+describe('GET /api/requests (SCRUM-119)', () => {
   it("defaults to the caller's own requests for a MEMBER", async () => {
     const res = await request(app)
       .get('/api/requests')
@@ -638,7 +638,7 @@ describe('GET /api/requests/:id (SCRUM-123)', () => {
   });
 });
 
-describe('POST /api/requests/:id/cancel (SCRUM-requests-cancel)', () => {
+describe('POST /api/requests/:id/cancel (SCRUM-135)', () => {
   it('cancels a PENDING request, releases the unit back to AVAILABLE, and appends REQUEST_CANCELLED', async () => {
     const res = await request(app)
       .post(`/api/requests/${seed.a.request._id}/cancel`)
