@@ -15,7 +15,15 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AuditLogPage } from '../../../src/pages/AuditLogPage';
-import { adminUser, auditEvents, auditPage, errorResponse } from '../../mocks/handlers';
+import {
+  adminUser,
+  approverUser,
+  auditEvents,
+  auditPage,
+  errorResponse,
+  memberUser,
+  membersPage,
+} from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 /** Query strings the page has sent, oldest first, so a test can assert on what it actually asked for. */
@@ -63,6 +71,73 @@ describe('AuditLogPage', () => {
     await screen.findByText('10 events matching the filters');
     expect(lastRequest().get('action')).toBe('REQUEST_APPROVED');
     expect(dataRows()).toHaveLength(10);
+  });
+  it('sends the selected member as an actor filter and narrows the table', async () => {
+    // SCRUM-46 AT-1 in its literal form: "filters by actor = Dana". The backend has always accepted
+    // `actorId`; until this control existed the criterion was unreachable through the UI.
+    const user = userEvent.setup();
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    await user.selectOptions(screen.getByLabelText('Member'), memberUser.id);
+    await screen.findByText('10 events matching the filters');
+    expect(lastRequest().get('actorId')).toBe(memberUser.id);
+    expect(dataRows()).toHaveLength(10);
+    // Every rendered row is that member's, not merely the first.
+    for (const row of dataRows()) {
+      expect(within(row).getByText(memberUser.name)).toBeInTheDocument();
+    }
+  });
+  it('offers every member of the organisation as an actor to filter by', async () => {
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    const select = screen.getByLabelText('Member');
+    // By name, because an admin investigating an incident knows the person, not their object id.
+    for (const person of [adminUser, approverUser, memberUser]) {
+      expect(within(select).getByRole('option', { name: person.name })).toBeInTheDocument();
+    }
+    expect(within(select).getByRole('option', { name: 'All members' })).toBeInTheDocument();
+  });
+  it('combines the actor filter with an action filter rather than replacing it', async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    await user.selectOptions(screen.getByLabelText('Member'), memberUser.id);
+    await screen.findByText('10 events matching the filters');
+    await user.selectOptions(screen.getByLabelText('Action'), 'REQUEST_APPROVED');
+    await screen.findByText(/matching the filters/);
+    // Both parameters present together is the whole point of AT-1, which combines actor with a
+    // second condition; a page that dropped one while applying the other would still look busy.
+    expect(lastRequest().get('actorId')).toBe(memberUser.id);
+    expect(lastRequest().get('action')).toBe('REQUEST_APPROVED');
+  });
+  it('names the actor instead of showing a bare object id', async () => {
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    const first = within(dataRows()[0]);
+    expect(first.getByText(adminUser.name)).toBeInTheDocument();
+    // The role stays alongside the name: it is the authority held at the time, stored on the row.
+    expect(first.getByText('Organization admin')).toBeInTheDocument();
+    expect(screen.queryByText(adminUser.id)).not.toBeInTheDocument();
+  });
+  it('falls back to the id for an actor the member list does not cover', async () => {
+    // An audit row outlives the account that made it — that is the point of an audit row — so a
+    // departed member must still render as something truthful rather than blank or "undefined".
+    server.use(
+      http.get('*/api/users', () => HttpResponse.json(membersPage(new URLSearchParams(), []))),
+    );
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    expect(within(dataRows()[0]).getByText(adminUser.id)).toBeInTheDocument();
+  });
+  it('clears the actor filter along with the others', async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<AuditLogPage />, { user: adminUser });
+    await screen.findByRole('table');
+    await user.selectOptions(screen.getByLabelText('Member'), memberUser.id);
+    await screen.findByText('10 events matching the filters');
+    await user.click(screen.getByRole('button', { name: /clear filters/i }));
+    await screen.findByText('30 events');
+    expect(lastRequest().has('actorId')).toBe(false);
   });
   it('leaves an unset filter out of the query string entirely', async () => {
     const user = userEvent.setup();
