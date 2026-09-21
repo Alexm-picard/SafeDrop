@@ -656,3 +656,64 @@ describe('POST /api/requests/:id/cancel (SCRUM-requests-cancel)', () => {
     expect(second.status).toBe(409);
   });
 });
+
+it('reserves the unit (AVAILABLE -> REQUESTED) on submit', async () => {
+  const res = await request(app)
+    .post('/api/requests')
+    .set('Cookie', accessCookieFor(seed.a.member))
+    .send({
+      unitId: seed.a.units[0]._id,
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
+  expect(res.status).toBe(201);
+  const unit = await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id);
+  expect(unit.status).toBe('REQUESTED');
+});
+
+it('a second submit for the same now-REQUESTED unit is refused with 409', async () => {
+  const first = await request(app)
+    .post('/api/requests')
+    .set('Cookie', accessCookieFor(seed.a.member))
+    .send({
+      unitId: seed.a.units[0]._id,
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
+  expect(first.status).toBe(201);
+
+  const second = await request(app)
+    .post('/api/requests')
+    .set('Cookie', accessCookieFor(seed.a.approver))
+    .send({
+      unitId: seed.a.units[0]._id,
+      neededFrom: '2026-11-06T00:00:00.000Z',
+      neededTo: '2026-11-10T00:00:00.000Z',
+    });
+  expect(second.status).toBe(409);
+  expect(second.body.error.message).toBe('That unit is no longer available');
+});
+
+it('denying releases a unit that submit() had reserved back to AVAILABLE', async () => {
+  const submitRes = await request(app)
+    .post('/api/requests')
+    .set('Cookie', accessCookieFor(seed.a.member))
+    .send({
+      unitId: seed.a.units[0]._id,
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
+  expect(submitRes.status).toBe(201);
+  expect((await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id)).status).toBe(
+    'REQUESTED',
+  );
+
+  const denyRes = await request(app)
+    .post(`/api/requests/${submitRes.body.id}/deny`)
+    .set('Cookie', accessCookieFor(seed.a.approver))
+    .send({});
+  expect(denyRes.status).toBe(200);
+  expect((await assetUnitRepo.findById(seed.a.orgId, seed.a.units[0]._id)).status).toBe(
+    'AVAILABLE',
+  );
+});

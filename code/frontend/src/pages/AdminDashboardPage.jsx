@@ -2,14 +2,14 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: admin dashboard with stat tiles from GET /api/dashboard/summary; ErrorState + retry on failure (SCRUM-103);
-//   pending/overdue tiles and the 30-day checkout activity chart (SCRUM-102)
+//   pending/overdue tiles and the 30-day checkout activity chart (SCRUM-102); a Requested tile for reserved units
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * The admin dashboard: the organisation's inventory at a glance (ORG_ADMIN only, SCRUM-102).
  *
- * Seven figures and one chart, from a single `GET /api/dashboard/summary`. One request rather than
+ * Eight figures and one chart, from a single `GET /api/dashboard/summary`. One request rather than
  * one per number, so every tile on the screen describes the same moment.
  *
  * The tiles are ordered by what an admin came to find out: what we own, what is out, what is late,
@@ -68,6 +68,7 @@ export function AdminDashboardPage() {
             <Stat label="Pending requests" value={data.pendingRequests} />
             <Stat label="Available" value={data.available} />
             <Stat label="On hold" value={data.held} />
+            <Stat label="Requested" value={data.requested} />
             <Stat label="Retired" value={data.retired} />
           </dl>
           <section aria-labelledby="activity-heading">

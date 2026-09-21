@@ -41,6 +41,7 @@ beforeEach(() => {
     HELD: 1,
     OUT: 2,
     RETIRED: 1,
+    REQUESTED: 0,
   });
   checkoutRepo.countByState.mockResolvedValue({ PENDING: 3, CHECKED_OUT: 2 });
   checkoutRepo.countOverdue.mockResolvedValue(1);
@@ -60,9 +61,21 @@ describe('dashboard summary shape', () => {
       available: 4,
       held: 1,
       retired: 1,
+      requested: 0,
       pendingRequests: 3,
       overdue: 1,
     });
+  });
+
+  it('includes REQUESTED units in totalAssets, since they are not retired', async () => {
+    assetUnitRepo.countByStatus.mockResolvedValue({
+      AVAILABLE: 4,
+      HELD: 1,
+      OUT: 2,
+      RETIRED: 1,
+      REQUESTED: 2,
+    });
+    expect(await summary(ORG)).toMatchObject({ totalAssets: 9, requested: 2 });
   });
 
   it('measures lateness against now', async () => {
@@ -115,6 +128,7 @@ describe('dashboard summary cache', () => {
       HELD: 0,
       OUT: 0,
       RETIRED: 0,
+      REQUESTED: 0,
     });
     expect(await summary(OTHER_ORG)).toMatchObject({ totalAssets: 0 });
     expect(assetUnitRepo.countByStatus).toHaveBeenCalledTimes(2);

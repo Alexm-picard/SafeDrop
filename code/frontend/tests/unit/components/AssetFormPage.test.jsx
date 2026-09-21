@@ -35,7 +35,7 @@ function renderCreate() {
     extraRoutes: [
       { path: '/admin/assets/new', element: <AssetFormPage /> },
       { path: '/assets/:id', element: <h1>Asset detail</h1> },
-      { path: '/', element: <h1>Catalog</h1> },
+      { path: '/catalog', element: <h1>Catalog</h1> },
     ],
   });
 }

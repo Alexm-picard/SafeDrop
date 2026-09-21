@@ -23,8 +23,8 @@ import { StateTransitionError } from '../../../src/utils/errors.js';
 
 const allowed = [
   ['PENDING', 'APPROVED', UNIT_STATUS.HELD],
-  ['PENDING', 'DENIED', null],
-  ['PENDING', 'CANCELLED', null],
+  ['PENDING', 'DENIED', UNIT_STATUS.AVAILABLE],
+  ['PENDING', 'CANCELLED', UNIT_STATUS.AVAILABLE],
   ['APPROVED', 'CANCELLED', UNIT_STATUS.AVAILABLE],
   ['APPROVED', 'CHECKED_OUT', UNIT_STATUS.OUT],
   ['CHECKED_OUT', 'RETURNED', UNIT_STATUS.AVAILABLE],

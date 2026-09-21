@@ -12,7 +12,7 @@
  * `{ session }` for transactional callers.
  *
  * Exports: `create`, `findById`, `listByAsset`, `countByAssetInStatuses`, `updateStatus`,
- * `countByStatus`.
+ * `updateStatusIfCurrent`, `updateStatusAndCondition`, `countByStatus`.
  */
 import mongoose from 'mongoose';
 import { AssetUnit } from '../models/AssetUnit.js';
@@ -87,11 +87,12 @@ export async function countByAssetInStatuses(orgId, assetId, statuses, { session
 }
 
 /**
- * Move one unit to a new lifecycle status (AVAILABLE, HELD, OUT, RETIRED).
+ * Move one unit to a new lifecycle status (AVAILABLE, HELD, OUT, RETIRED, REQUESTED).
  *
  * The write is unconditional on the current status — the checkout service decides whether a
  * transition is legal before calling, and drives the conditional part through the request's own
- * state.
+ * state (or, for the AVAILABLE -> REQUESTED reservation specifically, through
+ * `updateStatusIfCurrent` below).
  * @param {string} orgId
  * @param {string} unitId
  * @param {string} status one of UNIT_STATUS
@@ -102,6 +103,28 @@ export async function updateStatus(orgId, unitId, status, { session } = {}) {
   return AssetUnit.findOneAndUpdate(
     { _id: unitId, orgId },
     { $set: { status } },
+    { returnDocument: 'after', runValidators: true, session },
+  );
+}
+
+/**
+ * Move a unit from one status to another, but only if it is still in `from` at the moment of the
+ * write.
+ *
+ * The compare-and-set `submit()` needs: reading AVAILABLE and then writing REQUESTED unconditionally
+ * would leave the exact race the ticket asks to close open — two submits could both read AVAILABLE
+ * before either writes. This makes the second one lose, atomically, at the database, the same way
+ * `checkoutRequestRepo.transition()`'s `expectedState` makes a request's own state changes safe.
+ * @param {string} orgId
+ * @param {string} unitId
+ * @param {{ from: string, to: string }} change
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>} the updated unit, or null if it was no longer `from`
+ */
+export async function updateStatusIfCurrent(orgId, unitId, { from, to }, { session } = {}) {
+  return AssetUnit.findOneAndUpdate(
+    { _id: unitId, orgId, status: from },
+    { $set: { status: to } },
     { returnDocument: 'after', runValidators: true, session },
   );
 }

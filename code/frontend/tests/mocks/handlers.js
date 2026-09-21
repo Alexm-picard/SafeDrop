@@ -59,6 +59,7 @@ export const summary = {
   checkedOut: 4,
   available: 7,
   held: 1,
+  requested: 0,
   retired: 2,
   pendingRequests: 3,
   overdue: 2,

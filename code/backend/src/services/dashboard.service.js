@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: admin dashboard summary aggregated from AssetUnit.status (SCRUM-103); pending/overdue
-//   counts, the 30-day activity series and the 60-second cache (SCRUM-102)
+//   counts, the 30-day activity series and the 60-second cache (SCRUM-102); now includes REQUESTED units
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -94,8 +94,11 @@ const isoDay = (date) => date.toISOString().slice(0, 10);
  * latency rather than five.
  *
  * `totalAssets` deliberately excludes retired units: it answers "how much can this organisation lend
- * out?", and a retired item is gone from that pool even though its row remains for history. The
- * retired count is returned separately so the number is visible rather than merely absent.
+ * out?", and a retired item is gone from that pool even though its row remains for history. A
+ * REQUESTED unit, unlike a retired one, is still lendable — it is just spoken for at this moment — so
+ * it counts toward `totalAssets` the same way HELD and OUT already do. The retired count is returned
+ * separately so the number is visible rather than merely absent, and `requested` is now returned
+ * alongside it for the same reason.
  * @param {string} orgId
  * @param {Date} now the instant the summary describes — lateness and the last day of the chart
  * @returns {Promise<object>}
@@ -114,6 +117,7 @@ async function computeSummary(orgId, now) {
   const held = units[UNIT_STATUS.HELD];
   const checkedOut = units[UNIT_STATUS.OUT];
   const retired = units[UNIT_STATUS.RETIRED];
+  const requested = units[UNIT_STATUS.REQUESTED];
   // Every day in the window, including the ones with no checkouts: a chart with gaps in it would
   // read as "no data" where the truth is "nothing happened".
   const activity = Array.from({ length: ACTIVITY_WINDOW_DAYS }, (_, index) => {
@@ -121,11 +125,12 @@ async function computeSummary(orgId, now) {
     return { date, checkouts: checkoutsByDay[date] ?? 0 };
   });
   return {
-    totalAssets: available + held + checkedOut,
+    totalAssets: available + held + checkedOut + requested,
     checkedOut,
     available,
     held,
     retired,
+    requested,
     pendingRequests: states[REQUEST_STATE.PENDING],
     overdue,
     activity,
@@ -144,7 +149,7 @@ async function computeSummary(orgId, now) {
  * A failed computation is evicted rather than cached, so an error is not served for the rest of the
  * minute.
  * @param {string} orgId
- * @returns {Promise<{ totalAssets: number, checkedOut: number, available: number, held: number, retired: number, pendingRequests: number, overdue: number, activity: Array<{ date: string, checkouts: number }> }>}
+ * @returns {Promise<{ totalAssets: number, checkedOut: number, available: number, held: number, retired: number, requested: number, pendingRequests: number, overdue: number, activity: Array<{ date: string, checkouts: number }> }>}
  */
 export async function summary(orgId) {
   const key = String(orgId);
