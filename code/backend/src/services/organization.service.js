@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; member lifecycle implemented from the ticket)
-// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-101); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-users-list / -invite / -role)
+// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-100); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-117 / -invite / -role)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
 
@@ -31,7 +31,7 @@ import { hashPassword, publicUser, startSession } from './auth.service.js';
 export { slugify };
 
 /**
- * Create an organisation with its first administrator (`POST /api/organizations`, SCRUM-101).
+ * Create an organisation with its first administrator (`POST /api/organizations`, SCRUM-100).
  *
  * This is the one route that creates a privileged account without a privileged caller, so everything
  * about it is deliberate. The slug is derived from the name and must survive slugification — a name

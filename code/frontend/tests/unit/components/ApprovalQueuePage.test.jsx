@@ -5,8 +5,8 @@
 // Human Contributions: pending team review
 
 /**
- * Tests for the approval queue (SCRUM-requests-approve, SCRUM-requests-deny,
- * SCRUM-requests-checkout, SCRUM-requests-return, SCRUM-requests-list).
+ * Tests for the approval queue (SCRUM-119, SCRUM-119,
+ * SCRUM-120, SCRUM-120, SCRUM-119).
  *
  * Covers what the page actually does: defaults to PENDING, shows only the action a row's own state
  * allows, reloads after a successful action, and surfaces (with a working retry that replays the

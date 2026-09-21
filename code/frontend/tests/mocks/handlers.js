@@ -341,7 +341,7 @@ export function errorResponse(status, code, message, details) {
 }
 /**
  * Build the 501 response a stubbed backend route returns, carrying its owning ticket.
- * @param {string} ticket e.g. 'SCRUM-assets-list'
+ * @param {string} ticket e.g. 'SCRUM-115'
  * @returns {Response}
  */
 export const notImplemented = (ticket) =>
@@ -461,7 +461,7 @@ export const handlers = [
     return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
   }),
   // The four asset write endpoints (SCRUM-122). These answer as the *finished* backend will, not as
-  // it does today: the services behind them are still 501 stubs owned by SCRUM-assets-create,
+  // it does today: the services behind them are still 501 stubs owned by SCRUM-134,
   // -update, -retire and -units. Mocking the intended contract is what lets the UI be built and
   // tested now; when those tickets land, these handlers are what the real responses are checked
   // against. A test that wants a failure overrides the one handler it cares about with `server.use`.
@@ -508,7 +508,7 @@ export const handlers = [
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
   ),
   // Opening a request (SCRUM-124). Answers as the finished backend will, not as it does today: the
-  // service behind this route is still a 501 stub owned by SCRUM-requests-create. A test that wants
+  // service behind this route is still a 501 stub owned by SCRUM-135. A test that wants
   // the "somebody else took it" race overrides this with its own 409.
   http.post('*/api/requests', async ({ request }) => {
     const body = await request.json();

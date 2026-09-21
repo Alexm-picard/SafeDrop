@@ -7,9 +7,11 @@
 //
 // Two layers:
 //  1. Repository layer: every finder takes orgId first and returns null for another tenant's id.
-//  2. HTTP layer: one row per endpoint that addresses a resource. Rows marked `implemented: false`
-//     are skipped until their ticket lands; flip the flag when you implement the endpoint and the
-//     row asserts 404 (never 403, which would confirm the id exists).
+//  2. HTTP layer: one row per endpoint that addresses a resource, asserting 404 (never 403, which
+//     would confirm the id exists). A row marked `implemented: false` is skipped until its ticket
+//     lands — flip the flag as part of implementing the endpoint, not afterwards. Every row is
+//     enabled today; six of them sat skipped after their endpoints shipped, so tenant isolation went
+//     unproven on paths that were live (SCRUM-112).
 
 /**
  * Security tests for tenant isolation (SR-2), at every layer.
@@ -154,73 +156,73 @@ describe('HTTP layer: org A addressing org B', () => {
       method: 'GET',
       path: '/api/assets/:id',
       target: (s) => s.asset._id,
-      implemented: false,
-      ticket: 'SCRUM-assets-read',
+      implemented: true,
+      ticket: 'SCRUM-115',
     },
     {
       method: 'PATCH',
       path: '/api/assets/:id',
       body: { name: 'x' },
       target: (s) => s.asset._id,
-      implemented: false,
-      ticket: 'SCRUM-assets-update',
+      implemented: true,
+      ticket: 'SCRUM-134',
     },
     {
       method: 'POST',
       path: '/api/assets/:id/retire',
       target: (s) => s.asset._id,
-      implemented: false,
-      ticket: 'SCRUM-assets-retire',
+      implemented: true,
+      ticket: 'SCRUM-134',
     },
     {
       method: 'POST',
       path: '/api/assets/:id/units',
       body: { tag: 'z' },
       target: (s) => s.asset._id,
-      implemented: false,
-      ticket: 'SCRUM-assets-units',
+      implemented: true,
+      ticket: 'SCRUM-134',
     },
     {
       method: 'GET',
       path: '/api/requests/:id',
       target: (s) => s.request._id,
-      implemented: false,
-      ticket: 'SCRUM-requests-read',
+      implemented: true,
+      ticket: 'SCRUM-123',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/approve',
       target: (s) => s.request._id,
       implemented: true,
-      ticket: 'SCRUM-requests-approve',
+      ticket: 'SCRUM-119',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/deny',
       target: (s) => s.request._id,
       implemented: true,
-      ticket: 'SCRUM-requests-deny',
+      ticket: 'SCRUM-119',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/cancel',
       target: (s) => s.request._id,
-      implemented: false,
-      ticket: 'SCRUM-requests-cancel',
+      implemented: true,
+      ticket: 'SCRUM-135',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/checkout',
       target: (s) => s.request._id,
       implemented: true,
-      ticket: 'SCRUM-requests-checkout',
+      ticket: 'SCRUM-120',
     },
     {
       method: 'POST',
       path: '/api/requests/:id/return',
       target: (s) => s.request._id,
       implemented: true,
-      ticket: 'SCRUM-requests-return',
+      ticket: 'SCRUM-120',
     },
     {
       method: 'PATCH',
@@ -228,7 +230,7 @@ describe('HTTP layer: org A addressing org B', () => {
       body: { role: 'APPROVER' },
       target: (s) => s.member._id,
       implemented: true,
-      ticket: 'SCRUM-users-role',
+      ticket: 'SCRUM-118',
     },
   ];
 

@@ -36,11 +36,11 @@ const stubs = [
   // No /api/assets route is here any more: SCRUM-115 implemented the two reads and SCRUM-134 the
   // four writes, so all six answer for real. Their acceptance criteria live in assets.test.js.
   // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
-  // POST /api/requests is no longer here: SCRUM-requests-create implemented it — see requests.test.js.
+  // POST /api/requests is no longer here: SCRUM-135 implemented it — see requests.test.js.
   // GET /api/requests/:request is no longer here: SCRUM-123 implemented it — see requests.test.js.
   // POST /api/requests/:request/approve and POST /api/requests/:request/deny are no longer here: SCRUM-119 implemented them — see
   // tests/integration/routes/requests.test.js.
-  // POST /api/requests/:request/cancel is no longer here: SCRUM-requests-cancel implemented it — see requests.test.js.
+  // POST /api/requests/:request/cancel is no longer here: SCRUM-135 implemented it — see requests.test.js.
   // POST /api/requests/:request/checkout and /api/requests/:request/return are no longer here: SCRUM-120 implemented them — see
   // tests/integration/routes/requests.test.js.
   // GET /api/audit is no longer here: SCRUM-46 implemented it, so it answers 200. Its acceptance
@@ -78,11 +78,11 @@ describe('Sprint 1 stubs answer 501 NOT_IMPLEMENTED with their ticket', () => {
 });
 
 // ---- Acceptance criteria owned by later tickets. Un-skip when implementing. ----------------------
-// The SCRUM-assets-* block is gone: SCRUM-115 shipped the reads and SCRUM-134 the writes, so every
+// The asset stub block is gone: SCRUM-115 shipped the reads and SCRUM-134 the writes, so every
 // one of its criteria is now a real test in assets.test.js.
 
-// The SCRUM-requests-* acceptance criteria that used to be todos here are now real tests in
-// requests.test.js.
+// The checkout-request acceptance criteria (SCRUM-119, SCRUM-120, SCRUM-123, SCRUM-135) that used
+// to be todos here are now real tests in requests.test.js.
 
 describe('SCRUM-46: GET /api/audit', () => {
   /**
@@ -191,4 +191,5 @@ describe('SCRUM-46: GET /api/audit', () => {
   });
 });
 
-// The SCRUM-users-* acceptance criteria that used to be todos here are now real tests in users.test.js.
+// The member-management acceptance criteria (SCRUM-116, SCRUM-117, SCRUM-118) that used to be
+// todos here are now real tests in users.test.js.
