@@ -79,7 +79,10 @@ export const envSchema = z
     // tenant data should be opt-in per environment, so a missing or half-filled configuration is a
     // disabled feature rather than a runtime failure on somebody's first search.
     FOUNDRY_ENABLED: boolString('false'),
-    // The resource endpoint from the Foundry portal, origin only — no path, no trailing slash.
+    // The agent's full endpoint URL from the Foundry portal, path included — for the asset-search
+    // agent that is `.../agents/<name>/endpoint/protocols/openai/responses`. Stored whole rather than
+    // as an origin the client appends to: the path identifies *which* agent and which protocol, so
+    // splitting it would put half the address in config and half in code.
     FOUNDRY_ENDPOINT: z
       .string()
       .default('')
@@ -136,13 +139,13 @@ export const envSchema = z
           });
         }
       }
-      if (value.FOUNDRY_ENDPOINT && !/^https:\/\/[^/\s]+$/.test(value.FOUNDRY_ENDPOINT)) {
+      // https only: the credential travels on this request, so plain http would put it on the wire
+      // in clear text. The path is part of the value — it names the agent being called.
+      if (value.FOUNDRY_ENDPOINT && !/^https:\/\/[^\s]+$/.test(value.FOUNDRY_ENDPOINT)) {
         ctx.addIssue({
           code: 'custom',
           path: ['FOUNDRY_ENDPOINT'],
-          // https only, and no path: the key travels on this request, so plain http would put it on
-          // the wire in clear text. The path is appended by the client, not configured here.
-          message: 'must be an https origin with no path (scheme://host[:port])',
+          message: "must be the agent's full https:// endpoint URL",
         });
       }
     }

@@ -45,9 +45,10 @@ const PROMPT = 'laptops available next week for Dana Member';
 function configureFoundry(overrides = {}) {
   Object.assign(env, {
     FOUNDRY_ENABLED: true,
-    FOUNDRY_ENDPOINT: 'https://example-foundry.openai.azure.com',
+    FOUNDRY_ENDPOINT:
+      'https://safedrop-app-resource.services.ai.azure.com/api/projects/safedrop-app/agents/asset-search/endpoint/protocols/openai/responses',
     FOUNDRY_API_KEY: 'test-key-not-a-real-secret',
-    FOUNDRY_DEPLOYMENT: 'gpt-4o-test',
+    FOUNDRY_DEPLOYMENT: 'asset-search',
     FOUNDRY_TIMEOUT_MS: 10_000,
     ...overrides,
   });
@@ -109,7 +110,7 @@ describe('foundryRequest', () => {
     // Callers are meant to check isFoundryEnabled() and take their fallback path. Reaching here is a
     // bug, so it fails loudly rather than returning an empty result a caller might render.
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    await expect(foundryRequest(ORG_ID, '/x', {})).rejects.toMatchObject({ status: 503 });
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -117,11 +118,11 @@ describe('foundryRequest', () => {
     configureFoundry();
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(respondWith(200, { ok: 1 }));
 
-    await foundryRequest(ORG_ID, '/openai/deployments/gpt-4o-test/chat/completions', { a: 1 });
+    await foundryRequest(ORG_ID, { a: 1 });
 
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe(
-      'https://example-foundry.openai.azure.com/openai/deployments/gpt-4o-test/chat/completions',
+      'https://safedrop-app-resource.services.ai.azure.com/api/projects/safedrop-app/agents/asset-search/endpoint/protocols/openai/responses',
     );
     expect(init.method).toBe('POST');
     expect(init.headers['api-key']).toBe('test-key-not-a-real-secret');
@@ -133,14 +134,14 @@ describe('foundryRequest', () => {
   it('returns the parsed body on success', async () => {
     configureFoundry();
     vi.spyOn(globalThis, 'fetch').mockImplementation(respondWith(200, { choices: ['x'] }));
-    await expect(foundryRequest(ORG_ID, '/x', {})).resolves.toEqual({ choices: ['x'] });
+    await expect(foundryRequest(ORG_ID, {})).resolves.toEqual({ choices: ['x'] });
   });
 
   it('applies a timeout so a hung upstream cannot hold the request open', async () => {
     configureFoundry({ FOUNDRY_TIMEOUT_MS: 1234 });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(respondWith(200, {}));
 
-    await foundryRequest(ORG_ID, '/x', {});
+    await foundryRequest(ORG_ID, {});
 
     expect(fetchSpy.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
@@ -152,7 +153,7 @@ describe('foundryRequest', () => {
       respondWith(429, { error: { message: `quota exceeded for prompt: ${PROMPT}` } }),
     );
 
-    const err = await foundryRequest(ORG_ID, '/x', {}, { prompt: PROMPT }).catch((e) => e);
+    const err = await foundryRequest(ORG_ID, {}, { prompt: PROMPT }).catch((e) => e);
 
     expect(err.status).toBe(503);
     expect(err.message).toBe('The AI service is unavailable');
@@ -171,7 +172,7 @@ describe('foundryRequest', () => {
     const cause = new Error('The operation was aborted due to timeout');
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(cause);
 
-    const err = await foundryRequest(ORG_ID, '/x', {}).catch((e) => e);
+    const err = await foundryRequest(ORG_ID, {}).catch((e) => e);
 
     expect(err.status).toBe(503);
     // The detail is kept where operators can see it, and kept out of the response.
@@ -189,7 +190,7 @@ describe('foundryRequest', () => {
       text: async () => '<html>gateway</html>',
     });
 
-    await expect(foundryRequest(ORG_ID, '/x', {})).rejects.toMatchObject({ status: 503 });
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
   });
 
   it('logs the org, deployment, latency and a prompt hash — never the prompt or the response', async () => {
@@ -198,13 +199,13 @@ describe('foundryRequest', () => {
       respondWith(200, { choices: [{ message: { content: 'Dell XPS held by Dana Member' } }] }),
     );
 
-    await foundryRequest(ORG_ID, '/x', { messages: [{ content: PROMPT }] }, { prompt: PROMPT });
+    await foundryRequest(ORG_ID, { input: PROMPT }, { prompt: PROMPT });
 
     const serialised = logLines.join('\n');
     expect(logLines).not.toHaveLength(0);
     // What operators need: whose call it was, which model, how slow, and a handle to correlate on.
     expect(serialised).toContain(ORG_ID);
-    expect(serialised).toContain('gpt-4o-test');
+    expect(serialised).toContain('asset-search');
     expect(serialised).toContain(promptFingerprint(PROMPT));
     // What must never be there: the member's name, the query text, or the model's answer — each of
     // which would put one tenant's data into a shared log stream.

@@ -68,13 +68,12 @@ export function promptFingerprint(prompt) {
  * The timeout is enforced with `AbortSignal.timeout`, so a hung upstream releases the connection at
  * `FOUNDRY_TIMEOUT_MS` instead of holding a request open until the client gives up.
  * @param {string} orgId the calling organisation, from the verified token — first, as in every repository
- * @param {string} path the path under the configured endpoint, e.g. `/openai/deployments/x/chat/completions`
  * @param {object} body the request payload, already built by the calling feature
  * @param {{ signal?: AbortSignal, prompt?: string }} [options] `prompt` is used only to compute the log fingerprint
  * @returns {Promise<object>} the parsed response body
  * @throws {ServiceUnavailableError} (503) on any upstream failure, or when Foundry is not enabled
  */
-export async function foundryRequest(orgId, path, body, { signal, prompt } = {}) {
+export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
   if (!isFoundryEnabled()) {
     // Reaching here is a programming error — callers are expected to check `isFoundryEnabled()` and
     // take their fallback path — so it is worth failing loudly rather than returning something empty
@@ -82,7 +81,7 @@ export async function foundryRequest(orgId, path, body, { signal, prompt } = {})
     throw new ServiceUnavailableError('AI features are not enabled in this environment');
   }
 
-  const url = `${env.FOUNDRY_ENDPOINT}${path}`;
+  const url = env.FOUNDRY_ENDPOINT;
   const startedAt = Date.now();
   const fields = {
     orgId,
