@@ -74,6 +74,31 @@ export const envSchema = z
     MAIL_FROM: z.string().default('SafeDrop <no-reply@safedrop.local>'),
     // How long a password-reset link stays usable (SCRUM-22 asks for ten minutes).
     PASSWORD_RESET_TTL: duration.default('10m'),
+    // --- Microsoft Foundry (SCRUM-103, SDD 2.6) ----------------------------------------------
+    // Off unless explicitly switched on. A feature that reaches a paid third party and sends it
+    // tenant data should be opt-in per environment, so a missing or half-filled configuration is a
+    // disabled feature rather than a runtime failure on somebody's first search.
+    FOUNDRY_ENABLED: boolString('false'),
+    // The agent's full endpoint URL from the Foundry portal, path included — for the asset-search
+    // agent that is `.../agents/<name>/endpoint/protocols/openai/responses`. Stored whole rather than
+    // as an origin the client appends to: the path identifies *which* agent and which protocol, so
+    // splitting it would put half the address in config and half in code.
+    FOUNDRY_ENDPOINT: z
+      .string()
+      .default('')
+      .transform((value) => value.replace(/\/+$/, '')),
+    // The API key. Never reaches the browser: every Foundry call is made from the backend (SR-11).
+    FOUNDRY_API_KEY: z.string().default(''),
+    // The deployment name or agent id being called. Which one it is depends on the Foundry surface.
+    FOUNDRY_DEPLOYMENT: z.string().default(''),
+    // Sent as the `api-version` query parameter, which this endpoint requires — without it the
+    // request is refused with a 400 before the agent is reached. `v1` is what the agent protocol
+    // endpoint answers to, and it is not the dated `YYYY-MM-DD` form used by Azure OpenAI's own
+    // deployment endpoints; the two surfaces version differently.
+    FOUNDRY_API_VERSION: z.string().min(1).default('v1'),
+    // Hard ceiling on one call. A search box that hangs is worse than one that says it is
+    // unavailable, and an upstream with no timeout would hold a connection until the client gives up.
+    FOUNDRY_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(10_000),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {
@@ -104,6 +129,29 @@ export const envSchema = z
         path: ['MAIL_API_KEY'],
         message: `is required when MAIL_PROVIDER is "${value.MAIL_PROVIDER}"`,
       });
+    }
+    // Enabling Foundry without its connection details is a misconfiguration, not a degraded mode:
+    // the flag says the feature should work, so the boot should fail loudly rather than leave every
+    // search returning a 503 that looks like an outage (SR-11, SCRUM-103).
+    if (value.FOUNDRY_ENABLED) {
+      for (const key of ['FOUNDRY_ENDPOINT', 'FOUNDRY_API_KEY', 'FOUNDRY_DEPLOYMENT']) {
+        if (value[key].length === 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'is required when FOUNDRY_ENABLED is true',
+          });
+        }
+      }
+      // https only: the credential travels on this request, so plain http would put it on the wire
+      // in clear text. The path is part of the value — it names the agent being called.
+      if (value.FOUNDRY_ENDPOINT && !/^https:\/\/[^\s]+$/.test(value.FOUNDRY_ENDPOINT)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['FOUNDRY_ENDPOINT'],
+          message: "must be the agent's full https:// endpoint URL",
+        });
+      }
     }
     if (value.MAIL_PROVIDER !== 'console' && !value.MAIL_FROM.includes('@')) {
       ctx.addIssue({

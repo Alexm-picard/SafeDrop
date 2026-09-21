@@ -81,6 +81,17 @@ services:
       MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
       MAIL_API_KEY: ${MAIL_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-SafeDrop <no-reply@safedrop.local>}
+      # Foundry (SCRUM-103). Off unless the root .env switches it on, so a checkout with no .env
+      # still starts. The service lists every variable explicitly rather than inheriting the host
+      # environment, so a new variable is invisible to the container until it is added here.
+      FOUNDRY_ENABLED: ${FOUNDRY_ENABLED:-false}
+      FOUNDRY_ENDPOINT: ${FOUNDRY_ENDPOINT:-}
+      FOUNDRY_API_KEY: ${FOUNDRY_API_KEY:-}
+      FOUNDRY_DEPLOYMENT: ${FOUNDRY_DEPLOYMENT:-}
+      # `v1`, not a dated YYYY-MM-DD version: the agent protocol endpoint and Azure OpenAI's
+      # deployment endpoints version differently, and this one answers 400 to the dated form.
+      FOUNDRY_API_VERSION: ${FOUNDRY_API_VERSION:-v1}
+      FOUNDRY_TIMEOUT_MS: ${FOUNDRY_TIMEOUT_MS:-10000}
     volumes:
       - ./code/backend:/app # bind mount so `node --watch` reloads on edits
       - /app/node_modules # keep the container's node_modules, not the host's
