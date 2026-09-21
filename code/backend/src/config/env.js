@@ -91,7 +91,11 @@ export const envSchema = z
     FOUNDRY_API_KEY: z.string().default(''),
     // The deployment name or agent id being called. Which one it is depends on the Foundry surface.
     FOUNDRY_DEPLOYMENT: z.string().default(''),
-    FOUNDRY_API_VERSION: z.string().default('2024-10-21'),
+    // Sent as the `api-version` query parameter, which this endpoint requires — without it the
+    // request is refused with a 400 before the agent is reached. `v1` is what the agent protocol
+    // endpoint answers to, and it is not the dated `YYYY-MM-DD` form used by Azure OpenAI's own
+    // deployment endpoints; the two surfaces version differently.
+    FOUNDRY_API_VERSION: z.string().min(1).default('v1'),
     // Hard ceiling on one call. A search box that hangs is worse than one that says it is
     // unavailable, and an upstream with no timeout would hold a connection until the client gives up.
     FOUNDRY_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(10_000),

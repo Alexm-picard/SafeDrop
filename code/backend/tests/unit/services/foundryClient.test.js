@@ -49,6 +49,7 @@ function configureFoundry(overrides = {}) {
       'https://safedrop-app-resource.services.ai.azure.com/api/projects/safedrop-app/agents/asset-search/endpoint/protocols/openai/responses',
     FOUNDRY_API_KEY: 'test-key-not-a-real-secret',
     FOUNDRY_DEPLOYMENT: 'asset-search',
+    FOUNDRY_API_VERSION: 'v1',
     FOUNDRY_TIMEOUT_MS: 10_000,
     ...overrides,
   });
@@ -121,7 +122,10 @@ describe('foundryRequest', () => {
     await foundryRequest(ORG_ID, { a: 1 });
 
     const [url, init] = fetchSpy.mock.calls[0];
-    expect(url).toBe(
+    // Origin and path exactly as configured; the query string carries only the api-version this
+    // endpoint requires, which is asserted separately below.
+    const sent = new URL(url);
+    expect(`${sent.origin}${sent.pathname}`).toBe(
       'https://safedrop-app-resource.services.ai.azure.com/api/projects/safedrop-app/agents/asset-search/endpoint/protocols/openai/responses',
     );
     expect(init.method).toBe('POST');
@@ -129,6 +133,31 @@ describe('foundryRequest', () => {
     // A key in the query string ends up in access logs and proxy logs; it belongs in a header only.
     expect(url).not.toContain('test-key-not-a-real-secret');
     expect(JSON.parse(init.body)).toEqual({ a: 1 });
+  });
+
+  it('sends the api-version the endpoint requires', async () => {
+    // Confirmed against the live agent: without `api-version` the endpoint answers 400 before the
+    // agent is reached. Nothing else in the suite would catch its removal, because every other test
+    // stubs fetch and would happily pass against a URL the real service rejects.
+    configureFoundry({ FOUNDRY_API_VERSION: 'v1' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(respondWith(200, {}));
+
+    await foundryRequest(ORG_ID, {});
+
+    expect(new URL(fetchSpy.mock.calls[0][0]).searchParams.get('api-version')).toBe('v1');
+  });
+
+  it('leaves an api-version already in the configured URL alone', async () => {
+    configureFoundry({
+      FOUNDRY_ENDPOINT: 'https://example.test/agents/x/responses?api-version=preview',
+      FOUNDRY_API_VERSION: 'v1',
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(respondWith(200, {}));
+
+    await foundryRequest(ORG_ID, {});
+
+    // An endpoint pasted from the portal may already carry one; it should win over the default.
+    expect(new URL(fetchSpy.mock.calls[0][0]).searchParams.get('api-version')).toBe('preview');
   });
 
   it('returns the parsed body on success', async () => {

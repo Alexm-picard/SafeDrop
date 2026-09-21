@@ -88,7 +88,9 @@ services:
       FOUNDRY_ENDPOINT: ${FOUNDRY_ENDPOINT:-}
       FOUNDRY_API_KEY: ${FOUNDRY_API_KEY:-}
       FOUNDRY_DEPLOYMENT: ${FOUNDRY_DEPLOYMENT:-}
-      FOUNDRY_API_VERSION: ${FOUNDRY_API_VERSION:-2024-10-21}
+      # `v1`, not a dated YYYY-MM-DD version: the agent protocol endpoint and Azure OpenAI's
+      # deployment endpoints version differently, and this one answers 400 to the dated form.
+      FOUNDRY_API_VERSION: ${FOUNDRY_API_VERSION:-v1}
       FOUNDRY_TIMEOUT_MS: ${FOUNDRY_TIMEOUT_MS:-10000}
     volumes:
       - ./code/backend:/app # bind mount so `node --watch` reloads on edits

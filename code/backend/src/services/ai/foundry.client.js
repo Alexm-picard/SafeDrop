@@ -81,7 +81,15 @@ export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
     throw new ServiceUnavailableError('AI features are not enabled in this environment');
   }
 
-  const url = env.FOUNDRY_ENDPOINT;
+  // `api-version` is required: without it this endpoint answers 400 before the agent is ever
+  // reached. It is appended here rather than baked into the configured URL so that the version is
+  // one named, changeable value instead of a detail buried in whatever someone pasted from the
+  // portal. A version already present in the URL wins, so an endpoint can still override it.
+  const target = new URL(env.FOUNDRY_ENDPOINT);
+  if (!target.searchParams.has('api-version')) {
+    target.searchParams.set('api-version', env.FOUNDRY_API_VERSION);
+  }
+  const url = target.toString();
   const startedAt = Date.now();
   const fields = {
     orgId,
