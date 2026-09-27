@@ -24,6 +24,7 @@
  */
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
+import { DueBadge } from '../components/DueBadge';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { useAuth } from '../hooks/useAuth';
@@ -159,7 +160,9 @@ export function RequestDetailPage() {
         {request.dueAt ? (
           <>
             <dt>Due back</dt>
-            <dd>{formatDate(request.dueAt)}</dd>
+            <dd>
+              {formatDate(request.dueAt)} <DueBadge request={request} />
+            </dd>
           </>
         ) : null}
         {decidedBy ? (
