@@ -159,4 +159,23 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     const [, body] = foundry.foundryRequest.mock.calls[0];
     expect(JSON.parse(body.input).assets).toHaveLength(100);
   });
+
+  it('puts plain-search matches first, so a match beyond the cap still reaches the model', async () => {
+    await Promise.all(
+      Array.from({ length: 101 }, (_, i) =>
+        assetRepo.create(ORG, { name: `Asset ${String(i).padStart(3, '0')}`, category: 'Misc' }),
+      ),
+    );
+    // Sorts last by name, so a name-ordered page of 100 would leave it out.
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    await searchAssets(ORG, 'recorder');
+
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    const sentIds = JSON.parse(body.input).assets.map((asset) => asset.id);
+    expect(sentIds).toContain(recorder.id);
+    // Matches go in *within* the cap, not on top of it.
+    expect(sentIds).toHaveLength(100);
+  });
 });
