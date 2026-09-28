@@ -355,11 +355,12 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
  * @param {string} orgId the caller's organisation, from the access token
  * @param {string} assetId
  * @param {string} unitId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>} the unit as it currently stands
  * @throws {NotFoundError} (404) absent, another organisation's, or not under this asset
  */
-async function resolveUnitUnderAsset(orgId, assetId, unitId) {
-  const unit = await assetUnitRepo.findById(orgId, unitId);
+async function resolveUnitUnderAsset(orgId, assetId, unitId, { session } = {}) {
+  const unit = await assetUnitRepo.findById(orgId, unitId, { session });
   if (!unit || String(unit.assetId) !== String(assetId)) {
     throw new NotFoundError('Unit not found');
   }
@@ -396,17 +397,38 @@ async function resolveUnitUnderAsset(orgId, assetId, unitId) {
  * @throws {NotFoundError} (404) no such unit under that asset, in this or any other organisation
  * @throws {ConflictError} (409) the unit was not AVAILABLE at the moment of the write
  */
-export async function startMaintenance(orgId, assetId, unitId) {
-  await resolveUnitUnderAsset(orgId, assetId, unitId);
+export async function startMaintenance(orgId, actor, assetId, unitId, input = {}) {
+  const { requestId } = input;
+  return withTransaction(async (session) => {
+    await resolveUnitUnderAsset(orgId, assetId, unitId, { session });
 
-  const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
-    from: UNIT_STATUS.AVAILABLE,
-    to: UNIT_STATUS.MAINTENANCE,
+    const unit = await assetUnitRepo.updateStatusIfCurrent(
+      orgId,
+      unitId,
+      { from: UNIT_STATUS.AVAILABLE, to: UNIT_STATUS.MAINTENANCE },
+      { session },
+    );
+    if (!unit) {
+      throw new ConflictError('Only an available unit can be put into maintenance');
+    }
+
+    await recordAudit(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.UNIT_MAINTENANCE_STARTED,
+        targetType: AUDIT_TARGET_TYPE.AssetUnit,
+        targetId: unit._id,
+        // Not read back from anywhere: the compare-and-set only succeeds *from* AVAILABLE, so the
+        // "before" is proved by the write having happened at all rather than sampled beforehand.
+        before: { status: UNIT_STATUS.AVAILABLE },
+        after: { status: UNIT_STATUS.MAINTENANCE },
+        requestId,
+      },
+      { session },
+    );
+    return unit.toJSON();
   });
-  if (!unit) {
-    throw new ConflictError('Only an available unit can be put into maintenance');
-  }
-  return unit.toJSON();
 }
 
 /**
@@ -437,23 +459,46 @@ export async function startMaintenance(orgId, assetId, unitId) {
  * @throws {NotFoundError} (404) no such unit under that asset, in this or any other organisation
  * @throws {ConflictError} (409) the unit is in a status other than MAINTENANCE or AVAILABLE
  */
-export async function endMaintenance(orgId, assetId, unitId) {
-  await resolveUnitUnderAsset(orgId, assetId, unitId);
+export async function endMaintenance(orgId, actor, assetId, unitId, input = {}) {
+  const { requestId } = input;
+  return withTransaction(async (session) => {
+    await resolveUnitUnderAsset(orgId, assetId, unitId, { session });
 
-  const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
-    from: UNIT_STATUS.MAINTENANCE,
-    to: UNIT_STATUS.AVAILABLE,
-  });
-  if (unit) {
+    const unit = await assetUnitRepo.updateStatusIfCurrent(
+      orgId,
+      unitId,
+      { from: UNIT_STATUS.MAINTENANCE, to: UNIT_STATUS.AVAILABLE },
+      { session },
+    );
+
+    if (!unit) {
+      // The write found nothing to update. Ask what the unit is now, rather than assuming a conflict.
+      const current = await assetUnitRepo.findById(orgId, unitId, { session });
+      if (current?.status === UNIT_STATUS.AVAILABLE) {
+        // Already back in circulation, so nothing changed and nothing is recorded. A second row here
+        // would claim a second repair finished, and the trail would describe an event that did not
+        // happen. Checked by deliberately removing this rule: the "exactly once" test then reports
+        // two rows, so it really does guard the behaviour rather than just the happy path.
+        return current.toJSON();
+      }
+      throw new ConflictError('Only a unit in maintenance can be returned to circulation');
+    }
+
+    await recordAudit(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.UNIT_MAINTENANCE_ENDED,
+        targetType: AUDIT_TARGET_TYPE.AssetUnit,
+        targetId: unit._id,
+        before: { status: UNIT_STATUS.MAINTENANCE },
+        after: { status: UNIT_STATUS.AVAILABLE },
+        requestId,
+      },
+      { session },
+    );
     return unit.toJSON();
-  }
-
-  // The write found nothing to update. Ask what the unit is now, rather than assuming a conflict.
-  const current = await assetUnitRepo.findById(orgId, unitId);
-  if (current?.status === UNIT_STATUS.AVAILABLE) {
-    return current.toJSON();
-  }
-  throw new ConflictError('Only a unit in maintenance can be returned to circulation');
+  });
 }
 
 /**

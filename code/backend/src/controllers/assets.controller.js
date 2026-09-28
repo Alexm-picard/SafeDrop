@@ -96,9 +96,11 @@ export async function addUnit(req, res) {
  * @param {import('express').Response} res
  */
 export async function startMaintenance(req, res) {
-  res
-    .status(200)
-    .json(await assetService.startMaintenance(req.orgId, req.params.id, req.params.unitId));
+  res.status(200).json(
+    await assetService.startMaintenance(req.orgId, req.auth, req.params.id, req.params.unitId, {
+      requestId: req.id,
+    }),
+  );
 }
 
 /**
@@ -110,9 +112,11 @@ export async function startMaintenance(req, res) {
  * @param {import('express').Response} res
  */
 export async function endMaintenance(req, res) {
-  res
-    .status(200)
-    .json(await assetService.endMaintenance(req.orgId, req.params.id, req.params.unitId));
+  res.status(200).json(
+    await assetService.endMaintenance(req.orgId, req.auth, req.params.id, req.params.unitId, {
+      requestId: req.id,
+    }),
+  );
 }
 
 /**

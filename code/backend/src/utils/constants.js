@@ -65,6 +65,12 @@ export const AUDIT_ACTION = freezeEnum([
   // write rows into a tenant's audit log. Changing the password is the state change worth keeping.
   'USER_PASSWORD_RESET',
   'ORG_CREATED',
+  // One physical unit leaving circulation for repair and coming back (SCRUM-141). Distinct actions
+  // rather than one UNIT_STATUS_CHANGED, because the chain of custody is read as a story: "sent for
+  // repair" and "back in service" are the two sentences a reader is looking for, and an action name
+  // that needs its snapshot decoded to be understood is a worse row.
+  'UNIT_MAINTENANCE_STARTED',
+  'UNIT_MAINTENANCE_ENDED',
 ]);
 export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
 
