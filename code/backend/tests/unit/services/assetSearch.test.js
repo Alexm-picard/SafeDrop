@@ -6,6 +6,7 @@
  * prompt and what is trusted coming back — rather than the model's. The repositories are real and run
  * against the per-file in-memory database from tests/setup.js.
  */
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../src/services/ai/foundry.client.js', () => ({
@@ -13,6 +14,24 @@ vi.mock('../../../src/services/ai/foundry.client.js', () => ({
   foundryRequest: vi.fn(),
   promptFingerprint: vi.fn(() => 'fingerprint'),
 }));
+
+// A real asset-search response, recorded once from the live agent with a fake catalogue. The model's
+// JSON arrives as a string inside `output[type=message].content[type=output_text].text`, after a
+// reasoning item — a shape a hand-written mock would not have guessed.
+const recordedResponse = JSON.parse(
+  readFileSync(
+    new URL('../../fixtures/foundry/asset-search-response.json', import.meta.url),
+    'utf8',
+  ),
+);
+
+/** The recorded envelope, with the model's answer replaced by `answer` (an object, or raw text). */
+function foundryReply(answer) {
+  const reply = structuredClone(recordedResponse);
+  const message = reply.output.find((item) => item.type === 'message');
+  message.content[0].text = typeof answer === 'string' ? answer : JSON.stringify(answer);
+  return reply;
+}
 
 const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
@@ -57,5 +76,37 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
     const result = await searchAssets(ORG, '.*');
 
     expect(result.matches).toEqual([]);
+  });
+});
+
+describe('SCRUM-103 AC3: AI-assisted search', () => {
+  beforeEach(() => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+  });
+
+  it("returns the model's matches in the model's order, with its clarification", async () => {
+    const webcam = await assetRepo.create(ORG, { name: 'Logitech C920 Webcam', category: 'Video' });
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({
+        // Deliberately not alphabetical, so the model's ranking is distinguishable from a name sort.
+        matches: [
+          { assetId: recorder.id, reason: 'Handheld audio recorder.' },
+          { assetId: webcam.id, reason: 'Can record video of a lecture.' },
+        ],
+        clarification: 'Do you need audio only, or video as well?',
+      }),
+    );
+
+    const result = await searchAssets(ORG, 'something to record a lecture');
+
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id, webcam.id]);
+    expect(result.matches[0]).toMatchObject({
+      name: 'Zoom H5 Recorder',
+      reason: 'Handheld audio recorder.',
+    });
+    expect(result.clarification).toBe('Do you need audio only, or video as well?');
+    expect(result.aiAssisted).toBe(true);
+    expect(foundry.foundryRequest).toHaveBeenCalledOnce();
   });
 });
