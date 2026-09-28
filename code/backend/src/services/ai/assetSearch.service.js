@@ -12,6 +12,7 @@
  * Exports: `searchAssets(orgId, query)`.
  */
 import * as assetRepo from '../../repositories/asset.repository.js';
+import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
 
 /**
@@ -26,10 +27,11 @@ export async function searchAssets(orgId, query) {
   }
 
   const { items: candidates } = await assetRepo.list(orgId);
-  const input = JSON.stringify({
-    query,
-    assets: candidates.map((asset) => ({ id: String(asset._id), ...describe(asset) })),
-  });
+  const units = await unitRepo.listByAssets(
+    orgId,
+    candidates.map((asset) => asset._id),
+  );
+  const input = JSON.stringify({ query, assets: toPromptAssets(candidates, units) });
   const response = await foundryRequest(orgId, { input }, { prompt: input });
   const answer = JSON.parse(outputText(response));
 
@@ -53,6 +55,24 @@ async function plainSearch(orgId, query) {
     clarification: null,
     aiAssisted: false,
   };
+}
+
+/**
+ * The candidates exactly as the prompt contract describes them (prompts/asset-search.md): each
+ * field is picked by name, so a field added to a model later — or one that exists today, such as a
+ * unit's serial — never reaches the model without a change here.
+ */
+function toPromptAssets(candidates, units) {
+  const unitsByAsset = Map.groupBy(units, (unit) => String(unit.assetId));
+  return candidates.map((asset) => ({
+    id: String(asset._id),
+    ...describe(asset),
+    units: (unitsByAsset.get(String(asset._id)) ?? []).map(({ tag, status, condition }) => ({
+      tag,
+      status,
+      condition,
+    })),
+  }));
 }
 
 /** The asset fields a search result shows. */

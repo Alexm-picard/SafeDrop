@@ -1,17 +1,10 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped AssetUnit persistence and the status aggregation behind the dashboard (SDD §2.4, SCRUM-102)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * Data access for the `assetunits` collection (the individual physical items).
  *
  * Same contract as the other repositories: `orgId` first, folded into every filter, optional
  * `{ session }` for transactional callers.
  *
- * Exports: `create`, `findById`, `listByAsset`, `countByAssetInStatuses`, `updateStatus`,
+ * Exports: `create`, `findById`, `listByAsset`, `listByAssets`, `countByAssetInStatuses`, `updateStatus`,
  * `updateStatusIfCurrent`, `updateStatusAndCondition`, `countByStatus`.
  */
 import mongoose from 'mongoose';
@@ -57,6 +50,20 @@ export async function findById(orgId, unitId, { session } = {}) {
  */
 export async function listByAsset(orgId, assetId) {
   return AssetUnit.find({ orgId, assetId }).sort({ tag: 1 });
+}
+
+/**
+ * List the units of several assets in one query, ordered by tag.
+ *
+ * Backs the asset-search prompt (SCRUM-103), which needs the units of every candidate: one query
+ * rather than one per asset.
+ * @param {string} orgId
+ * @param {string[]} assetIds
+ * @returns {Promise<object[]>}
+ */
+export async function listByAssets(orgId, assetIds) {
+  // `sanitizeFilter` is on globally and neutralises operators it did not build; this one is ours.
+  return AssetUnit.find({ orgId, assetId: mongoose.trusted({ $in: assetIds }) }).sort({ tag: 1 });
 }
 
 /**
