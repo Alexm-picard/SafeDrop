@@ -35,6 +35,7 @@ function foundryReply(answer) {
 
 const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
+const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
 const { searchAssets } = await import('../../../src/services/ai/assetSearch.service.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
@@ -108,5 +109,40 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     expect(result.clarification).toBe('Do you need audio only, or video as well?');
     expect(result.aiAssisted).toBe(true);
     expect(foundry.foundryRequest).toHaveBeenCalledOnce();
+  });
+
+  it('sends the prompt contract: the query and each candidate with its units, and nothing else', async () => {
+    const recorder = await assetRepo.create(ORG, {
+      name: 'Zoom H5 Recorder',
+      category: 'Audio',
+      description: 'Handheld audio recorder',
+    });
+    // The serial is on the unit but not in the contract, so it must not reach the model.
+    await unitRepo.create(ORG, {
+      assetId: recorder.id,
+      tag: 'AUD-001',
+      serial: 'SN-4471-PRIVATE',
+      condition: 'GOOD',
+      status: 'AVAILABLE',
+    });
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    await searchAssets(ORG, 'something to record a lecture');
+
+    const [orgId, body] = foundry.foundryRequest.mock.calls[0];
+    expect(orgId).toBe(ORG);
+    // Exact equality: an extra field anywhere (orgId, a unit id, the serial) fails the test.
+    expect(JSON.parse(body.input)).toEqual({
+      query: 'something to record a lecture',
+      assets: [
+        {
+          id: recorder.id,
+          name: 'Zoom H5 Recorder',
+          category: 'Audio',
+          description: 'Handheld audio recorder',
+          units: [{ tag: 'AUD-001', status: 'AVAILABLE', condition: 'GOOD' }],
+        },
+      ],
+    });
   });
 });
