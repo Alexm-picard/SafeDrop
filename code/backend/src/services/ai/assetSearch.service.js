@@ -33,7 +33,7 @@ export async function searchAssets(orgId, query) {
     return plainSearch(orgId, query);
   }
 
-  const { items: candidates } = await assetRepo.list(orgId, { limit: MAX_CANDIDATES });
+  const candidates = await pickCandidates(orgId, query);
   const units = await unitRepo.listByAssets(
     orgId,
     candidates.map((asset) => asset._id),
@@ -52,6 +52,27 @@ export async function searchAssets(orgId, query) {
     clarification: answer.clarification,
     aiAssisted: true,
   };
+}
+
+/**
+ * The assets to send to the model: plain-search matches first, then the catalogue in name order,
+ * up to `MAX_CANDIDATES`. Without the matches going first, an org with more assets than the cap
+ * would never show the model anything past the first hundred names, however well it matched.
+ * Keyed by id so an asset found both ways is sent once and does not take two slots.
+ */
+async function pickCandidates(orgId, query) {
+  const [matched, { items: page }] = await Promise.all([
+    assetRepo.search(orgId, query),
+    assetRepo.list(orgId, { limit: MAX_CANDIDATES }),
+  ]);
+  const byId = new Map();
+  for (const asset of [...matched, ...page]) {
+    const id = String(asset._id);
+    if (!byId.has(id)) {
+      byId.set(id, asset);
+    }
+  }
+  return [...byId.values()].slice(0, MAX_CANDIDATES);
 }
 
 /** The catalogue fallback: a case-insensitive match on name, description and category. */

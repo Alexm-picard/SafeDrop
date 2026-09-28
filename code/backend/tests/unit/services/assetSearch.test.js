@@ -178,4 +178,23 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     // Matches go in *within* the cap, not on top of it.
     expect(sentIds).toHaveLength(100);
   });
+
+  // Regression guard, not a red: this passed before plain-search matches were merged in, because
+  // nothing could overlap yet. It exists to catch a merge that lets a duplicate take a slot.
+  it('sends an asset found by both the plain search and the catalogue page only once', async () => {
+    await Promise.all(
+      Array.from({ length: 101 }, (_, i) =>
+        assetRepo.create(ORG, { name: `Asset ${String(i).padStart(3, '0')}`, category: 'Misc' }),
+      ),
+    );
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    // Matches Asset 000–009, which are also on the first page of the catalogue.
+    await searchAssets(ORG, 'asset 00');
+
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    const sentIds = JSON.parse(body.input).assets.map((asset) => asset.id);
+    expect(new Set(sentIds).size).toBe(sentIds.length);
+    expect(sentIds).toHaveLength(100);
+  });
 });
