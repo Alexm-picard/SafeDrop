@@ -1,0 +1,33 @@
+{
+  "id": "resp_fixture",
+  "object": "response",
+  "status": "completed",
+  "model": "gpt-5-mini",
+  "error": null,
+  "incomplete_details": null,
+  "instructions": "SYSTEM PROMPT ECHOED BY FOUNDRY",
+  "output": [
+    {
+      "type": "reasoning",
+      "id": "rs_fixture",
+      "encrypted_content": "REDACTED",
+      "summary": [],
+      "content": []
+    },
+    {
+      "type": "message",
+      "id": "msg_fixture",
+      "role": "assistant",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"matches\": [\n    {\n      \"assetId\": \"6aab2a45c6e457e01ac09001\",\n      \"reason\": \"Handheld audio recorder with XLR inputs; unit AUD-001 AVAILABLE.\"\n    }\n  ],\n  \"clarification\": \"Do you need audio-only recording or video (camera) as well?\"\n}",
+          "annotations": [],
+          "logprobs": []
+        }
+      ]
+    }
+  ],
+  "usage": { "input_tokens": 749, "output_tokens": 303, "total_tokens": 1052 }
+}

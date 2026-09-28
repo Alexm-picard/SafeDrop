@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: vitest config with in-memory Mongo global setup and 80% line-coverage gate (SPPP §6a/§6d)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * Vitest configuration for the backend (SPPP §6a/§6d).
  *
@@ -43,6 +36,12 @@ export default defineConfig({
       COOKIE_SECURE: 'false',
       LOG_LEVEL: 'fatal',
       RATE_LIMIT_AUTH_MAX: '5',
+      // Tests never inherit a live Foundry key (SCRUM-103). `docker compose exec` passes the backend
+      // container's environment through, and env.js also reads the repo-root .env, so without these a
+      // test that forgot to mock the client would make a real, billed call. A test that needs Foundry
+      // switched on says so itself against a mocked client.
+      FOUNDRY_ENABLED: 'false',
+      FOUNDRY_API_KEY: '',
     },
     testTimeout: 20_000,
     hookTimeout: 60_000,
