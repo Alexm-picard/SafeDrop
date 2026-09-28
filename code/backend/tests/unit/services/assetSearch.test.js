@@ -43,9 +43,7 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
 
     const ids = result.matches.map((m) => m.assetId);
     expect(ids).toHaveLength(3);
-    expect(ids).toEqual(
-      expect.arrayContaining([recorder.id, projector.id, mic.id].map(String)),
-    );
+    expect(ids).toEqual(expect.arrayContaining([recorder.id, projector.id, mic.id].map(String)));
     expect(result.aiAssisted).toBe(false);
     // AI is an enhancement, not a dependency: "off" must never reach the transport.
     expect(foundry.foundryRequest).not.toHaveBeenCalled();

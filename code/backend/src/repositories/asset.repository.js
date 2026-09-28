@@ -75,12 +75,22 @@ export async function list(orgId, { includeRetired = false, category, page = 1, 
  * @returns {Promise<import('mongoose').Document[]>} sorted by name
  */
 export async function search(orgId, text) {
-  // SCRUM-103: `text` is not escaped yet — the next red test covers that.
-  const pattern = new RegExp(text, 'i');
+  // Escaped so the text is matched literally: `.*` must not match everything, and a pattern such as
+  // `(a+)+$` must never reach the database as a backtracking regex (ReDoS).
+  const pattern = new RegExp(escapeRegExp(text), 'i');
   return Asset.find({
     orgId,
     $or: [{ name: pattern }, { description: pattern }, { category: pattern }],
   }).sort({ name: 1 });
+}
+
+/**
+ * Backslash every regex metacharacter so `text` matches only itself.
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
