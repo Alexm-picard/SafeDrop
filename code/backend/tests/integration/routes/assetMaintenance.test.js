@@ -37,6 +37,23 @@ const availableUnit = (org) => ({
   unit: org.extraAssets[0].units[0],
 });
 
+/**
+ * A seeded unit already in `status`, with the asset that owns it.
+ *
+ * The fixture happens to contain one of every status we need to refuse, so AC3 needs no setup of its
+ * own: the laptop's three units are REQUESTED, OUT and HELD, and the camera's third is RETIRED.
+ * @param {object} org one side of `seedTwoOrgs()`
+ * @param {string} status
+ * @returns {{ asset: object, unit: object }}
+ */
+const unitInStatus = (org, status) =>
+  ({
+    REQUESTED: { asset: org.asset, unit: org.units[0] },
+    OUT: { asset: org.asset, unit: org.units[1] },
+    HELD: { asset: org.asset, unit: org.units[2] },
+    RETIRED: { asset: org.extraAssets[0].asset, unit: org.extraAssets[0].units[2] },
+  })[status];
+
 describe('POST /api/assets/:id/units/:unitId/maintenance (SCRUM-141)', () => {
   it('AC5: refuses a MEMBER with 403 — taking stock out of circulation is an admin action', async () => {
     const { asset, unit } = availableUnit(seed.a);
@@ -65,4 +82,29 @@ describe('POST /api/assets/:id/units/:unitId/maintenance (SCRUM-141)', () => {
     const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
     expect(stored.status).toBe('MAINTENANCE');
   });
+
+  /**
+   * AC3. Each of these is refused for its own reason — someone is holding it (OUT), it is promised
+   * to someone (HELD), someone is waiting on a decision (REQUESTED), or it has permanently left the
+   * inventory (RETIRED) — but the answer is the same 409 in every case. Only an AVAILABLE unit can
+   * be sent for repair.
+   */
+  it.each(['OUT', 'HELD', 'REQUESTED', 'RETIRED'])(
+    'AC3: refuses a %s unit with 409 and leaves its status alone',
+    async (status) => {
+      const { asset, unit } = unitInStatus(seed.a, status);
+
+      const res = await request(app)
+        .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+        .set('Cookie', accessCookieFor(seed.a.admin))
+        .send({});
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+
+      // A refusal has to be inert: the unit is exactly as it was.
+      const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+      expect(stored.status).toBe(status);
+    },
+  );
 });
