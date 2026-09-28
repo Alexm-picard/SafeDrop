@@ -39,6 +39,7 @@ const unitRepo = await import('../../../src/repositories/assetUnit.repository.js
 const { searchAssets } = await import('../../../src/services/ai/assetSearch.service.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
+const OTHER_ORG = '6aab2a45c6e457e01ac0968b';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -196,5 +197,30 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     const sentIds = JSON.parse(body.input).assets.map((asset) => asset.id);
     expect(new Set(sentIds).size).toBe(sentIds.length);
     expect(sentIds).toHaveLength(100);
+  });
+
+  it('AC3b: drops any assetId the model returns that was not among the candidates sent', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    // A real asset, but another tenant's: it can only appear in the answer through injection or a
+    // leak, and trusting it would show org B's catalogue to an org A member (SR-2).
+    const foreign = await assetRepo.create(OTHER_ORG, {
+      name: 'Sony A7 Camera',
+      category: 'Video',
+    });
+    const invented = '6aab2a45c6e457e01ac0ffff'; // exists nowhere: a hallucinated id
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({
+        matches: [
+          { assetId: invented, reason: 'Best match for recording.' },
+          { assetId: recorder.id, reason: 'Handheld audio recorder.' },
+          { assetId: foreign.id, reason: 'Camera for filming a lecture.' },
+        ],
+        clarification: null,
+      }),
+    );
+
+    const result = await searchAssets(ORG, 'something to record a lecture');
+
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
   });
 });
