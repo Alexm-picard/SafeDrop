@@ -50,4 +50,14 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
     // AI is an enhancement, not a dependency: "off" must never reach the transport.
     expect(foundry.foundryRequest).not.toHaveBeenCalled();
   });
+
+  it('treats the search text literally, so regex syntax cannot widen the match', async () => {
+    // `.*` would match every asset if the text were used as a pattern. Escaping also keeps
+    // catastrophic patterns such as `(a+)+$` (ReDoS) away from the database.
+    await assetRepo.create(ORG, { name: 'Tripod', category: 'Camera Support' });
+
+    const result = await searchAssets(ORG, '.*');
+
+    expect(result.matches).toEqual([]);
+  });
 });
