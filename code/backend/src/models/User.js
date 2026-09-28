@@ -40,6 +40,13 @@ const userSchema = createSchema(
     // link single-use.
     resetTokenHash: { type: String, default: null, select: false },
     resetTokenExpiresAt: { type: Date, default: null, select: false },
+    // Set when an admin deactivates this member (deactivate-member story, Lab 3 TDD example); null
+    // while active. login() refuses to start a session once this is set, with the same generic error
+    // as a wrong password, so a disabled account cannot be told apart from one that was never signed
+    // up. Nothing else in the request pipeline reads it yet — a deactivated user's current access
+    // token still works until it expires, the same accepted trade-off as role changes and password
+    // resets.
+    deactivatedAt: { type: Date, default: null },
   },
   { collection: 'users' },
 );

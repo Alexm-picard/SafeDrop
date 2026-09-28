@@ -241,8 +241,11 @@ async function issueTokens(
  * The organisation is resolved first, because email is unique only within one (OD-3). Then the user
  * is looked up *with* their hash, and a bcrypt comparison runs whether or not that lookup succeeded —
  * against `DUMMY_HASH_PROMISE` when it did not. Every failure raises the same error with the same
- * message, so neither the response nor its timing distinguishes an unknown organisation from an
- * unknown email from a wrong password.
+ * message, so neither the response nor its timing distinguishes an unknown organisation, an unknown
+ * email, a wrong password, or a deactivated account (`user.deactivatedAt`) from one another. The
+ * deactivation check runs *after* the bcrypt comparison, never before it, so rejecting a deactivated
+ * account costs exactly as much time as any other failure (deactivate-member story, Lab 3 TDD example,
+ * AC2).
  *
  * If the browser still holds a refresh token from an earlier session, that family is revoked: logging
  * in again should not leave a second live session behind that nobody can see or end.
@@ -256,7 +259,9 @@ export async function login({ orgSlug, email, password }, { presentedRefreshToke
   const user = org ? await userRepo.findByEmailWithPassword(org._id, email) : null;
   const hashToCompare = user ? user.passwordHash : await DUMMY_HASH_PROMISE;
   const ok = await verifyPassword(password, hashToCompare);
-  if (!user || !ok) {
+  // Checked after the bcrypt comparison above, never before it — see the docblock's timing note.
+  const deactivated = Boolean(user?.deactivatedAt);
+  if (!user || !ok || deactivated) {
     throw new AuthError(INVALID_CREDENTIALS);
   }
   if (typeof presentedRefreshToken === 'string' && presentedRefreshToken.length > 0) {
