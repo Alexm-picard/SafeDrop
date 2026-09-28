@@ -145,4 +145,18 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
       ],
     });
   });
+
+  it('sends at most 100 candidates, capping how much catalogue goes into one AI call', async () => {
+    await Promise.all(
+      Array.from({ length: 101 }, (_, i) =>
+        assetRepo.create(ORG, { name: `Asset ${String(i).padStart(3, '0')}`, category: 'Misc' }),
+      ),
+    );
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    await searchAssets(ORG, 'anything');
+
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    expect(JSON.parse(body.input).assets).toHaveLength(100);
+  });
 });
