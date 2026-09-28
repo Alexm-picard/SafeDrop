@@ -9,10 +9,9 @@
  * The fixture users cover all three roles from one organisation, so role-based rendering can be tested
  * without building a user per test.
  *
- * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`, `activityDays`,
- * `members`), the
- * builders (`errorResponse`, `notImplemented`, `meHandler`, `membersPage`, `assetHistoryPage`) and the default `handlers`
- * array.
+ * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`,
+ * `activityDays`, `members`), the builders (`errorResponse`, `notImplemented`, `meHandler`,
+ * `membersPage`, `assetHistoryPage`, `daysFromNow`) and the default `handlers` array.
  */
 import { http, HttpResponse } from 'msw';
 export const org = {
@@ -42,6 +41,27 @@ export const memberUser = {
   role: 'MEMBER',
 };
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * An ISO instant `days` calendar days from now, at 5 pm local time.
+ *
+ * Relative rather than fixed, because the due badge (SCRUM-143) is computed against the clock: a
+ * hard-coded `2026-09-14` reads as "Due in 2 days" the week it is written and "Overdue by 200 days"
+ * a term later, so any test asserting on it rots. `activityDays` below is built from today for the
+ * same reason.
+ *
+ * `setDate` rather than adding milliseconds, so the result is exactly `days` squares along the
+ * calendar even across a daylight-saving change — adding 72 hours over a spring-forward lands four
+ * days out, and calendar days are what the badge counts. 5 pm keeps it clear of midnight, so the day
+ * it falls on cannot depend on the hour the suite happens to run.
+ * @param {number} days negative for a date in the past
+ * @returns {string} an ISO 8601 instant
+ */
+export function daysFromNow(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  date.setHours(17, 0, 0, 0);
+  return date.toISOString();
+}
 /**
  * Thirty days of checkout activity ending today, as the API returns them: every day present, most of
  * them zero, one clear busiest day. The counts follow a fixed pattern rather than random numbers, so
@@ -260,6 +280,10 @@ export function assetHistoryPage(search, events = assetHistoryEvents) {
  * PENDING (approve/deny), APPROVED (checkout), CHECKED_OUT (return), and DENIED — a terminal state
  * with no action, so a test can prove the actions column renders nothing rather than merely having
  * no row to check.
+ *
+ * Only the CHECKED_OUT one carries a `dueAt`, which is how the API behaves: nothing is due back
+ * until it has been handed over. That makes it the row the due badge (SCRUM-143) appears on, and the
+ * others the rows that prove it stays away.
  */
 export const checkoutRequests = [
   {
@@ -307,7 +331,9 @@ export const checkoutRequests = [
     decidedAt: '2026-08-31T00:00:00.000Z',
     decisionNote: '',
     checkedOutAt: '2026-09-01T00:00:00.000Z',
-    dueAt: '2026-09-14T00:00:00.000Z',
+    // Relative, so the due badge this row carries (SCRUM-143) reads the same in every run. A fixed
+    // date here would drift further overdue with every week that passes.
+    dueAt: daysFromNow(3),
     returnedAt: null,
   },
   {

@@ -16,6 +16,11 @@
   --danger: #b3261e;
   --danger-bg: #fdecea;
   --ok: #1b6b3a;
+  --ok-bg: #e8f3ec;
+  /* The step between "fine" and "late": amber, dark enough on its own background to clear WCAG AA
+     for small text, since the due badge (SCRUM-143) is 0.8125rem. */
+  --warn: #8a5300;
+  --warn-bg: #fdf1dd;
   --radius: 8px;
   --sans: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   color-scheme: light;
@@ -443,6 +448,39 @@ td {
 th {
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* The due badge (SCRUM-143), in a table cell on my requests and beside the date on request detail.
+   The colour only repeats what the words already say — the label reads "Overdue by 2 days" in text
+   — so nothing here is the sole carrier of the meaning (WCAG 1.4.1). `white-space: nowrap` keeps
+   "Due in 10 days" from wrapping into two lines in a narrow column. */
+.due-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.due-badge[data-tone='ok'] {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+.due-badge[data-tone='soon'] {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.due-badge[data-tone='late'] {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+/* Forced-colours mode drops the backgrounds, which is where a tone-only badge would vanish. The
+   border keeps it a distinct object; the text keeps it meaningful. */
+@media (forced-colors: active) {
+  .due-badge {
+    border-color: currentColor;
+  }
 }
 
 .placeholder {

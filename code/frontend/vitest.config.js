@@ -26,6 +26,13 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.js'],
     css: false,
+    // Pinned so the suite cannot change meaning with the machine it runs on. The due badge
+    // (SCRUM-143) counts calendar days in the *viewer's* timezone, which is the only reading that
+    // agrees with the due date printed beside it — so a test of it is only meaningful against a
+    // known zone, and CI runs in UTC while the team works in Boston. America/New_York is also what
+    // puts the seeded midnight-UTC due dates at 8 pm the previous day, which is the case
+    // `dueStatus.test.js` exists to pin.
+    env: { TZ: 'America/New_York' },
     // Generous for the same reason the backend's is (see its vitest.config.js): the first test in a
     // file absorbs that file's module loading and jsdom construction, and under `--coverage` the v8
     // instrumentation roughly doubles the run. At the 5s default that combination intermittently

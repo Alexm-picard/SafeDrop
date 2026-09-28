@@ -14,6 +14,7 @@
  * (see ApprovalQueuePage).
  */
 import { DataTable } from '../components/DataTable';
+import { DueBadge } from '../components/DueBadge';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { Link } from 'react-router';
@@ -25,6 +26,9 @@ import { formatDate, humanize } from '../utils/format';
  *
  * States are passed through `humanize`, so `CHECKED_OUT` reads as "Checked out" — and a state added
  * on the backend still displays sensibly without a label map here.
+ *
+ * The Due column (SCRUM-143) is the one piece of derived data in the table: everything else is a
+ * field of the request, while that is computed from `dueAt` against the clock by `dueStatus`.
  * @returns {JSX.Element}
  */
 export function MyRequestsPage() {
@@ -49,6 +53,14 @@ export function MyRequestsPage() {
             },
             { key: 'from', header: 'Needed from', render: (r) => formatDate(r.neededFrom) },
             { key: 'to', header: 'Needed until', render: (r) => formatDate(r.neededTo) },
+            {
+              key: 'due',
+              header: 'Due',
+              // Last, beside the window it belongs with. Empty on every row that is not out on
+              // loan, which is most of them — the badge is the answer to "when do I have to give
+              // this back", and a request nobody has handed over yet has no answer.
+              render: (r) => <DueBadge request={r} />,
+            },
           ]}
           rows={data.items}
           getRowId={(r) => r.id}
