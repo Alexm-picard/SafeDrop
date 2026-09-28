@@ -20,15 +20,30 @@
  * top to bottom.
  */
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../../src/app.js';
 import * as assetUnitRepo from '../../../src/repositories/assetUnit.repository.js';
+import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
 import { seedTwoOrgs } from '../../helpers/seedTwoOrgs.js';
+
+// `append` is wrapped in a spy that still calls through, so the audit tests can read real rows and
+// the rollback test can make one write fail. Same pattern as users.test.js and organizations.test.js.
+vi.mock('../../../src/repositories/auditEvent.repository.js', async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, append: vi.fn(original.append) };
+});
 
 let seed;
 beforeEach(async () => {
   seed = await seedTwoOrgs();
+});
+
+// A `...Once` implementation that never fires stays queued and would fire in a later test, failing it
+// for a reason that has nothing to do with what it tests. Vitest 5's mockReset restores the
+// implementation `vi.fn(impl)` was given, so this both drains the queue and keeps append working.
+afterEach(() => {
+  auditRepo.append.mockReset();
 });
 
 /** The camera and its first unit, which the seed leaves AVAILABLE — the one legal starting state. */
@@ -223,5 +238,89 @@ describe('POST /api/assets/:id/units/:unitId/maintenance/end (SCRUM-141)', () =>
 
     const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
     expect(stored.status).toBe('RETIRED');
+  });
+});
+
+describe('the maintenance audit trail (SCRUM-141 AC6)', () => {
+  /** Send the camera's AVAILABLE unit for repair and hand back the pair of ids involved. */
+  async function sendForRepair(org) {
+    const { asset, unit } = { asset: org.extraAssets[0].asset, unit: org.extraAssets[0].units[0] };
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(org.admin))
+      .send({});
+    expect(res.status).toBe(200);
+    return { asset, unit };
+  }
+
+  it('records UNIT_MAINTENANCE_STARTED against the unit, with before and after', async () => {
+    const { unit } = await sendForRepair(seed.a);
+
+    const events = await auditRepo.query(seed.a.orgId, { action: 'UNIT_MAINTENANCE_STARTED' });
+    expect(events.total).toBe(1);
+    expect(events.items[0]).toMatchObject({ targetType: 'AssetUnit' });
+    expect(String(events.items[0].targetId)).toBe(String(unit._id));
+    expect(String(events.items[0].actorId)).toBe(String(seed.a.admin._id));
+    // The snapshot names the transition, so a reader of the trail does not have to know the state
+    // machine to see what changed.
+    expect(events.items[0].before).toEqual({ status: 'AVAILABLE' });
+    expect(events.items[0].after).toEqual({ status: 'MAINTENANCE' });
+  });
+
+  it('records UNIT_MAINTENANCE_ENDED when the unit comes back', async () => {
+    const { asset, unit } = await sendForRepair(seed.a);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance/end`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(res.status).toBe(200);
+
+    const events = await auditRepo.query(seed.a.orgId, { action: 'UNIT_MAINTENANCE_ENDED' });
+    expect(events.total).toBe(1);
+    expect(String(events.items[0].targetId)).toBe(String(unit._id));
+    expect(events.items[0].before).toEqual({ status: 'MAINTENANCE' });
+    expect(events.items[0].after).toEqual({ status: 'AVAILABLE' });
+  });
+
+  it('records the end exactly once when it is ended twice', async () => {
+    // The other half of the idempotency decision: the second call answers 200 because the caller's
+    // goal is met, but nothing changed, so the trail must not claim a second repair finished. The
+    // audit log records state changes, not requests.
+    const { asset, unit } = await sendForRepair(seed.a);
+    const path = `/api/assets/${asset._id}/units/${unit._id}/maintenance/end`;
+
+    await request(app).post(path).set('Cookie', accessCookieFor(seed.a.admin)).send({});
+    await request(app).post(path).set('Cookie', accessCookieFor(seed.a.admin)).send({});
+
+    const events = await auditRepo.query(seed.a.orgId, { action: 'UNIT_MAINTENANCE_ENDED' });
+    expect(events.total).toBe(1);
+  });
+
+  it('leaves the unit AVAILABLE when the audit write fails (OD-2, SR-9)', async () => {
+    // The whole point of writing the event inside the transaction: the change and the evidence of it
+    // commit together or not at all. Without a transaction the unit would sit in MAINTENANCE with no
+    // record of who sent it there.
+    auditRepo.append.mockRejectedValueOnce(new Error('simulated audit failure'));
+    const { asset, unit } = {
+      asset: seed.a.extraAssets[0].asset,
+      unit: seed.a.extraAssets[0].units[0],
+    };
+
+    const failed = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(failed.status).toBe(500);
+
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('AVAILABLE');
+
+    // And nothing half-done blocks a retry.
+    const retried = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(retried.status).toBe(200);
   });
 });
