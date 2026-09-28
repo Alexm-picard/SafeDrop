@@ -107,4 +107,49 @@ describe('POST /api/assets/:id/units/:unitId/maintenance (SCRUM-141)', () => {
       expect(stored.status).toBe(status);
     },
   );
+
+  it('AC5: answers 404, never 403, for another organisation’s unit (SR-2)', async () => {
+    const { asset, unit } = availableUnit(seed.b);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+
+    // Nothing moved on the other side of the boundary.
+    const untouched = await assetUnitRepo.findById(seed.b.orgId, unit._id);
+    expect(untouched.status).toBe('AVAILABLE');
+  });
+
+  it('AC5: answers 404 for a unit that belongs to a different asset in the same org', async () => {
+    // The camera's AVAILABLE unit, addressed through the laptop. The unit is real, it is in the
+    // caller's own organisation, and it is in a state that would otherwise succeed — so only the
+    // asset/unit relationship can refuse it.
+    const { unit } = availableUnit(seed.a);
+    const wrongAsset = seed.a.asset;
+
+    const res = await request(app)
+      .post(`/api/assets/${wrongAsset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+
+    const untouched = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(untouched.status).toBe('AVAILABLE');
+  });
+
+  it('AC5: answers 404 for a unit id that does not exist', async () => {
+    const res = await request(app)
+      .post(`/api/assets/${seed.a.asset._id}/units/${'0'.repeat(24)}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
 });
