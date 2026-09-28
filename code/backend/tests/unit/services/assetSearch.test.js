@@ -224,3 +224,33 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
   });
 });
+
+describe('SCRUM-103 AC4: unusable model output falls back to plain search', () => {
+  beforeEach(() => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+  });
+
+  it('falls back when the model answers in prose instead of JSON', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    await assetRepo.create(ORG, { name: 'Tripod', category: 'Camera Support' });
+    foundry.foundryRequest.mockResolvedValue(foundryReply("Sorry, I can't help with that."));
+
+    const result = await searchAssets(ORG, 'recorder');
+
+    expect(result).toMatchObject({ aiAssisted: false, clarification: null });
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
+
+  it('falls back when the JSON does not fit the output contract', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    // Parses fine, but `matches` is missing: the shape a drifting prompt or model would produce.
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({ results: [{ id: recorder.id }], clarification: null }),
+    );
+
+    const result = await searchAssets(ORG, 'recorder');
+
+    expect(result).toMatchObject({ aiAssisted: false, clarification: null });
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
+});
