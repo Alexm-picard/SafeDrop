@@ -18,7 +18,6 @@
  * auditable event.
  */
 import * as assetService from '../services/asset.service.js';
-import { NotImplementedError } from '../utils/errors.js';
 
 /**
  * `GET /api/assets` — list the catalogue. Query filters are already validated and coerced.
@@ -93,14 +92,13 @@ export async function addUnit(req, res) {
 
 /**
  * `POST /api/assets/:id/units/:unitId/maintenance` — take one unit out of circulation (SCRUM-141).
- *
- * A stub for now, and deliberately so: the only criterion written against this route so far is that a
- * MEMBER is refused (AC5), and the refusal happens in `authorize()` before this ever runs. The body
- * arrives with AC1, driven by its own failing test.
- * @throws {NotImplementedError} (501) until AC1 is implemented
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
  */
-export async function startMaintenance() {
-  throw new NotImplementedError('SCRUM-141');
+export async function startMaintenance(req, res) {
+  res
+    .status(200)
+    .json(await assetService.startMaintenance(req.orgId, req.params.id, req.params.unitId));
 }
 
 /**

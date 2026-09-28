@@ -17,8 +17,21 @@
  */
 const freezeEnum = (values) => Object.freeze(Object.fromEntries(values.map((v) => [v, v])));
 
-/** Physical-unit lifecycle (SDD §2.4 AssetUnit.status). */
-export const UNIT_STATUS = freezeEnum(['AVAILABLE', 'HELD', 'OUT', 'RETIRED', 'REQUESTED']);
+/**
+ * Physical-unit lifecycle (SDD §2.4 AssetUnit.status).
+ *
+ * `MAINTENANCE` (SCRUM-141) is the reversible counterpart to `RETIRED`: a unit being repaired is out
+ * of circulation but still owned, and comes back to `AVAILABLE` when it is fixed. Retiring is
+ * permanent, so it is the wrong tool for a repair — and a retired unit cannot be un-retired.
+ */
+export const UNIT_STATUS = freezeEnum([
+  'AVAILABLE',
+  'HELD',
+  'OUT',
+  'RETIRED',
+  'REQUESTED',
+  'MAINTENANCE',
+]);
 export const UNIT_STATUS_LIST = Object.freeze(Object.keys(UNIT_STATUS));
 
 /** Checkout request state machine (SDD §2.4 CheckoutRequest.state, arch review F4). */

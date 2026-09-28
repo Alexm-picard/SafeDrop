@@ -342,6 +342,29 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
 }
 
 /**
+ * Take one unit out of circulation for repair
+ * (`POST /api/assets/:id/units/:unitId/maintenance`, SCRUM-141).
+ *
+ * The move is a **compare-and-set**: `updateStatusIfCurrent` writes MAINTENANCE only if the unit is
+ * still AVAILABLE at the instant of the write, so two admins clicking at the same moment cannot both
+ * win. Reading the status first and then writing would leave exactly that race open.
+ *
+ * Only AC1 is implemented so far: the refusals (AC3), the cross-asset and cross-tenant 404s (AC5) and
+ * the audit event (AC6) arrive with the tests that demand them.
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {string} assetId validated by the route's `unitParams` schema
+ * @param {string} unitId validated by the route's `unitParams` schema
+ * @returns {Promise<object>} the updated unit
+ */
+export async function startMaintenance(orgId, assetId, unitId) {
+  const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
+    from: UNIT_STATUS.AVAILABLE,
+    to: UNIT_STATUS.MAINTENANCE,
+  });
+  return unit.toJSON();
+}
+
+/**
  * One asset's complete chain of custody (`GET /api/assets/:id/history`, SCRUM-29).
  *
  * The question this answers is the product's core promise: who held this, when, and who let them.

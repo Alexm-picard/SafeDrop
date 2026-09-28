@@ -103,7 +103,17 @@ describe('repository layer: orgId is always the first argument and always scopes
     expect(audit.total).toBe(1);
     expect(String(audit.items[0].orgId)).toBe(seed.a.orgId);
     const counts = await assetUnitRepo.countByStatus(seed.a.orgId);
-    expect(counts).toEqual({ AVAILABLE: 3, HELD: 1, OUT: 2, RETIRED: 1, REQUESTED: 1 });
+    // Exhaustive on purpose: `countByStatus` zero-fills every status in UNIT_STATUS, so this pins
+    // both the counts and the key set. MAINTENANCE is 0 here because the seed has no unit in it
+    // (SCRUM-141) — and a new status silently missing from this map would be a real defect.
+    expect(counts).toEqual({
+      AVAILABLE: 3,
+      HELD: 1,
+      OUT: 2,
+      RETIRED: 1,
+      REQUESTED: 1,
+      MAINTENANCE: 0,
+    });
   });
 });
 

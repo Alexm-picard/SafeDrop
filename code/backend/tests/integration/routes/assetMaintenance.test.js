@@ -22,6 +22,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';
+import * as assetUnitRepo from '../../../src/repositories/assetUnit.repository.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
 import { seedTwoOrgs } from '../../helpers/seedTwoOrgs.js';
 
@@ -47,5 +48,21 @@ describe('POST /api/assets/:id/units/:unitId/maintenance (SCRUM-141)', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('AC1: moves an AVAILABLE unit to MAINTENANCE and returns the updated unit', async () => {
+    const { asset, unit } = availableUnit(seed.a);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: String(unit._id), status: 'MAINTENANCE' });
+
+    // And it stuck: the response is not just an optimistic echo of what was asked for.
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('MAINTENANCE');
   });
 });
