@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped Asset persistence (SDD §2.4)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * Data access for the `assets` collection (the catalogue entries).
  *
@@ -16,7 +9,7 @@
  * Each function also accepts an optional `{ session }` so a caller can run it inside a transaction
  * together with its audit event (OD-2).
  *
- * Exports: `create`, `findById`, `list`, `update`, `retire`.
+ * Exports: `create`, `findById`, `list`, `search`, `update`, `retire`.
  */
 import { Asset } from '../models/Asset.js';
 
@@ -70,6 +63,24 @@ export async function list(orgId, { includeRetired = false, category, page = 1, 
     Asset.countDocuments(filter),
   ]);
   return { items, total, page, limit };
+}
+
+/**
+ * Find the tenant's assets whose name, description or category contains `text`, ignoring case.
+ *
+ * The plain catalogue search behind SCRUM-103: what a member gets when AI is off, and the fallback
+ * when the model's answer cannot be used.
+ * @param {string} orgId
+ * @param {string} text what the member typed
+ * @returns {Promise<import('mongoose').Document[]>} sorted by name
+ */
+export async function search(orgId, text) {
+  // SCRUM-103: `text` is not escaped yet — the next red test covers that.
+  const pattern = new RegExp(text, 'i');
+  return Asset.find({
+    orgId,
+    $or: [{ name: pattern }, { description: pattern }, { category: pattern }],
+  }).sort({ name: 1 });
 }
 
 /**
