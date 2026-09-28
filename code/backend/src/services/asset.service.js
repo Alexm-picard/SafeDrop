@@ -342,6 +342,31 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
 }
 
 /**
+ * Resolve one unit, refusing anything not reachable through the asset named in the path (SCRUM-141).
+ *
+ * Both maintenance endpoints start here, so the 404 rules are stated once. Two things are checked:
+ *
+ *  - `findById` folds `orgId` into its filter, so another organisation's unit and one that never
+ *    existed both come back `null`, and both answer 404 rather than 403. A 403 would confirm the unit
+ *    exists somewhere, which is the existence leak SR-2 prohibits.
+ *  - the unit must hang off *this* asset. A real unit in the caller's own organisation addressed
+ *    through a different asset's id is the same 404: the path claims an ownership that does not hold,
+ *    so it addresses nothing. Without this the asset id in the URL would be decorative.
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {string} assetId
+ * @param {string} unitId
+ * @returns {Promise<import('mongoose').Document>} the unit as it currently stands
+ * @throws {NotFoundError} (404) absent, another organisation's, or not under this asset
+ */
+async function resolveUnitUnderAsset(orgId, assetId, unitId) {
+  const unit = await assetUnitRepo.findById(orgId, unitId);
+  if (!unit || String(unit.assetId) !== String(assetId)) {
+    throw new NotFoundError('Unit not found');
+  }
+  return unit;
+}
+
+/**
  * Take one unit out of circulation for repair
  * (`POST /api/assets/:id/units/:unitId/maintenance`, SCRUM-141).
  *
@@ -356,11 +381,8 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
  * and the write as a single atomic operation, and it is worth paying: a version that read the status
  * first could name the reason, and would also let two admins both succeed.
  *
- * **The unit is resolved before anything is written, and the asset in the URL is checked, not
- * assumed.** `findById` folds `orgId` into its filter, so another organisation's unit and one that
- * never existed both come back `null` and both answer 404, never 403 (SR-2). A unit that exists in
- * the caller's organisation but hangs off a *different* asset is the same 404: the path says which
- * asset owns it, and a path that claims otherwise addresses nothing.
+ * The unit is resolved first by `resolveUnitUnderAsset`, which states the 404 rules (SR-2, and the
+ * asset in the path being checked rather than assumed).
  *
  * **That read does not reopen the race.** It answers only "does this unit exist, here, under this
  * asset" — facts that do not change under a concurrent maintenance click. The decision that *can*
@@ -375,10 +397,7 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
  * @throws {ConflictError} (409) the unit was not AVAILABLE at the moment of the write
  */
 export async function startMaintenance(orgId, assetId, unitId) {
-  const existing = await assetUnitRepo.findById(orgId, unitId);
-  if (!existing || String(existing.assetId) !== String(assetId)) {
-    throw new NotFoundError('Unit not found');
-  }
+  await resolveUnitUnderAsset(orgId, assetId, unitId);
 
   const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
     from: UNIT_STATUS.AVAILABLE,
@@ -388,6 +407,53 @@ export async function startMaintenance(orgId, assetId, unitId) {
     throw new ConflictError('Only an available unit can be put into maintenance');
   }
   return unit.toJSON();
+}
+
+/**
+ * Bring a repaired unit back into circulation
+ * (`POST /api/assets/:id/units/:unitId/maintenance/end`, SCRUM-141).
+ *
+ * **Ending maintenance twice is a 200, not a 409** — the one place this deliberately differs from
+ * `startMaintenance`. A second click, or a second admin who did not see the first one finish, is
+ * asking for a unit that is available; it already is. Refusing would report a failure for a request
+ * whose goal is met. `update()` treats an empty patch the same way, for the same reason.
+ *
+ * **But only for a unit that is AVAILABLE.** Any other status is still a 409, and RETIRED is the one
+ * that matters: retirement is permanent, so ending maintenance must never become a back door to
+ * putting a written-off unit back on the shelf.
+ *
+ * **The idempotent answer is decided by re-reading after a lost compare-and-set, not by checking
+ * first.** A pre-check would race — two admins could both read MAINTENANCE, and the loser would then
+ * have to explain a refusal for something that did succeed. Instead the write is attempted, and only
+ * if it finds nothing to update does this ask what the unit actually is now: AVAILABLE means somebody
+ * else got there first and the caller's goal is met, anything else is a genuine conflict.
+ *
+ * Nothing changed on the idempotent path, so nothing is recorded — the trail carries state changes,
+ * not requests (AC6).
+ * @param {string} orgId the caller's organisation, from the access token
+ * @param {string} assetId validated by the route's `unitParams` schema
+ * @param {string} unitId validated by the route's `unitParams` schema
+ * @returns {Promise<object>} the unit, now AVAILABLE
+ * @throws {NotFoundError} (404) no such unit under that asset, in this or any other organisation
+ * @throws {ConflictError} (409) the unit is in a status other than MAINTENANCE or AVAILABLE
+ */
+export async function endMaintenance(orgId, assetId, unitId) {
+  await resolveUnitUnderAsset(orgId, assetId, unitId);
+
+  const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
+    from: UNIT_STATUS.MAINTENANCE,
+    to: UNIT_STATUS.AVAILABLE,
+  });
+  if (unit) {
+    return unit.toJSON();
+  }
+
+  // The write found nothing to update. Ask what the unit is now, rather than assuming a conflict.
+  const current = await assetUnitRepo.findById(orgId, unitId);
+  if (current?.status === UNIT_STATUS.AVAILABLE) {
+    return current.toJSON();
+  }
+  throw new ConflictError('Only a unit in maintenance can be returned to circulation');
 }
 
 /**

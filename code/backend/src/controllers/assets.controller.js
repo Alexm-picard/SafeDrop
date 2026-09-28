@@ -102,6 +102,20 @@ export async function startMaintenance(req, res) {
 }
 
 /**
+ * `POST /api/assets/:id/units/:unitId/maintenance/end` — put a repaired unit back (SCRUM-141).
+ *
+ * 200 even when the unit was already available: the caller's goal is met, and the service decides
+ * whether that is a real change or a no-op.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function endMaintenance(req, res) {
+  res
+    .status(200)
+    .json(await assetService.endMaintenance(req.orgId, req.params.id, req.params.unitId));
+}
+
+/**
  * `GET /api/assets/:id/history` — one asset's complete chain of custody (SCRUM-29).
  *
  * A read, so no actor and no `req.id`: nothing is recorded about reading the record. Who may call it

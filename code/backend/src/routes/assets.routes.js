@@ -180,3 +180,13 @@ defineRoute(
   },
   assets.startMaintenance,
 );
+defineRoute(
+  assetsRouter,
+  {
+    method: 'POST',
+    path: '/:id/units/:unitId/maintenance/end',
+    permission: PERMISSIONS.ASSETS_WRITE,
+    schemas: { params: unitParams, body: emptyBody.optional() },
+  },
+  assets.endMaintenance,
+);
