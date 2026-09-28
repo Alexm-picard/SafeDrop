@@ -153,3 +153,75 @@ describe('POST /api/assets/:id/units/:unitId/maintenance (SCRUM-141)', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('POST /api/assets/:id/units/:unitId/maintenance/end (SCRUM-141)', () => {
+  /**
+   * Send a unit for repair through the API, so the two endpoints are exercised as the pair an admin
+   * actually uses rather than by reaching past the service to set the status directly.
+   * @param {object} org one side of `seedTwoOrgs()`
+   * @returns {Promise<{ asset: object, unit: object }>}
+   */
+  async function sendForRepair(org) {
+    const { asset, unit } = availableUnit(org);
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(org.admin))
+      .send({});
+    expect(res.status).toBe(200);
+    return { asset, unit };
+  }
+
+  it('AC2: brings a repaired unit back from MAINTENANCE to AVAILABLE', async () => {
+    const { asset, unit } = await sendForRepair(seed.a);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance/end`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: String(unit._id), status: 'AVAILABLE' });
+
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('AVAILABLE');
+  });
+
+  it('AC2: ending maintenance on an already AVAILABLE unit answers 200, not an error', async () => {
+    // A double-click, or a second admin who did not see the first one finish. The unit is available,
+    // which is what the caller wanted — so this is a no-op, not a failure. The audit trail records
+    // state *changes*, not requests, so the second call must not append a second row; that half is
+    // pinned by the audit tests once UNIT_MAINTENANCE_ENDED exists (AC6).
+    const { asset, unit } = await sendForRepair(seed.a);
+    const path = `/api/assets/${asset._id}/units/${unit._id}/maintenance/end`;
+
+    const first = await request(app)
+      .post(path)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post(path)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ id: String(unit._id), status: 'AVAILABLE' });
+  });
+
+  it('AC2: refuses with 409 to bring a RETIRED unit back into circulation', async () => {
+    // Retiring is permanent. Ending maintenance must not become a back door to un-retiring a unit
+    // that was written off — and RETIRED never went into maintenance in the first place.
+    const { asset, unit } = unitInStatus(seed.a, 'RETIRED');
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance/end`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('RETIRED');
+  });
+});
