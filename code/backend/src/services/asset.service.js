@@ -349,18 +349,29 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
  * still AVAILABLE at the instant of the write, so two admins clicking at the same moment cannot both
  * win. Reading the status first and then writing would leave exactly that race open.
  *
- * Only AC1 is implemented so far: the refusals (AC3), the cross-asset and cross-tenant 404s (AC5) and
- * the audit event (AC6) arrive with the tests that demand them.
+ * **One 409 for four different reasons.** A unit that is OUT is in someone's hands, HELD is promised
+ * to someone, REQUESTED has an undecided request on it, and RETIRED has permanently left the
+ * inventory. The compare-and-set cannot tell them apart — it only knows the unit was not AVAILABLE
+ * when it tried to write — so they collapse into one refusal. That is the price of doing the check
+ * and the write as a single atomic operation, and it is worth paying: a version that read the status
+ * first could name the reason, and would also let two admins both succeed.
+ *
+ * The cross-asset and cross-tenant 404s (AC5) and the audit event (AC6) arrive with the tests that
+ * demand them.
  * @param {string} orgId the caller's organisation, from the access token
  * @param {string} assetId validated by the route's `unitParams` schema
  * @param {string} unitId validated by the route's `unitParams` schema
  * @returns {Promise<object>} the updated unit
+ * @throws {ConflictError} (409) the unit was not AVAILABLE at the moment of the write
  */
 export async function startMaintenance(orgId, assetId, unitId) {
   const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
     from: UNIT_STATUS.AVAILABLE,
     to: UNIT_STATUS.MAINTENANCE,
   });
+  if (!unit) {
+    throw new ConflictError('Only an available unit can be put into maintenance');
+  }
   return unit.toJSON();
 }
 
