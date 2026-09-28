@@ -15,6 +15,18 @@ vi.mock('../../../src/services/ai/foundry.client.js', () => ({
   promptFingerprint: vi.fn(() => 'fingerprint'),
 }));
 
+// Capture what the logger writes, at `debug`, so a "log the bad reply just to debug it" line would be
+// caught rather than silently dropped by the suite's `fatal` level. Same approach as
+// foundryClient.test.js.
+const { logLines } = vi.hoisted(() => ({ logLines: [] }));
+vi.mock('../../../src/utils/logger.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    logger: actual.createLogger({ level: 'debug', write: (line) => logLines.push(line) }),
+  };
+});
+
 // A real asset-search response, recorded once from the live agent with a fake catalogue. The model's
 // JSON arrives as a string inside `output[type=message].content[type=output_text].text`, after a
 // reasoning item — a shape a hand-written mock would not have guessed.
@@ -43,6 +55,7 @@ const OTHER_ORG = '6aab2a45c6e457e01ac0968b';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  logLines.length = 0;
 });
 
 describe('SCRUM-103 AC1: plain search when AI is off', () => {
@@ -252,5 +265,25 @@ describe('SCRUM-103 AC4: unusable model output falls back to plain search', () =
 
     expect(result).toMatchObject({ aiAssisted: false, clarification: null });
     expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
+
+  it('logs a warning when it falls back, without the query or the model reply', async () => {
+    await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply('Sorry, the Zoom H5 Recorder is held by Dana Member.'),
+    );
+
+    await searchAssets(ORG, 'recorder for Dana');
+
+    // Otherwise a prompt or model change that broke the contract would quietly turn every search
+    // into a plain one, and nobody would know.
+    const warnings = logLines.map((line) => JSON.parse(line)).filter((l) => l.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].orgId).toBe(ORG);
+    // A reply can quote catalogue data or member names, and the query is the member's own words:
+    // neither belongs in a shared log stream (services/ai/README.md).
+    const logged = logLines.join('\n');
+    expect(logged).not.toContain('Dana');
+    expect(logged).not.toContain('Sorry');
   });
 });

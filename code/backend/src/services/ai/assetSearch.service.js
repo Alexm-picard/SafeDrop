@@ -13,7 +13,22 @@
  */
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
+import { z } from 'zod';
+import { logger } from '../../utils/logger.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
+
+const log = logger.child({ component: 'asset-search' });
+
+/**
+ * The model's output contract, exactly as prompts/asset-search.md states it. Anything that does not
+ * fit — prose, a renamed field, more than ten matches — is treated as no answer at all rather than
+ * partly trusted, because a reply that has drifted from the contract in one place may have drifted
+ * in others.
+ */
+const answerSchema = z.object({
+  matches: z.array(z.object({ assetId: z.string(), reason: z.string() })).max(10),
+  clarification: z.string().nullable(),
+});
 
 /**
  * The most catalogue entries sent to the model in one call. Each costs tokens on every search (about
@@ -40,7 +55,15 @@ export async function searchAssets(orgId, query) {
   );
   const input = JSON.stringify({ query, assets: toPromptAssets(candidates, units) });
   const response = await foundryRequest(orgId, { input }, { prompt: input });
-  const answer = JSON.parse(outputText(response));
+  const answer = readAnswer(response);
+  if (!answer) {
+    // AI is an enhancement, not a dependency: an unusable answer costs the member the ranking,
+    // never the search. Logged so a prompt or model change that breaks the contract is noticed
+    // rather than silently turning every search into a plain one — but only the org, never the
+    // query or the reply, which can quote catalogue data and member names.
+    log.warn({ orgId }, 'model output did not fit the asset-search contract; used plain search');
+    return plainSearch(orgId, query);
+  }
 
   // The candidates sent are the only ids the model may return (prompt rule 1). Anything else — a
   // hallucinated id, or another tenant's id smuggled in by injection — is dropped, not looked up:
@@ -110,10 +133,25 @@ function describe(asset) {
 }
 
 /**
- * The model's text from a Responses-protocol body. It sits in the `message` item's `output_text`
- * part, found by type rather than position: a `reasoning` item comes first.
+ * The model's answer, parsed and checked against the output contract, or `null` when it is unusable.
+ *
+ * The text sits in the `message` item's `output_text` part of a Responses-protocol body, found by
+ * type rather than position because a `reasoning` item comes first. A body with no such part, text
+ * that is not JSON, and JSON of the wrong shape all come back as `null`.
  */
-function outputText(response) {
-  const message = response.output.find((item) => item.type === 'message');
-  return message.content.find((part) => part.type === 'output_text').text;
+function readAnswer(response) {
+  const text = response.output
+    ?.find((item) => item.type === 'message')
+    ?.content?.find((part) => part.type === 'output_text')?.text;
+  if (typeof text !== 'string') {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const result = answerSchema.safeParse(parsed);
+  return result.success ? result.data : null;
 }
