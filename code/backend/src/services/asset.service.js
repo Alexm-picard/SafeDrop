@@ -356,15 +356,30 @@ export async function addUnit(orgId, actor, assetId, input = {}) {
  * and the write as a single atomic operation, and it is worth paying: a version that read the status
  * first could name the reason, and would also let two admins both succeed.
  *
- * The cross-asset and cross-tenant 404s (AC5) and the audit event (AC6) arrive with the tests that
- * demand them.
+ * **The unit is resolved before anything is written, and the asset in the URL is checked, not
+ * assumed.** `findById` folds `orgId` into its filter, so another organisation's unit and one that
+ * never existed both come back `null` and both answer 404, never 403 (SR-2). A unit that exists in
+ * the caller's organisation but hangs off a *different* asset is the same 404: the path says which
+ * asset owns it, and a path that claims otherwise addresses nothing.
+ *
+ * **That read does not reopen the race.** It answers only "does this unit exist, here, under this
+ * asset" — facts that do not change under a concurrent maintenance click. The decision that *can*
+ * change, whether the unit is still AVAILABLE, is still made atomically inside the write below.
+ *
+ * The audit event (AC6) arrives with the test that demands it.
  * @param {string} orgId the caller's organisation, from the access token
  * @param {string} assetId validated by the route's `unitParams` schema
  * @param {string} unitId validated by the route's `unitParams` schema
  * @returns {Promise<object>} the updated unit
+ * @throws {NotFoundError} (404) no such unit under that asset, in this or any other organisation
  * @throws {ConflictError} (409) the unit was not AVAILABLE at the moment of the write
  */
 export async function startMaintenance(orgId, assetId, unitId) {
+  const existing = await assetUnitRepo.findById(orgId, unitId);
+  if (!existing || String(existing.assetId) !== String(assetId)) {
+    throw new NotFoundError('Unit not found');
+  }
+
   const unit = await assetUnitRepo.updateStatusIfCurrent(orgId, unitId, {
     from: UNIT_STATUS.AVAILABLE,
     to: UNIT_STATUS.MAINTENANCE,
