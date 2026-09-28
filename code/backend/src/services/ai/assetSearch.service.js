@@ -16,6 +16,13 @@ import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
 
 /**
+ * The most catalogue entries sent to the model in one call. Each costs tokens on every search (about
+ * 250 with its units, measured against the live agent), so this bounds both cost and how much of a
+ * tenant's data leaves the backend per request.
+ */
+const MAX_CANDIDATES = 100;
+
+/**
  * Search the caller's catalogue.
  * @param {string} orgId tenant id, from the verified token
  * @param {string} query what the member typed
@@ -26,7 +33,7 @@ export async function searchAssets(orgId, query) {
     return plainSearch(orgId, query);
   }
 
-  const { items: candidates } = await assetRepo.list(orgId);
+  const { items: candidates } = await assetRepo.list(orgId, { limit: MAX_CANDIDATES });
   const units = await unitRepo.listByAssets(
     orgId,
     candidates.map((asset) => asset._id),
