@@ -42,13 +42,14 @@ export async function searchAssets(orgId, query) {
   const response = await foundryRequest(orgId, { input }, { prompt: input });
   const answer = JSON.parse(outputText(response));
 
+  // The candidates sent are the only ids the model may return (prompt rule 1). Anything else — a
+  // hallucinated id, or another tenant's id smuggled in by injection — is dropped, not looked up:
+  // a lookup would still accept an id from this org that was never offered to the model.
   const byId = new Map(candidates.map((asset) => [String(asset._id), asset]));
   return {
-    matches: answer.matches.map(({ assetId, reason }) => ({
-      assetId,
-      ...describe(byId.get(assetId)),
-      reason,
-    })),
+    matches: answer.matches
+      .filter(({ assetId }) => byId.has(assetId))
+      .map(({ assetId, reason }) => ({ assetId, ...describe(byId.get(assetId)), reason })),
     clarification: answer.clarification,
     aiAssisted: true,
   };
@@ -105,7 +106,7 @@ function toPromptAssets(candidates, units) {
 
 /** The asset fields a search result shows. */
 function describe(asset) {
-  return { name: asset?.name, category: asset?.category, description: asset?.description };
+  return { name: asset.name, category: asset.category, description: asset.description };
 }
 
 /**
