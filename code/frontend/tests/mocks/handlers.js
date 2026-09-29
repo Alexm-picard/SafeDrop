@@ -591,6 +591,23 @@ export const handlers = [
       { status: 201 },
     );
   }),
+  // Unit maintenance (SCRUM-141). Unlike the four above, these mirror a backend that is already
+  // implemented rather than a planned contract: both answer with the updated unit, and the conflict
+  // and 404 cases are overridden per test by whichever test cares about them.
+  http.post('*/api/assets/:id/units/:unitId/maintenance', ({ params }) => {
+    const unit = (assetUnits[params.id] ?? []).find((u) => u.id === params.unitId);
+    if (!unit) {
+      return errorResponse(404, 'NOT_FOUND', 'Unit not found');
+    }
+    return HttpResponse.json({ ...unit, status: 'MAINTENANCE' });
+  }),
+  http.post('*/api/assets/:id/units/:unitId/maintenance/end', ({ params }) => {
+    const unit = (assetUnits[params.id] ?? []).find((u) => u.id === params.unitId);
+    if (!unit) {
+      return errorResponse(404, 'NOT_FOUND', 'Unit not found');
+    }
+    return HttpResponse.json({ ...unit, status: 'AVAILABLE' });
+  }),
   http.get('*/api/requests', ({ request }) =>
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),
   ),
