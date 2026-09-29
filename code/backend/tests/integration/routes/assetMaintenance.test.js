@@ -34,6 +34,13 @@ vi.mock('../../../src/repositories/auditEvent.repository.js', async (importOrigi
   return { ...original, append: vi.fn(original.append) };
 });
 
+// Likewise for the compare-and-set, so AC4 can force the losing side of the race deterministically
+// instead of hoping two real requests collide in the right order.
+vi.mock('../../../src/repositories/assetUnit.repository.js', async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, updateStatusIfCurrent: vi.fn(original.updateStatusIfCurrent) };
+});
+
 let seed;
 beforeEach(async () => {
   seed = await seedTwoOrgs();
@@ -44,6 +51,7 @@ beforeEach(async () => {
 // implementation `vi.fn(impl)` was given, so this both drains the queue and keeps append working.
 afterEach(() => {
   auditRepo.append.mockReset();
+  assetUnitRepo.updateStatusIfCurrent.mockReset();
 });
 
 /** The camera and its first unit, which the seed leaves AVAILABLE — the one legal starting state. */
@@ -322,5 +330,79 @@ describe('the maintenance audit trail (SCRUM-141 AC6)', () => {
       .set('Cookie', accessCookieFor(seed.a.admin))
       .send({});
     expect(retried.status).toBe(200);
+  });
+});
+
+/**
+ * AC4, two admins clicking "Start maintenance" at the same moment.
+ *
+ * **These are regression tests, not TDD evidence, and they passed the first time they ran.** The
+ * behaviour arrived as a side effect of AC3: the compare-and-set was already the natural way to write
+ * the transition, and AC3's green turned its `null` return into the 409 this criterion asks for. That
+ * is worth stating plainly rather than presenting them as a red that never happened — a test that
+ * passes immediately means either the behaviour exists or the test is wrong, and here it is the first.
+ *
+ * **The two tests are not equally strong, and this was measured rather than assumed.** Rewriting the
+ * service the naive way — read the status, check it, then write unconditionally — and running this
+ * file leaves the concurrent test below *passing* and fails only the mechanism test. The reason is
+ * that the read-then-write happens inside a transaction: the second writer hits a MongoDB write
+ * conflict, `session.withTransaction` retries its callback, and the retry then sees MAINTENANCE and
+ * refuses. So the outcome is protected twice over, and a test that only checks the outcome cannot
+ * tell the two implementations apart.
+ *
+ * That makes the compare-and-set the mechanism the ticket asks for and the one that still holds if
+ * the transaction is ever removed — and the second test the only one that notices if it goes away.
+ */
+describe('two admins racing for the same unit (SCRUM-141 AC4)', () => {
+  it('exactly one of two simultaneous requests wins, and the trail records one start', async () => {
+    const { asset, unit } = availableUnit(seed.a);
+    const path = `/api/assets/${asset._id}/units/${unit._id}/maintenance`;
+
+    // The realistic shape of the race: two requests in flight at once, nothing coordinating them.
+    const [first, second] = await Promise.all([
+      request(app).post(path).set('Cookie', accessCookieFor(seed.a.admin)).send({}),
+      request(app).post(path).set('Cookie', accessCookieFor(seed.a.admin)).send({}),
+    ]);
+
+    expect([first.status, second.status].sort((a, b) => a - b)).toEqual([200, 409]);
+
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('MAINTENANCE');
+
+    // One change, one row. Two winners would show up here as two.
+    const events = await auditRepo.query(seed.a.orgId, { action: 'UNIT_MAINTENANCE_STARTED' });
+    expect(events.total).toBe(1);
+  });
+
+  it('losing the compare-and-set is a 409, and the write really is conditional', async () => {
+    // The test above proves the outcome but not the mechanism: MongoDB might serialise two requests
+    // so tidily that a read-then-write would also survive it. So this one forces the losing side —
+    // the conditional write reports it matched nothing, which is exactly what the admin who lost sees
+    // — and then checks what the service did with that answer.
+    const { asset, unit } = availableUnit(seed.a);
+    assetUnitRepo.updateStatusIfCurrent.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${unit._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+
+    // The mechanism itself: the write is guarded by the status it expects, and it runs inside the
+    // transaction. An unconditional updateStatus would satisfy the happy path and lose the race.
+    expect(assetUnitRepo.updateStatusIfCurrent).toHaveBeenCalledWith(
+      seed.a.orgId,
+      String(unit._id),
+      { from: 'AVAILABLE', to: 'MAINTENANCE' },
+      expect.objectContaining({ session: expect.anything() }),
+    );
+
+    // The loser changes nothing and records nothing.
+    const stored = await assetUnitRepo.findById(seed.a.orgId, unit._id);
+    expect(stored.status).toBe('AVAILABLE');
+    const events = await auditRepo.query(seed.a.orgId, { action: 'UNIT_MAINTENANCE_STARTED' });
+    expect(events.total).toBe(0);
   });
 });
