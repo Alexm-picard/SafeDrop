@@ -75,11 +75,14 @@ export const activityDays = (days = 30) =>
     checkouts: index === days - 3 ? 6 : index % 4 === 0 ? 2 : 0,
   }));
 export const summary = {
-  totalAssets: 12,
+  // Internally consistent, the way the API's own numbers are: totalAssets is available + held +
+  // checkedOut + requested + maintenance (SCRUM-141), and excludes only the retired units.
+  totalAssets: 15,
   checkedOut: 4,
   available: 7,
   held: 1,
   requested: 0,
+  maintenance: 3,
   retired: 2,
   pendingRequests: 3,
   overdue: 2,
