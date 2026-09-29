@@ -13,6 +13,14 @@
 #   docker compose down              # stop everything (keeps the mongo-data volume)
 #   docker compose down -v           # stop everything and wipe the database
 #
+# Running the tests inside the containers (Lab 3 step 4d):
+#   docker compose exec backend npm test
+#   docker compose exec frontend npm test
+#
+# If the backend one reports that vitest is missing, the container is still using node_modules from
+# an image built before the `dev` stage existed: the anonymous volume below outlives a rebuild.
+# `docker compose up --build -V` replaces it.
+#
 # Frontend: http://localhost:5173   (Vite dev server; /api/* is proxied to the backend container)
 # Backend:  http://localhost:4000
 # Mongo:    mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true
@@ -58,7 +66,11 @@ services:
       "
 
   backend:
-    build: ./code/backend
+    build:
+      context: ./code/backend
+      # The stage that carries devDependencies, so `docker compose exec backend npm test` works.
+      # Production builds the file's last stage (`runtime`) and stays lean — see the Dockerfile.
+      target: dev
     command: sh -c "npm run migrate && npm run dev"
     ports:
       - '4000:4000'
@@ -66,6 +78,12 @@ services:
       NODE_ENV: development
       PORT: 4000
       MONGODB_URI: mongodb://mongo:27017/safedrop?replicaSet=rs0
+      # Where `npm test` inside this container gets its database. mongodb-memory-server cannot run on
+      # Alpine at all, so the suite uses the real replica set next door, which satisfies the
+      # transactions the services need. Safe alongside development data: every test file creates and
+      # drops its own `safedrop_test_<uuid>` database (tests/setup.js) and never touches `safedrop`.
+      # Unset on the host and in CI, where the in-memory server is used instead.
+      TEST_MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-secret-not-for-deploy-change-me-0123456789abcdef}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_IDLE_TTL: ${JWT_REFRESH_IDLE_TTL:-30m}
