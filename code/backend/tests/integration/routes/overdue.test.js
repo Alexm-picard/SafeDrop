@@ -142,7 +142,6 @@ describe('markOverdue: agrees with the dashboard count', () => {
 });
 
 describe('POST /api/requests/mark-overdue', () => {
-
   const post = (user, body = {}) => {
     const req = request(app).post('/api/requests/mark-overdue');
     if (user) {

@@ -119,8 +119,6 @@ export async function returnUnit(req, res) {
   );
 }
 
-
-
 /**
  * `POST /api/requests/mark-overdue` — flag the caller's organisation's late checkouts now.
  *
