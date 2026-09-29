@@ -58,9 +58,10 @@
  * @property {number} available
  * @property {number} held
  * @property {number} retired
+ * @property {number} maintenance units out of circulation for repair (SCRUM-141)
  */
 
-/** @typedef {'AVAILABLE' | 'HELD' | 'OUT' | 'RETIRED'} UnitStatus */
+/** @typedef {'AVAILABLE' | 'HELD' | 'OUT' | 'RETIRED' | 'MAINTENANCE'} UnitStatus */
 
 /** @typedef {'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELLED' | 'CHECKED_OUT' | 'OVERDUE' | 'RETURNED' | 'LOST'} RequestState */
 

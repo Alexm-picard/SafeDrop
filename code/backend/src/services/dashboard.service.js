@@ -99,6 +99,16 @@ const isoDay = (date) => date.toISOString().slice(0, 10);
  * it counts toward `totalAssets` the same way HELD and OUT already do. The retired count is returned
  * separately so the number is visible rather than merely absent, and `requested` is now returned
  * alongside it for the same reason.
+ *
+ * **MAINTENANCE counts toward `totalAssets`, unlike RETIRED (SCRUM-141).** The line RETIRED sits on
+ * is permanence, not lendability: a unit in for repair is coming back, and the organisation still owns
+ * it, so leaving it out would make the inventory appear to shrink every time something broke — and
+ * grow again when it was fixed. It is out of `available`, because it cannot be lent today, and
+ * reported on its own tile so "three of these are in the shop" is visible rather than inferred from a
+ * total that no longer adds up.
+ *
+ * Adding a status to `UNIT_STATUS` therefore always demands a decision here. Nothing in this file
+ * fails when a new one appears; it just silently belongs to no tile and no total.
  * @param {string} orgId
  * @param {Date} now the instant the summary describes — lateness and the last day of the chart
  * @returns {Promise<object>}
@@ -118,6 +128,7 @@ async function computeSummary(orgId, now) {
   const checkedOut = units[UNIT_STATUS.OUT];
   const retired = units[UNIT_STATUS.RETIRED];
   const requested = units[UNIT_STATUS.REQUESTED];
+  const maintenance = units[UNIT_STATUS.MAINTENANCE];
   // Every day in the window, including the ones with no checkouts: a chart with gaps in it would
   // read as "no data" where the truth is "nothing happened".
   const activity = Array.from({ length: ACTIVITY_WINDOW_DAYS }, (_, index) => {
@@ -125,12 +136,13 @@ async function computeSummary(orgId, now) {
     return { date, checkouts: checkoutsByDay[date] ?? 0 };
   });
   return {
-    totalAssets: available + held + checkedOut + requested,
+    totalAssets: available + held + checkedOut + requested + maintenance,
     checkedOut,
     available,
     held,
     retired,
     requested,
+    maintenance,
     pendingRequests: states[REQUEST_STATE.PENDING],
     overdue,
     activity,
