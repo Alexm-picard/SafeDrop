@@ -278,9 +278,13 @@ describe('AssetDetailPage — unit maintenance (SCRUM-141)', () => {
     renderDetail(assets[0].id);
     const table = await screen.findByRole('table', { name: 'Units' });
 
-    expect(within(table).getByText('Maintenance')).toBeInTheDocument();
+    // Scoped to the unit's own row, not the whole table: the actions column is *headed*
+    // "Maintenance" too, so a table-wide text query would match the header as well and prove nothing
+    // about this unit's status.
+    const row = within(table).getByRole('row', { name: new RegExp(unit.tag) });
+    expect(within(row).getByText('Maintenance')).toBeInTheDocument();
     expect(
-      within(table).getByRole('button', { name: `End maintenance for unit ${unit.tag}` }),
+      within(row).getByRole('button', { name: `End maintenance for unit ${unit.tag}` }),
     ).toBeInTheDocument();
     // One action per row, and it is the one that applies: a unit in the shop cannot be sent again.
     expect(
@@ -313,15 +317,19 @@ describe('AssetDetailPage — unit maintenance (SCRUM-141)', () => {
       within(table).getByRole('button', { name: `Start maintenance for unit ${unit.tag}` }),
     );
 
+    // The whole sentence, not a loose `tag.*maintenance` pattern: the unit's own table row has the
+    // text content "xps-001MaintenanceGood…", which matches such a pattern too, so a loose regex
+    // would pass whether or not the notice appeared at all.
     expect(
-      await screen.findByText(new RegExp(`${unit.tag}.*maintenance`, 'i')),
+      await screen.findByText(`Unit ${unit.tag} is now in maintenance and cannot be requested.`),
     ).toBeInTheDocument();
     expect(started).toBe(true);
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole('table', { name: 'Units' })).getByText('Maintenance'),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => {
+      const row = within(screen.getByRole('table', { name: 'Units' })).getByRole('row', {
+        name: new RegExp(unit.tag),
+      });
+      expect(within(row).getByText('Maintenance')).toBeInTheDocument();
+    });
   });
 
   it('explains the API’s refusal rather than the bare status code', async () => {
@@ -342,5 +350,48 @@ describe('AssetDetailPage — unit maintenance (SCRUM-141)', () => {
 
     // The server's own wording, which names the reason, the way onRetire already surfaces it.
     expect(await screen.findByRole('alert')).toHaveTextContent(/only an available unit/i);
+  });
+
+  /**
+   * The two tests below were written *after* the implementation and passed on their first run —
+   * necessarily so. A test asserting that something is *not* on the page cannot fail while nothing
+   * puts it there, so neither could ever have been a red. They are here to catch the column being
+   * widened later, not as evidence of test-first development.
+   *
+   * Hiding the controls is presentation, not a security control: `assets:write` is enforced by the API
+   * on both routes (SR-1), so a member who reaches them another way gets a 403 rather than an effect.
+   */
+  it('offers a MEMBER no maintenance actions, while the units stay readable', async () => {
+    renderDetail(assets[0].id, { user: memberUser });
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    expect(
+      within(table).queryByRole('button', { name: /maintenance for unit/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(table).queryByRole('columnheader', { name: 'Maintenance' }),
+    ).not.toBeInTheDocument();
+    // The table itself is still theirs to read, statuses included.
+    expect(within(table).getByText('Available')).toBeInTheDocument();
+  });
+
+  it('offers no maintenance actions on a retired asset', async () => {
+    // Its units may still read AVAILABLE, but the asset is out of circulation — the same reasoning
+    // that removes "Request this" and the add-unit form.
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          retiredAt: '2026-09-19T12:00:00.000Z',
+          units: assetUnits[assets[0].id],
+        }),
+      ),
+    );
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    expect(
+      within(table).queryByRole('button', { name: /maintenance for unit/i }),
+    ).not.toBeInTheDocument();
   });
 });

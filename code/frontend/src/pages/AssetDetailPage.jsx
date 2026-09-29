@@ -25,6 +25,11 @@
  * Retiring is a soft delete: the asset keeps its units and its history, and the page stays readable
  * afterwards with a banner saying it is retired. That is why the action is "Retire" and not "Delete",
  * and why the page does not navigate away when it succeeds.
+ *
+ * SCRUM-141 adds maintenance to the unit rows: an admin sends one physical unit for repair and brings
+ * it back, from the row it is in. Unlike retiring, it is reversible by the button beside it, so it
+ * takes no confirmation step. It is the per-unit counterpart to retiring the whole asset — which is
+ * why it belongs in the table rather than in the page-level actions.
  */
 import { useCallback, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
@@ -69,6 +74,9 @@ export function AssetDetailPage() {
     location.state?.notice ? { tone: 'success', message: location.state.notice } : null,
   );
   const [requestingUnitId, setRequestingUnitId] = useState(null);
+  // Which unit has a maintenance call in flight, so only that row's button goes disabled rather than
+  // the whole table.
+  const [maintainingUnitId, setMaintainingUnitId] = useState(null);
 
   const isAdmin = role === ROLES.ORG_ADMIN;
   const isRetired = Boolean(data?.retiredAt);
@@ -92,6 +100,41 @@ export function AssetDetailPage() {
       setNotice({ tone: 'error', message: errorMessage(err) });
     }
   }, [id, reload]);
+
+  /**
+   * Send one unit for repair, or bring it back (SCRUM-141).
+   *
+   * No confirmation step, unlike retiring: this is reversible by the button next to it, and a
+   * confirmation for an action you can undo in one click is noise. The refusals the server can raise
+   * — the unit was taken in the meantime, or it is not actually available — arrive as the notice,
+   * carrying the server's own wording rather than a status code, the same way `onRetire` does.
+   * @param {object} unit the row's unit
+   * @param {'start'|'end'} direction
+   */
+  const onMaintenance = useCallback(
+    async (unit, direction) => {
+      setNotice(null);
+      setMaintainingUnitId(unit.id);
+      try {
+        if (direction === 'start') {
+          await assetsApi.startMaintenance(id, unit.id);
+          setNotice({
+            tone: 'success',
+            message: `Unit ${unit.tag} is now in maintenance and cannot be requested.`,
+          });
+        } else {
+          await assetsApi.endMaintenance(id, unit.id);
+          setNotice({ tone: 'success', message: `Unit ${unit.tag} is back in circulation.` });
+        }
+        reload();
+      } catch (err) {
+        setNotice({ tone: 'error', message: errorMessage(err) });
+      } finally {
+        setMaintainingUnitId(null);
+      }
+    },
+    [id, reload],
+  );
 
   const onUnitAdded = useCallback(
     (unit) => {
@@ -194,6 +237,45 @@ export function AssetDetailPage() {
                     <span className="meta">—</span>
                   ),
               },
+              // SCRUM-141. Admin-only and only while the asset is in circulation, mirroring the other
+              // admin controls: presentation, not security — the API enforces `assets:write` (SR-1).
+              // One action per row, whichever applies: AVAILABLE can go for repair, MAINTENANCE can
+              // come back, and anything else (OUT, HELD, REQUESTED, RETIRED) would be refused with a
+              // 409, so offering a button would be a lie. The label carries the tag, because several
+              // identical "Start maintenance" buttons are indistinguishable to anyone navigating by
+              // button name rather than by row.
+              ...(isAdmin && !isRetired
+                ? [
+                    {
+                      key: 'maintenance',
+                      header: 'Maintenance',
+                      render: (u) => {
+                        const direction =
+                          u.status === UNIT_STATUS.AVAILABLE
+                            ? 'start'
+                            : u.status === UNIT_STATUS.MAINTENANCE
+                              ? 'end'
+                              : null;
+                        if (!direction) {
+                          return <span className="meta">—</span>;
+                        }
+                        const label =
+                          direction === 'start' ? 'Start maintenance' : 'End maintenance';
+                        return (
+                          <button
+                            type="button"
+                            className="secondary"
+                            aria-label={`${label} for unit ${u.tag}`}
+                            disabled={maintainingUnitId === u.id}
+                            onClick={() => onMaintenance(u, direction)}
+                          >
+                            {maintainingUnitId === u.id ? 'Working…' : label}
+                          </button>
+                        );
+                      },
+                    },
+                  ]
+                : []),
             ]}
             rows={data.units}
             getRowId={(u) => u.id}
