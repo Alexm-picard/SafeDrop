@@ -60,7 +60,7 @@ import { policyFor } from './policies/approvalPolicy.js';
  * APPROVED      → CANCELLED    unit AVAILABLE     REQUEST_CANCELLED
  * APPROVED      → CHECKED_OUT  unit OUT           ASSET_CHECKED_OUT
  * CHECKED_OUT   → RETURNED     unit AVAILABLE     ASSET_RETURNED
- * CHECKED_OUT   → OVERDUE      (none)             (system; Iteration 2 scheduler)
+ * CHECKED_OUT   → OVERDUE      (none)             (system; markOverdue — not audited, see there)
  * CHECKED_OUT   → LOST         unit RETIRED       (Iteration 2)
  * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
  * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
@@ -661,4 +661,46 @@ export async function returnUnit(orgId, actor, requestId, input = {}) {
 
     return updated;
   });
+}
+
+/**
+ * Flag one organisation's late checkouts: every CHECKED_OUT request with `dueAt` before `now`
+ * becomes OVERDUE. Returns how many moved.
+ *
+ * **`now` is required and never defaulted.** The caller says what "now" is — the endpoint passes the
+ * request time, a future scheduler its own tick, a test a fixed date — so the function never reads
+ * the clock and a test never depends on the day it runs.
+ *
+ * **The tenant is required too.** Mongoose drops an `undefined` filter key, so a missing `orgId`
+ * would not match nothing — it would match every organisation (SR-2). That is refused before any
+ * query is built.
+ *
+ * **The move is checked against the state machine** (`assertTransition(CHECKED_OUT, OVERDUE)`), so
+ * removing that row from TRANSITIONS switches this off rather than letting it write a state the table
+ * no longer allows. The row has no unit side-effect: an overdue item is still with the borrower, so
+ * its unit stays OUT.
+ *
+ * **One bulk write, not one per request.** The filter matches CHECKED_OUT only, which makes each
+ * document's update a compare-and-set (a request returned mid-run no longer matches) and a repeated
+ * run a no-op. Per-request `transition()` calls would buy nothing without a per-request audit entry
+ * to write alongside each one — see below.
+ *
+ * **Not audited, by decision.** SR-9 audits state changes people make. This one has no actor and
+ * decides nothing: OVERDUE is derived entirely from `dueAt`, which the ASSET_CHECKED_OUT event
+ * already records, and custody does not change. The audit trail can already answer "was it late?";
+ * a system-actor entry (SCRUM-139) can be added here later if the team wants one.
+ * @param {string} orgId
+ * @param {{ now: Date }} options `now` — the instant to measure lateness against
+ * @returns {Promise<number>} how many requests were moved to OVERDUE
+ * @throws {TypeError} when `orgId` is missing or `now` is not a valid Date
+ */
+export async function markOverdue(orgId, { now } = {}) {
+  if (!orgId) {
+    throw new TypeError('markOverdue: orgId is required');
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new TypeError('markOverdue: now must be a valid Date');
+  }
+  assertTransition(S.CHECKED_OUT, S.OVERDUE);
+  return checkoutRequestRepo.markOverdue(orgId, now);
 }

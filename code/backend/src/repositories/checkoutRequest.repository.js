@@ -173,25 +173,61 @@ export async function countByState(orgId) {
 }
 
 /**
+ * The filter for "late": in one of `states`, with a due date strictly before `asOf`.
+ *
+ * The single definition of lateness that `countOverdue` and `markOverdue` both build on, so the
+ * dashboard's figure and the requests actually flagged can never disagree about what "late" means.
+ * Strictly before: a request due at this very instant is due, not yet late.
+ *
+ * A request with no `dueAt` cannot match: MongoDB compares within a BSON type, so null never
+ * matches `$lt: <date>`. That is the intended reading — a request that was never handed over has no
+ * due date to be late against.
+ * @param {string} orgId
+ * @param {Date} asOf
+ * @param {string[]} states
+ * @returns {object} a Mongo filter, operators already marked trusted
+ */
+function lateFilter(orgId, asOf, states) {
+  return {
+    orgId,
+    state: mongoose.trusted({ $in: states }),
+    dueAt: mongoose.trusted({ $lt: asOf }),
+  };
+}
+
+/**
  * Count the checkouts that are still out and whose due date has passed (SCRUM-102, AT1).
  *
  * "Still out" is CHECKED_OUT or OVERDUE: those are the two states in which the organisation does not
  * have the item back. RETURNED and LOST are excluded — a late return that has arrived is no longer
  * something the admin can chase, and a lost item is a different problem with its own state.
- *
- * A request with no `dueAt` cannot be counted: MongoDB compares within a BSON type, so null never
- * matches `$lt: <date>`. That is the intended reading — a request that was never handed over has no
- * due date to be late against.
  * @param {string} orgId
  * @param {Date} [asOf] the instant to measure lateness against; defaults to now
  * @returns {Promise<number>}
  */
 export async function countOverdue(orgId, asOf = new Date()) {
-  return CheckoutRequest.countDocuments({
-    orgId,
-    state: mongoose.trusted({ $in: [REQUEST_STATE.CHECKED_OUT, REQUEST_STATE.OVERDUE] }),
-    dueAt: mongoose.trusted({ $lt: asOf }),
-  });
+  return CheckoutRequest.countDocuments(
+    lateFilter(orgId, asOf, [REQUEST_STATE.CHECKED_OUT, REQUEST_STATE.OVERDUE]),
+  );
+}
+
+/**
+ * Move every late CHECKED_OUT request in one tenant to OVERDUE, in a single conditional write.
+ *
+ * Only CHECKED_OUT is matched — an OVERDUE request is already flagged, which is what makes a
+ * repeated run a no-op. `state` is part of the filter, so the update is a compare-and-set per
+ * document just as `transition()` is: a request returned while this runs no longer matches and is
+ * left alone. The caller (checkout.service) validates the move against the state machine first.
+ * @param {string} orgId
+ * @param {Date} asOf the instant to measure lateness against — required, never defaulted
+ * @returns {Promise<number>} how many requests were moved
+ */
+export async function markOverdue(orgId, asOf) {
+  const result = await CheckoutRequest.updateMany(
+    lateFilter(orgId, asOf, [REQUEST_STATE.CHECKED_OUT]),
+    { $set: { state: REQUEST_STATE.OVERDUE } },
+  );
+  return result.modifiedCount;
 }
 
 /**

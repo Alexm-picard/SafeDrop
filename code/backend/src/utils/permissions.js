@@ -53,6 +53,8 @@ export const PERMISSIONS = Object.freeze({
   SESSION_SELF: 'session:self',
   /** Any authenticated user may change their own password (POST /api/auth/change-password). */
   PASSWORD_SELF: 'password:self',
+  /** Move this organisation's late checkouts to OVERDUE on demand (POST /api/requests/mark-overdue). */
+  REQUESTS_MARK_OVERDUE: 'requests:mark-overdue',
 });
 export const PERMISSION_LIST = Object.freeze(Object.values(PERMISSIONS));
 export const ALL_PERMISSIONS = new Set(PERMISSION_LIST);
@@ -75,6 +77,7 @@ const ORG_ADMIN_PERMISSIONS = [
   PERMISSIONS.USERS_MANAGE,
   PERMISSIONS.AUDIT_READ,
   PERMISSIONS.DASHBOARD_READ,
+  PERMISSIONS.REQUESTS_MARK_OVERDUE,
 ];
 
 /** SDD §6.4 permission matrix. */

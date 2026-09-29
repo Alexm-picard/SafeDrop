@@ -118,3 +118,17 @@ export async function returnUnit(req, res) {
     }),
   );
 }
+
+/**
+ * `POST /api/requests/mark-overdue` — flag the caller's organisation's late checkouts now.
+ *
+ * "Now" is the server's clock at the moment of the request, never a value from the client: letting
+ * the caller back-date it would let an admin keep late items off the list. Stands in for a scheduler
+ * until there is one.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function markOverdue(req, res) {
+  const updated = await checkoutService.markOverdue(req.orgId, { now: new Date() });
+  res.status(200).json({ updated });
+}

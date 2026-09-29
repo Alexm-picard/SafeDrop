@@ -37,6 +37,7 @@ const matrix = {
   'users:manage': ['ORG_ADMIN'],
   'audit:read': ['ORG_ADMIN'],
   'dashboard:read': ['ORG_ADMIN'],
+  'requests:mark-overdue': ['ORG_ADMIN'],
 };
 
 describe('permission matrix (SDD §6.4)', () => {
