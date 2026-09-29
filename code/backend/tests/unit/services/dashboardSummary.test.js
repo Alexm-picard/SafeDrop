@@ -14,6 +14,7 @@
  * timers as well would stall the MongoDB driver that the shared test setup keeps connected.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UNIT_STATUS_LIST } from '../../../src/utils/constants.js';
 
 vi.mock('../../../src/repositories/assetUnit.repository.js', () => ({
   countByStatus: vi.fn(),
@@ -32,17 +33,30 @@ const { summary, clearSummaryCache, SUMMARY_CACHE_TTL_MS, ACTIVITY_WINDOW_DAYS }
 const ORG = '6aab2a45c6e457e01ac0968a';
 const OTHER_ORG = '6aab2a45c6e457e01ac0968b';
 
+/**
+ * A `countByStatus` result shaped like the real one: **every** status in `UNIT_STATUS_LIST`, zero
+ * unless named here.
+ *
+ * Derived from the enum rather than typed out, because the repository's contract is that it zero-fills
+ * every status and the service relies on that — `totalAssets` adds several of them together. A mock
+ * that lists the statuses by hand silently stops matching the contract the moment one is added, and
+ * the sum then produces `NaN` rather than failing where the drift is. That is exactly what happened
+ * when MAINTENANCE was added for SCRUM-141, and only the full suite caught it.
+ * @param {Record<string, number>} [counts]
+ * @returns {Record<string, number>}
+ */
+const statusCounts = (counts = {}) => ({
+  ...Object.fromEntries(UNIT_STATUS_LIST.map((status) => [status, 0])),
+  ...counts,
+});
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
   clearSummaryCache();
-  assetUnitRepo.countByStatus.mockResolvedValue({
-    AVAILABLE: 4,
-    HELD: 1,
-    OUT: 2,
-    RETIRED: 1,
-    REQUESTED: 0,
-  });
+  assetUnitRepo.countByStatus.mockResolvedValue(
+    statusCounts({ AVAILABLE: 4, HELD: 1, OUT: 2, RETIRED: 1 }),
+  );
   checkoutRepo.countByState.mockResolvedValue({ PENDING: 3, CHECKED_OUT: 2 });
   checkoutRepo.countOverdue.mockResolvedValue(1);
   checkoutRepo.countCheckoutsByDay.mockResolvedValue({ '2026-09-19': 2 });
@@ -68,13 +82,9 @@ describe('dashboard summary shape', () => {
   });
 
   it('includes REQUESTED units in totalAssets, since they are not retired', async () => {
-    assetUnitRepo.countByStatus.mockResolvedValue({
-      AVAILABLE: 4,
-      HELD: 1,
-      OUT: 2,
-      RETIRED: 1,
-      REQUESTED: 2,
-    });
+    assetUnitRepo.countByStatus.mockResolvedValue(
+      statusCounts({ AVAILABLE: 4, HELD: 1, OUT: 2, RETIRED: 1, REQUESTED: 2 }),
+    );
     expect(await summary(ORG)).toMatchObject({ totalAssets: 9, requested: 2 });
   });
 
@@ -123,13 +133,7 @@ describe('dashboard summary cache', () => {
 
   it('keeps one organisation’s numbers out of another’s (SR-2)', async () => {
     await summary(ORG);
-    assetUnitRepo.countByStatus.mockResolvedValue({
-      AVAILABLE: 0,
-      HELD: 0,
-      OUT: 0,
-      RETIRED: 0,
-      REQUESTED: 0,
-    });
+    assetUnitRepo.countByStatus.mockResolvedValue(statusCounts());
     expect(await summary(OTHER_ORG)).toMatchObject({ totalAssets: 0 });
     expect(assetUnitRepo.countByStatus).toHaveBeenCalledTimes(2);
   });
