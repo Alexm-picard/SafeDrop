@@ -17,7 +17,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { errorResponse } from '../../mocks/handlers';
+import { errorResponse, summary } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { anonymousState, renderApp } from '../../utils/render';
 /**
@@ -61,6 +61,8 @@ describe('OrgSetupPage', () => {
     await fill(user, 'Correct-Horse-Battery-9');
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
-    expect(await screen.findByText('12')).toBeInTheDocument();
+    // From the fixture, not typed here: this test is about landing on a dashboard that has loaded its
+    // data, and it should not break when the fixture's numbers change (SCRUM-141 changed totalAssets).
+    expect(await screen.findByText(String(summary.totalAssets))).toBeInTheDocument();
   });
 });

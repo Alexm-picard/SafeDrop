@@ -230,3 +230,168 @@ describe('AssetDetailPage — admin actions (SCRUM-122)', () => {
     expect(screen.getByRole('link', { name: 'Edit asset' })).toBeInTheDocument();
   });
 });
+
+/**
+ * AC7 (SCRUM-141): an admin sends one unit for repair from the row it is in, and brings it back.
+ *
+ * The action lives in the unit row for the same reason "Request this" does: the choice is about one
+ * physical item, made while looking at the list of them.
+ *
+ * The status *label* is not tested as a separate criterion, because it needs no code —
+ * `humanize('MAINTENANCE')` already renders "Maintenance". It is asserted inside the tests below as a
+ * consequence of the action, which is the only place it is evidence of anything.
+ */
+describe('AssetDetailPage — unit maintenance (SCRUM-141)', () => {
+  /** The first unit of the laptop, which the fixture leaves AVAILABLE. */
+  const availableUnit = () => assetUnits[assets[0].id][0];
+  /** The second, which is OUT — in someone's hands, so it cannot go for repair. */
+  const outUnit = () => assetUnits[assets[0].id][1];
+
+  it('offers Start maintenance on an AVAILABLE unit, and not on one that is OUT', async () => {
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    expect(
+      within(table).getByRole('button', {
+        name: `Start maintenance for unit ${availableUnit().tag}`,
+      }),
+    ).toBeInTheDocument();
+    // The API would refuse with 409, so offering the button would be a lie — the same reasoning
+    // that keeps "Request this" off a unit nobody can borrow.
+    expect(
+      within(table).queryByRole('button', {
+        name: `Start maintenance for unit ${outUnit().tag}`,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers End maintenance on a unit already in maintenance, and shows its status', async () => {
+    const unit = availableUnit();
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          units: [{ ...unit, status: 'MAINTENANCE' }, outUnit()],
+        }),
+      ),
+    );
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    // Scoped to the unit's own row, not the whole table: the actions column is *headed*
+    // "Maintenance" too, so a table-wide text query would match the header as well and prove nothing
+    // about this unit's status.
+    const row = within(table).getByRole('row', { name: new RegExp(unit.tag) });
+    expect(within(row).getByText('Maintenance')).toBeInTheDocument();
+    expect(
+      within(row).getByRole('button', { name: `End maintenance for unit ${unit.tag}` }),
+    ).toBeInTheDocument();
+    // One action per row, and it is the one that applies: a unit in the shop cannot be sent again.
+    expect(
+      within(table).queryByRole('button', { name: `Start maintenance for unit ${unit.tag}` }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('sends the unit for repair, then shows it as Maintenance with a notice', async () => {
+    const unit = availableUnit();
+    let started = false;
+    server.use(
+      http.post('*/api/assets/:id/units/:unitId/maintenance', () => {
+        started = true;
+        return HttpResponse.json({ ...unit, status: 'MAINTENANCE' });
+      }),
+      // The page reloads the asset after the action, so the refreshed read has to reflect it —
+      // this is what proves the table shows server state rather than an optimistic guess.
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          units: [{ ...unit, status: started ? 'MAINTENANCE' : 'AVAILABLE' }, outUnit()],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    await user.click(
+      within(table).getByRole('button', { name: `Start maintenance for unit ${unit.tag}` }),
+    );
+
+    // The whole sentence, not a loose `tag.*maintenance` pattern: the unit's own table row has the
+    // text content "xps-001MaintenanceGood…", which matches such a pattern too, so a loose regex
+    // would pass whether or not the notice appeared at all.
+    expect(
+      await screen.findByText(`Unit ${unit.tag} is now in maintenance and cannot be requested.`),
+    ).toBeInTheDocument();
+    expect(started).toBe(true);
+    await waitFor(() => {
+      const row = within(screen.getByRole('table', { name: 'Units' })).getByRole('row', {
+        name: new RegExp(unit.tag),
+      });
+      expect(within(row).getByText('Maintenance')).toBeInTheDocument();
+    });
+  });
+
+  it('explains the API’s refusal rather than the bare status code', async () => {
+    server.use(
+      http.post('*/api/assets/:id/units/:unitId/maintenance', () =>
+        errorResponse(409, 'CONFLICT', 'Only an available unit can be put into maintenance'),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    await user.click(
+      within(table).getByRole('button', {
+        name: `Start maintenance for unit ${availableUnit().tag}`,
+      }),
+    );
+
+    // The server's own wording, which names the reason, the way onRetire already surfaces it.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/only an available unit/i);
+  });
+
+  /**
+   * The two tests below were written *after* the implementation and passed on their first run —
+   * necessarily so. A test asserting that something is *not* on the page cannot fail while nothing
+   * puts it there, so neither could ever have been a red. They are here to catch the column being
+   * widened later, not as evidence of test-first development.
+   *
+   * Hiding the controls is presentation, not a security control: `assets:write` is enforced by the API
+   * on both routes (SR-1), so a member who reaches them another way gets a 403 rather than an effect.
+   */
+  it('offers a MEMBER no maintenance actions, while the units stay readable', async () => {
+    renderDetail(assets[0].id, { user: memberUser });
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    expect(
+      within(table).queryByRole('button', { name: /maintenance for unit/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(table).queryByRole('columnheader', { name: 'Maintenance' }),
+    ).not.toBeInTheDocument();
+    // The table itself is still theirs to read, statuses included.
+    expect(within(table).getByText('Available')).toBeInTheDocument();
+  });
+
+  it('offers no maintenance actions on a retired asset', async () => {
+    // Its units may still read AVAILABLE, but the asset is out of circulation — the same reasoning
+    // that removes "Request this" and the add-unit form.
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          retiredAt: '2026-09-19T12:00:00.000Z',
+          units: assetUnits[assets[0].id],
+        }),
+      ),
+    );
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+
+    expect(
+      within(table).queryByRole('button', { name: /maintenance for unit/i }),
+    ).not.toBeInTheDocument();
+  });
+});

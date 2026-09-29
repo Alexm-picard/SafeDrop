@@ -75,11 +75,14 @@ export const activityDays = (days = 30) =>
     checkouts: index === days - 3 ? 6 : index % 4 === 0 ? 2 : 0,
   }));
 export const summary = {
-  totalAssets: 12,
+  // Internally consistent, the way the API's own numbers are: totalAssets is available + held +
+  // checkedOut + requested + maintenance (SCRUM-141), and excludes only the retired units.
+  totalAssets: 15,
   checkedOut: 4,
   available: 7,
   held: 1,
   requested: 0,
+  maintenance: 3,
   retired: 2,
   pendingRequests: 3,
   overdue: 2,
@@ -587,6 +590,23 @@ export const handlers = [
       },
       { status: 201 },
     );
+  }),
+  // Unit maintenance (SCRUM-141). Unlike the four above, these mirror a backend that is already
+  // implemented rather than a planned contract: both answer with the updated unit, and the conflict
+  // and 404 cases are overridden per test by whichever test cares about them.
+  http.post('*/api/assets/:id/units/:unitId/maintenance', ({ params }) => {
+    const unit = (assetUnits[params.id] ?? []).find((u) => u.id === params.unitId);
+    if (!unit) {
+      return errorResponse(404, 'NOT_FOUND', 'Unit not found');
+    }
+    return HttpResponse.json({ ...unit, status: 'MAINTENANCE' });
+  }),
+  http.post('*/api/assets/:id/units/:unitId/maintenance/end', ({ params }) => {
+    const unit = (assetUnits[params.id] ?? []).find((u) => u.id === params.unitId);
+    if (!unit) {
+      return errorResponse(404, 'NOT_FOUND', 'Unit not found');
+    }
+    return HttpResponse.json({ ...unit, status: 'AVAILABLE' });
   }),
   http.get('*/api/requests', ({ request }) =>
     HttpResponse.json(requestsPage(new URL(request.url).searchParams)),

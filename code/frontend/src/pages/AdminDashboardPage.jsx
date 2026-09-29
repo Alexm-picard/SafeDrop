@@ -69,6 +69,9 @@ export function AdminDashboardPage() {
             <Stat label="Available" value={data.available} />
             <Stat label="On hold" value={data.held} />
             <Stat label="Requested" value={data.requested} />
+            {/* Its own tile rather than folded into Available: a unit in the shop is still owned and
+                still counted in Total assets, but it cannot be lent today (SCRUM-141). */}
+            <Stat label="In maintenance" value={data.maintenance} />
             <Stat label="Retired" value={data.retired} />
           </dl>
           <section aria-labelledby="activity-heading">

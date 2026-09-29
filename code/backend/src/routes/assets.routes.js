@@ -25,7 +25,7 @@ import * as assets from '../controllers/assets.controller.js';
 import { ASSET_CONDITION_LIST } from '../utils/constants.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
-import { emptyBody, idParams, pagination } from './schemas.js';
+import { emptyBody, idParams, objectId, pagination } from './schemas.js';
 
 /**
  * What each asset field may contain, with no defaults attached.
@@ -96,6 +96,16 @@ export const unitBody = z.object({
   condition: z.enum(ASSET_CONDITION_LIST).default('GOOD'),
 });
 
+/**
+ * Params for a route addressing one unit *through* the asset that owns it (SCRUM-141).
+ *
+ * Both ids are validated here so a malformed one is a 400 rather than a cast error further in, and
+ * the service can rely on both being well formed. The asset id is not redundant: the service checks
+ * that the unit really belongs to *that* asset, so a valid unit id under the wrong asset is a 404
+ * rather than a silent success.
+ */
+export const unitParams = z.object({ id: objectId, unitId: objectId });
+
 export const assetsRouter = createRouter();
 
 defineRoute(
@@ -159,4 +169,24 @@ defineRoute(
     schemas: { params: idParams, body: unitBody },
   },
   assets.addUnit,
+);
+defineRoute(
+  assetsRouter,
+  {
+    method: 'POST',
+    path: '/:id/units/:unitId/maintenance',
+    permission: PERMISSIONS.ASSETS_WRITE,
+    schemas: { params: unitParams, body: emptyBody.optional() },
+  },
+  assets.startMaintenance,
+);
+defineRoute(
+  assetsRouter,
+  {
+    method: 'POST',
+    path: '/:id/units/:unitId/maintenance/end',
+    permission: PERMISSIONS.ASSETS_WRITE,
+    schemas: { params: unitParams, body: emptyBody.optional() },
+  },
+  assets.endMaintenance,
 );

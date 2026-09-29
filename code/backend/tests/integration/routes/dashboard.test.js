@@ -97,6 +97,25 @@ describe('GET /api/dashboard/summary (SCRUM-102)', () => {
     expect(await readSummary(seed.a)).toMatchObject({ totalAssets: 7, retired: 2 });
   });
 
+  it('counts a unit in maintenance, and keeps it in totalAssets (SCRUM-141)', async () => {
+    // The counterpart to the test above, and the opposite answer. A retired unit has left the
+    // inventory, so it is out of totalAssets. A unit in for repair has not: the organisation still
+    // owns it and expects it back, so dropping it from the total would make the org appear to lose
+    // equipment every time something broke. It moves out of `available`, because it cannot be lent.
+    const before = await readSummary(seed.a);
+    expect(before).toMatchObject({ totalAssets: 7, available: 3, maintenance: 0 });
+
+    const { asset, units } = seed.a.extraAssets[0];
+    const res = await request(app)
+      .post(`/api/assets/${asset._id}/units/${units[0]._id}/maintenance`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({});
+    expect(res.status).toBe(200);
+
+    const after = await readSummary(seed.a);
+    expect(after).toMatchObject({ totalAssets: 7, available: 2, maintenance: 1 });
+  });
+
   it('returns zeros for an organisation without units', async () => {
     const empty = await request(app).post('/api/organizations').send({
       orgName: 'Empty Org',

@@ -176,4 +176,8 @@ export const UNIT_STATUS = Object.freeze({
   OUT: 'OUT',
   RETIRED: 'RETIRED',
   REQUESTED: 'REQUESTED',
+  // SCRUM-141. Reversible, unlike RETIRED: the unit is being repaired and will come back. Nothing
+  // here needs a label for it — `humanize` renders "Maintenance" — and the existing AVAILABLE check
+  // on "Request this" already keeps a unit in the shop from being requested.
+  MAINTENANCE: 'MAINTENANCE',
 });

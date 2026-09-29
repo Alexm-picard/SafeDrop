@@ -78,6 +78,37 @@ export const addUnit = (id, input) =>
     body: input,
   });
 /**
+ * Send one unit out of circulation for repair (ORG_ADMIN — SCRUM-141).
+ *
+ * A POST to an action sub-path rather than a PATCH of the unit's status, matching `/retire` and
+ * `/approve`: what the admin is doing is an event with rules, not a field edit.
+ *
+ * The unit is addressed through the asset that owns it, and the server checks that relationship —
+ * a unit id under the wrong asset is a 404.
+ * @param {string} id asset id
+ * @param {string} unitId
+ * @returns {Promise<object>} the updated unit
+ */
+export const startMaintenance = (id, unitId) =>
+  apiRequest(
+    `/api/assets/${encodeURIComponent(id)}/units/${encodeURIComponent(unitId)}/maintenance`,
+    { method: 'POST', body: {} },
+  );
+/**
+ * Bring a repaired unit back into circulation (ORG_ADMIN — SCRUM-141).
+ *
+ * Safe to call twice: the server answers 200 for a unit that is already available, because the
+ * caller's goal is met, and records nothing the second time.
+ * @param {string} id asset id
+ * @param {string} unitId
+ * @returns {Promise<object>} the updated unit
+ */
+export const endMaintenance = (id, unitId) =>
+  apiRequest(
+    `/api/assets/${encodeURIComponent(id)}/units/${encodeURIComponent(unitId)}/maintenance/end`,
+    { method: 'POST', body: {} },
+  );
+/**
  * Read one asset's complete chain of custody (ORG_ADMIN — SCRUM-29).
  *
  * Read-only, like the audit trail it draws from: there is no call here to change or remove an

@@ -49,6 +49,21 @@ describe('AdminDashboardPage', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('shows how many units are in maintenance (SCRUM-141)', async () => {
+    // Its own tile, not folded into "Available": an admin needs to see that three items are in the
+    // shop. The count comes from the API like every other figure here (AT1), and the unit is still in
+    // totalAssets because the organisation has not lost it — it is coming back.
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+
+    const summaryList = await screen.findByLabelText('Inventory summary');
+    expect(within(summaryList).getByText('In maintenance').nextElementSibling).toHaveTextContent(
+      String(summary.maintenance),
+    );
+    expect(within(summaryList).getByText('Total assets').nextElementSibling).toHaveTextContent(
+      String(summary.totalAssets),
+    );
+  });
+
   it('AT1: every tile matches the data the API returned', async () => {
     server.use(
       http.get('*/api/dashboard/summary', () =>
