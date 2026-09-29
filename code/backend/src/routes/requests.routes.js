@@ -163,3 +163,15 @@ defineRoute(
   },
   requests.returnUnit,
 );
+
+// Org Admin only, and no body: the instant is the server's, never the caller's (see the controller).
+defineRoute(
+  requestsRouter,
+  {
+    method: 'POST',
+    path: '/mark-overdue',
+    permission: PERMISSIONS.REQUESTS_MARK_OVERDUE,
+    schemas: { body: emptyBody.optional() },
+  },
+  requests.markOverdue,
+);
