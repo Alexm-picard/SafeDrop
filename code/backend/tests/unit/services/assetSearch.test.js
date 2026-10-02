@@ -92,6 +92,17 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
 
     expect(result.matches).toEqual([]);
   });
+
+  it('SCRUM-145: leaves retired assets out of the results', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    const retired = await assetRepo.create(ORG, { name: 'Tascam Recorder', category: 'Audio' });
+    await assetRepo.retire(ORG, retired.id);
+
+    const result = await searchAssets(ORG, 'recorder');
+
+    // Retirement is a soft delete: the catalogue list already hides it, and search must agree.
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
 });
 
 describe('SCRUM-103 AC3: AI-assisted search', () => {
@@ -210,6 +221,20 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     const sentIds = JSON.parse(body.input).assets.map((asset) => asset.id);
     expect(new Set(sentIds).size).toBe(sentIds.length);
     expect(sentIds).toHaveLength(100);
+  });
+
+  it('SCRUM-145: never sends a retired asset to the model as a candidate', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    // Matches the query, so without the filter it would enter through the plain-search half of
+    // pickCandidates() — the catalogue page already excludes it.
+    const retired = await assetRepo.create(ORG, { name: 'Tascam Recorder', category: 'Audio' });
+    await assetRepo.retire(ORG, retired.id);
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    await searchAssets(ORG, 'recorder');
+
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    expect(JSON.parse(body.input).assets.map((asset) => asset.id)).toEqual([recorder.id]);
   });
 
   it('AC3b: drops any assetId the model returns that was not among the candidates sent', async () => {
