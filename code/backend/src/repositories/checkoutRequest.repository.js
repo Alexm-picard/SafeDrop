@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped CheckoutRequest persistence (SDD §2.4)
+// AI-Assisted Areas: tenant-scoped CheckoutRequest persistence (SDD §2.4); SCRUM-148 create() can start a request APPROVED
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -27,19 +27,26 @@ import { CheckoutRequest } from '../models/CheckoutRequest.js';
 import { REQUEST_STATE, REQUEST_STATE_LIST } from '../utils/constants.js';
 
 /**
- * Open a new checkout request. It starts PENDING via the schema default.
+ * Open a new checkout request.
+ *
+ * It starts PENDING via the schema default. The one exception is an auto-approved request
+ * (SCRUM-148), which `submit()` creates directly in APPROVED: `approval` carries the state and the
+ * decision timestamp for that case, and `decidedBy` stays null because no person decided it.
  * @param {string} orgId
  * @param {{ unitId: string, requesterId: string, neededFrom: Date, neededTo: Date, note?: string }} data
- * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @param {{ session?: import('mongoose').ClientSession, approval?: { state: string, decidedAt: Date, autoApproved: boolean } }} [options]
  * @returns {Promise<import('mongoose').Document>}
  */
 export async function create(
   orgId,
   { unitId, requesterId, neededFrom, neededTo, note },
-  { session } = {},
+  { session, approval } = {},
 ) {
+  const initial = approval
+    ? { state: approval.state, decidedAt: approval.decidedAt, autoApproved: approval.autoApproved }
+    : {};
   const [doc] = await CheckoutRequest.create(
-    [{ orgId, unitId, requesterId, neededFrom, neededTo, note }],
+    [{ orgId, unitId, requesterId, neededFrom, neededTo, note, ...initial }],
     {
       session,
     },

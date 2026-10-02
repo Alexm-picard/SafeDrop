@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Strategy-pattern approval policy; Iteration 1 ships one fixed policy (SDD §8.5)
+// AI-Assisted Areas: Strategy-pattern approval policy; Iteration 1 ships one fixed policy (SDD §8.5); SCRUM-148 configurableApproval (asset → org → REQUIRED)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -16,8 +16,14 @@
  * Iteration 1 ships one policy: every request needs a decision by someone with `requests:decide` who
  * is not the requester.
  *
- * Exports: `requireDistinctApprover`, `policyFor(org)`, `registerPolicy(policy)`, `getPolicy(name)`.
+ * Iteration 2 (SCRUM-148) adds `configurableApproval`, which lets an Org Admin decide whether a
+ * request needs a human at all — per organisation, overridable per asset — and makes it the policy
+ * every organisation gets.
+ *
+ * Exports: `requireDistinctApprover`, `configurableApproval`, `effectiveApprovalMode(asset, org)`,
+ * `policyFor(org)`, `registerPolicy(policy)`, `getPolicy(name)`.
  */
+import { APPROVAL_MODE, ORG_APPROVAL_MODE_LIST } from '../../utils/constants.js';
 import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
 
 /**
@@ -25,8 +31,19 @@ import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
  * @property {string} name
  * @property {(request: { requesterId: unknown }, actor: { userId: unknown, role: string }) => { allowed: boolean, reason?: string }} canDecide
  *   May `actor` approve or deny `request`?
- * @property {(request: object) => boolean} requiresApproval
+ * @property {(context: ApprovalContext) => boolean} requiresApproval
  *   Does this request need a human decision before checkout?
+ */
+
+/**
+ * What a policy is shown when asked whether a request needs approval (SCRUM-148).
+ *
+ * The request alone is not enough once the rule is configurable: the asset carries the per-asset
+ * override and the organisation carries the default, so both travel with it.
+ * @typedef {object} ApprovalContext
+ * @property {object} request the request being submitted
+ * @property {{ approvalMode?: string }} [asset] the asset the requested unit belongs to
+ * @property {{ approvalSettings?: { defaultMode?: string } }} [org] the requester's organisation
  */
 
 /**
@@ -55,18 +72,66 @@ export const requireDistinctApprover = Object.freeze({
   },
 });
 
-const policies = new Map([[requireDistinctApprover.name, requireDistinctApprover]]);
+/**
+ * Configurable approval (SCRUM-148): the policy every organisation gets from Iteration 2.
+ *
+ * The rule: an asset's `approvalMode` wins unless it is INHERIT, in which case the organisation's
+ * `approvalSettings.defaultMode` decides. Anything missing or unrecognised answers REQUIRED, so a
+ * document written before the migration (or a corrupt value) fails closed rather than skipping
+ * approval — an unknown mode quietly auto-approving would hand every member a free pass.
+ *
+ * Who may decide is unchanged from `requireDistinctApprover`: configurability changes *whether* a
+ * human decides, never *who*.
+ * @type {ApprovalPolicy}
+ */
+export const configurableApproval = Object.freeze({
+  name: 'configurable-approval',
+  requiresApproval({ asset, org } = {}) {
+    return effectiveApprovalMode(asset, org) !== APPROVAL_MODE.AUTO;
+  },
+  canDecide: requireDistinctApprover.canDecide,
+});
+
+/**
+ * Resolve the mode that applies to one asset: its own override, else the organisation default, else
+ * REQUIRED.
+ *
+ * Membership is checked against the frozen lists with `includes`, not by indexing into an object, so
+ * a value such as `constructor` or `__proto__` cannot resolve to something truthy.
+ * @param {{ approvalMode?: string }} [asset]
+ * @param {{ approvalSettings?: { defaultMode?: string } }} [org]
+ * @returns {'REQUIRED'|'AUTO'}
+ */
+export function effectiveApprovalMode(asset, org) {
+  const assetMode = asset?.approvalMode;
+  if (assetMode !== APPROVAL_MODE.INHERIT && ORG_APPROVAL_MODE_LIST.includes(assetMode)) {
+    return assetMode;
+  }
+  if (assetMode !== undefined && assetMode !== null && assetMode !== APPROVAL_MODE.INHERIT) {
+    // Present but not a mode we know: fail closed rather than falling through to the org default.
+    return APPROVAL_MODE.REQUIRED;
+  }
+  const orgMode = org?.approvalSettings?.defaultMode;
+  return ORG_APPROVAL_MODE_LIST.includes(orgMode) ? orgMode : APPROVAL_MODE.REQUIRED;
+}
+
+const policies = new Map([
+  [requireDistinctApprover.name, requireDistinctApprover],
+  [configurableApproval.name, configurableApproval],
+]);
 
 /**
  * Resolve the approval policy for an organisation.
  *
- * Iteration 1 always answers `requireDistinctApprover`; the parameter is already in the signature so
- * that per-organisation policies can arrive without touching the callers.
+ * Every organisation gets `configurableApproval` (SCRUM-148). Its settings travel in the `org` and
+ * `asset` passed to `requiresApproval`, not in the choice of policy, so one policy object serves every
+ * tenant. With the migration's defaults (REQUIRED / INHERIT) it behaves exactly like the Iteration 1
+ * policy.
  * @param {object} _org
  * @returns {ApprovalPolicy}
  */
 export function policyFor(_org) {
-  return requireDistinctApprover;
+  return configurableApproval;
 }
 
 /**

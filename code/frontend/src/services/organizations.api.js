@@ -1,12 +1,13 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: typed call for POST /api/organizations (SCRUM-100)
+// AI-Assisted Areas: typed call for POST /api/organizations (SCRUM-100); approval settings calls (SCRUM-148)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
- * Organisation creation endpoint — the sign-up path.
+ * Organisation endpoints: creation (the sign-up path) and the caller's own organisation's approval
+ * settings (SCRUM-148).
  */
 import { apiRequest } from './api';
 /**
@@ -25,3 +26,23 @@ export const createOrganization = (input) =>
     body: input,
     retryOn401: false,
   });
+
+/**
+ * Read the caller's organisation's approval default (`GET /api/organizations/me/approval-settings`).
+ *
+ * ORG_ADMIN only (`org:settings`). "me" because the organisation always comes from the session.
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ defaultMode: 'REQUIRED'|'AUTO' }>}
+ */
+export const getApprovalSettings = (signal) =>
+  apiRequest('/api/organizations/me/approval-settings', { signal });
+
+/**
+ * Change the approval default (`PATCH /api/organizations/me/approval-settings`).
+ *
+ * Applies to requests submitted from now on; requests already waiting stay in the queue.
+ * @param {{ defaultMode: 'REQUIRED'|'AUTO' }} input
+ * @returns {Promise<{ defaultMode: 'REQUIRED'|'AUTO' }>}
+ */
+export const updateApprovalSettings = (input) =>
+  apiRequest('/api/organizations/me/approval-settings', { method: 'PATCH', body: input });

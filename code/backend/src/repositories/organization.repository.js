@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Organization persistence (the tenant itself, so no orgId scoping parameter); touch() serialisation write for role changes
+// AI-Assisted Areas: Organization persistence (the tenant itself, so no orgId scoping parameter); touch() serialisation write for role changes; SCRUM-148 setApprovalDefault() and a session option on findById()
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; touch() added for the member-lifecycle ticket.
 
@@ -11,7 +11,7 @@
  * The odd one out among the repositories: an organisation *is* the tenant, so these functions take an
  * organisation id or slug rather than being scoped by one.
  *
- * Exports: `create`, `findById`, `findBySlug`.
+ * Exports: `create`, `findById`, `findBySlug`, `touch`, `setApprovalDefault`.
  */
 import { Organization } from '../models/Organization.js';
 
@@ -34,8 +34,8 @@ export async function create({ name, slug }, { session } = {}) {
  * @param {string} orgId the caller's own tenant id (from the verified token)
  * @returns {Promise<import('mongoose').Document|null>}
  */
-export async function findById(orgId) {
-  return Organization.findById(orgId);
+export async function findById(orgId, { session } = {}) {
+  return Organization.findById(orgId).session(session ?? null);
 }
 
 /**
@@ -74,4 +74,22 @@ export async function touch(orgId, { session } = {}) {
     { session },
   );
   return result.matchedCount === 1;
+}
+
+/**
+ * Set the organisation's approval default (SCRUM-148).
+ *
+ * `runValidators` makes the schema's enum the last line of defence: the route already restricts the
+ * value to REQUIRED/AUTO, but a caller inside the codebase cannot write INHERIT here either.
+ * @param {string} orgId
+ * @param {'REQUIRED'|'AUTO'} defaultMode
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>} the updated organisation, or null if it is gone
+ */
+export async function setApprovalDefault(orgId, defaultMode, { session } = {}) {
+  return Organization.findOneAndUpdate(
+    { _id: orgId },
+    { $set: { 'approvalSettings.defaultMode': defaultMode } },
+    { returnDocument: 'after', runValidators: true, session },
+  );
 }

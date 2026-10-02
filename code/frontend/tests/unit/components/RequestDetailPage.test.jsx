@@ -162,4 +162,29 @@ describe('RequestDetailPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/requests/${pending.id}`));
   });
+
+  it('SCRUM-148: an auto-approved request says no person decided it', async () => {
+    const auto = { ...approved, decidedBy: null, autoApproved: true };
+    server.use(
+      http.get(`*/api/requests/${approved.id}`, () =>
+        HttpResponse.json({
+          request: auto,
+          asset: null,
+          unit: null,
+          requester: { id: memberUser.id, name: memberUser.name, email: memberUser.email },
+          decidedBy: null,
+          timeline: [
+            { at: '2026-09-18T00:00:00.000Z', event: 'SUBMITTED' },
+            { at: '2026-09-18T00:00:00.000Z', event: 'AUTO_APPROVED' },
+          ],
+        }),
+      ),
+    );
+    await openRequest(approved, memberUser);
+
+    expect(screen.getByLabelText('Request details')).toHaveTextContent(/approved automatically/i);
+    expect(screen.getByRole('list', { name: 'Request history' })).toHaveTextContent(
+      'Auto approved',
+    );
+  });
 });

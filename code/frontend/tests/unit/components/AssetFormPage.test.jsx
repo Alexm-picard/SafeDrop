@@ -174,3 +174,44 @@ describe('AssetFormPage — edit', () => {
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 });
+
+describe('AssetFormPage — checkout approval (SCRUM-148)', () => {
+  it('a new asset uses the organization default unless the admin picks otherwise', async () => {
+    let sent;
+    server.use(
+      http.post('*/api/assets', async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ ...sent, id: assets[0].id, retiredAt: null }, { status: 201 });
+      }),
+    );
+    renderCreate();
+
+    expect(screen.getByLabelText('Checkout approval')).toHaveValue('INHERIT');
+    await userEvent.type(screen.getByLabelText('Name'), 'HDMI cable');
+    await userEvent.type(screen.getByLabelText('Category'), 'cable');
+    await userEvent.click(screen.getByRole('button', { name: 'Create asset' }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent.approvalMode).toBe('INHERIT');
+  });
+
+  it('sends the override an admin picks when editing', async () => {
+    let patched;
+    server.use(
+      http.patch('*/api/assets/:id', async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json({ ...assets[0], ...patched });
+      }),
+    );
+    renderEdit();
+
+    const select = await screen.findByLabelText('Checkout approval');
+    // The fixture asset predates SCRUM-148 and has no approvalMode: it shows as the default.
+    expect(select).toHaveValue('INHERIT');
+    await userEvent.selectOptions(select, 'Always approve automatically');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(patched).toBeDefined());
+    expect(patched.approvalMode).toBe('AUTO');
+  });
+});

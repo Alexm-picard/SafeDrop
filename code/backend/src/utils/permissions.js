@@ -55,6 +55,8 @@ export const PERMISSIONS = Object.freeze({
   PASSWORD_SELF: 'password:self',
   /** Move this organisation's late checkouts to OVERDUE on demand (POST /api/requests/mark-overdue). */
   REQUESTS_MARK_OVERDUE: 'requests:mark-overdue',
+  /** Change organisation-wide settings, e.g. the approval default (SCRUM-148). */
+  ORG_SETTINGS: 'org:settings',
 });
 export const PERMISSION_LIST = Object.freeze(Object.values(PERMISSIONS));
 export const ALL_PERMISSIONS = new Set(PERMISSION_LIST);
@@ -78,6 +80,7 @@ const ORG_ADMIN_PERMISSIONS = [
   PERMISSIONS.AUDIT_READ,
   PERMISSIONS.DASHBOARD_READ,
   PERMISSIONS.REQUESTS_MARK_OVERDUE,
+  PERMISSIONS.ORG_SETTINGS,
 ];
 
 /** SDD §6.4 permission matrix. */
