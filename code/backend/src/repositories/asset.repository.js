@@ -69,7 +69,8 @@ export async function list(orgId, { includeRetired = false, category, page = 1, 
  * Find the tenant's assets whose name, description or category contains `text`, ignoring case.
  *
  * The plain catalogue search behind SCRUM-103: what a member gets when AI is off, and the fallback
- * when the model's answer cannot be used.
+ * when the model's answer cannot be used. Retired assets are left out, the same rule `list()`
+ * applies by default (SCRUM-145): a soft-deleted asset cannot be borrowed, so it is not a result.
  * @param {string} orgId
  * @param {string} text what the member typed
  * @returns {Promise<import('mongoose').Document[]>} sorted by name
@@ -80,6 +81,7 @@ export async function search(orgId, text) {
   const pattern = new RegExp(escapeRegExp(text), 'i');
   return Asset.find({
     orgId,
+    retiredAt: null,
     $or: [{ name: pattern }, { description: pattern }, { category: pattern }],
   }).sort({ name: 1 });
 }
