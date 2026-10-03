@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12)
+// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members, Groups (SCRUM-167) and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket.
 
@@ -72,6 +72,11 @@ export function Layout() {
             {isAdmin ? (
               <li>
                 <NavLink to={ROUTES.users}>Users</NavLink>
+              </li>
+            ) : null}
+            {isAdmin ? (
+              <li>
+                <NavLink to={ROUTES.groups}>Groups</NavLink>
               </li>
             ) : null}
             {isAdmin ? (

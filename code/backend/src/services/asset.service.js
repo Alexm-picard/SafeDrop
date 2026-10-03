@@ -1,8 +1,8 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents; write path added for SCRUM-134)
-// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148); requiredGroupId validation for restricted equipment (SCRUM-149)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); requiredGroupId validation pending review
+// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148); requiredGroupId validation for restricted equipment (SCRUM-149); allowedGroupIds validation, allowedGroups names and caller eligibility on reads (SCRUM-150); restricted flag (SCRUM-203); restrictionsOf shared with search (SCRUM-202)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); allowedGroupIds validation pending review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
@@ -36,6 +36,7 @@ import * as userRepo from '../repositories/user.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE, UNIT_STATUS } from '../utils/constants.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { listForTargets, record as recordAudit } from './audit.service.js';
+import { isEligible } from './group.service.js';
 
 /**
  * The unit statuses that block retiring the asset they belong to.
@@ -59,24 +60,71 @@ const BLOCKING_UNIT_STATUSES = Object.freeze([
 const isDuplicateKey = (err) => Boolean(err) && err.code === 11000;
 
 /**
- * Confirm `requiredGroupId` names a real group in this organisation before it is stamped onto an
- * asset (SCRUM-149). A falsy value (null/undefined, "open to the whole organisation") is left alone —
- * only a truthy value is checked, so clearing the restriction never has to resolve anything.
+ * Confirm every id in `allowedGroupIds` names a real group in this organisation before the list is
+ * stamped onto an asset (SCRUM-149, SCRUM-150 AT-5). An empty or absent list ("open to the whole
+ * organisation") is left alone, so clearing the restriction never has to resolve anything. One
+ * unknown id refuses the whole list: a half-applied restriction would gate the asset on groups the
+ * admin did not choose.
+ *
+ * A group from another organisation is reported the same way as one that does not exist, so the
+ * answer never confirms it exists elsewhere. The team kept this a 400 rather than the ticket's 404
+ * (2026-10-03).
  * @param {string} orgId
- * @param {string|null|undefined} requiredGroupId
+ * @param {string[]|undefined} allowedGroupIds already de-duplicated by the route schema
  * @param {{ session?: import('mongoose').ClientSession }} [options]
- * @throws {ValidationError} (400) when `requiredGroupId` is set but names no group in this organisation
+ * @throws {ValidationError} (400) when any id names no group in this organisation
  */
-async function assertGroupExists(orgId, requiredGroupId, { session } = {}) {
-  if (!requiredGroupId) {
+async function assertGroupsExist(orgId, allowedGroupIds, { session } = {}) {
+  if (!allowedGroupIds?.length) {
     return;
   }
-  const group = await groupRepo.findById(orgId, requiredGroupId, { session });
-  if (!group) {
+  const found = await groupRepo.findByIds(orgId, allowedGroupIds, { session });
+  if (found.length !== allowedGroupIds.length) {
     throw new ValidationError('Invalid request', [
-      { field: 'requiredGroupId', message: 'No such group in this organisation' },
+      // The same `{ location, path, message }` shape Zod's errors use, so the form shows this under
+      // the group picker like any other field error.
+      { location: 'body', path: 'allowedGroupIds', message: 'No such group in this organisation' },
     ]);
   }
+}
+
+/**
+ * Serialise assets with their allowed groups resolved to names, for the Restricted badge (SCRUM-150
+ * AT-4). One query for the whole page of assets rather than one per asset. An id whose group has since
+ * been deleted is left out of `allowedGroups` but stays in `allowedGroupIds`, which is what
+ * eligibility reads — so the asset stays restricted (fails closed) rather than silently opening up.
+ *
+ * `restricted` is read from the ids, not the names (SCRUM-203): once every listed group is deleted
+ * there are no names left to show, but the asset is still restricted — to nobody — and the page must
+ * say so rather than offer a Request button the API will refuse.
+ * @param {string} orgId
+ * @param {import('mongoose').Document[]} assets
+ * @returns {Promise<object[]>} each asset's JSON plus `allowedGroups: { id, name }[]` and `restricted`
+ */
+async function withAllowedGroups(orgId, assets) {
+  const restrictions = await restrictionsOf(orgId, assets);
+  return assets.map((asset, i) => ({ ...asset.toJSON(), ...restrictions[i] }));
+}
+
+/**
+ * The restriction fields for each asset, in the same order: `allowedGroups` (id and name of each
+ * listed group that still exists) and `restricted` (any group listed at all). One group query for all
+ * of them. Shared by the catalogue reads here and by search results (SCRUM-202), so every place an
+ * asset is shown answers "is it restricted, and to whom" the same way.
+ * @param {string} orgId
+ * @param {{ allowedGroupIds?: unknown[] }[]} assets documents or plain objects carrying the ids
+ * @returns {Promise<{ allowedGroups: { id: string, name: string }[], restricted: boolean }[]>}
+ */
+export async function restrictionsOf(orgId, assets) {
+  const idsOf = (asset) => (asset.allowedGroupIds ?? []).map(String);
+  const groups = await groupRepo.findByIds(orgId, [...new Set(assets.flatMap(idsOf))]);
+  const nameById = new Map(groups.map((g) => [String(g._id), g.name]));
+  return assets.map((asset) => ({
+    allowedGroups: idsOf(asset)
+      .filter((id) => nameById.has(id))
+      .map((id) => ({ id, name: nameById.get(id) })),
+    restricted: idsOf(asset).length > 0,
+  }));
 }
 
 /**
@@ -102,11 +150,14 @@ function snapshotOf(doc, patch) {
  * from `scopeTenant` — never from the request — so the tenant boundary is structural rather than a
  * check that could be forgotten (SR-2).
  * @param {string} orgId the caller's organisation, from the access token
+ * Each item also carries `allowedGroups` (id and name) so the catalogue can badge restricted
+ * equipment (SCRUM-150).
  * @param {{ page?: number, limit?: number, category?: string, includeRetired?: boolean }} [query]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export async function list(orgId, query = {}) {
-  return assetRepo.list(orgId, query);
+  const page = await assetRepo.list(orgId, query);
+  return { ...page, items: await withAllowedGroups(orgId, page.items) };
 }
 
 /**
@@ -116,18 +167,26 @@ export async function list(orgId, query = {}) {
  * indistinguishable from one that does not exist at all — both come back `null` and both answer 404,
  * never 403. Confirming existence to a caller who cannot see the record would itself leak across the
  * tenant boundary (SR-2).
+ *
+ * **Restricted equipment (SCRUM-150 AT-4).** The response names the asset's allowed groups and says
+ * whether *this caller* is `eligible` to request it, so the page can show the Restricted badge and
+ * disable the Request button with a reason. That is usability only: `checkout.service.js` enforces
+ * the same `isEligible()` rule on submit and approval.
  * @param {string} orgId the caller's organisation, from the access token
  * @param {string} assetId validated as an object id by the route's `idParams` schema
- * @returns {Promise<object>} the asset's fields plus its `units`
+ * @param {{ userId: string }} actor the caller, whose eligibility is reported
+ * @returns {Promise<object>} the asset's fields plus its `units`, `allowedGroups` and `eligible`
  * @throws {NotFoundError} (404) when absent, retired-or-not, from this or any other organisation
  */
-export async function get(orgId, assetId) {
+export async function get(orgId, assetId, actor) {
   const asset = await assetRepo.findById(orgId, assetId);
   if (!asset) {
     throw new NotFoundError('Asset not found');
   }
   const units = await assetUnitRepo.listByAsset(orgId, assetId);
-  return { ...asset.toJSON(), units };
+  const [json] = await withAllowedGroups(orgId, [asset]);
+  const eligible = await isEligible(orgId, actor.userId, asset);
+  return { ...json, units, eligible };
 }
 
 /**
@@ -139,23 +198,23 @@ export async function get(orgId, assetId) {
  *
  * The audit entry has an `after` and no `before`, because nothing preceded it. It carries the whole
  * created asset rather than a field list: for a creation, "what changed" is the record itself.
- * **`requiredGroupId`, when set, must name a real group in this organisation (SCRUM-149)** — checked
- * inside the same transaction as the insert, so the asset can never be created pointing at a group
- * that does not exist (or exists in a different organisation).
+ * **Every id in `allowedGroupIds` must name a real group in this organisation (SCRUM-149,
+ * SCRUM-150)** — checked inside the same transaction as the insert, so the asset can never be created
+ * pointing at a group that does not exist (or exists in a different organisation).
  * @param {string} orgId the caller's organisation, from the access token
  * @param {{ userId: string, role: string }} actor
- * @param {{ name: string, category: string, description?: string, imageUrl?: string|null, requiredGroupId?: string|null, requestId?: string }} input
+ * @param {{ name: string, category: string, description?: string, imageUrl?: string|null, allowedGroupIds?: string[], requestId?: string }} input
  *   validated `assetBody`, plus the HTTP request id for audit correlation
  * @returns {Promise<object>} the created asset
- * @throws {ValidationError} (400) `requiredGroupId` is set but names no group in this organisation
+ * @throws {ValidationError} (400) an `allowedGroupIds` entry names no group in this organisation
  */
 export async function create(orgId, actor, input = {}) {
-  const { name, category, description, imageUrl, approvalMode, requiredGroupId, requestId } = input;
+  const { name, category, description, imageUrl, approvalMode, allowedGroupIds, requestId } = input;
   return withTransaction(async (session) => {
-    await assertGroupExists(orgId, requiredGroupId, { session });
+    await assertGroupsExist(orgId, allowedGroupIds, { session });
     const asset = await assetRepo.create(
       orgId,
-      { name, category, description, imageUrl, approvalMode, requiredGroupId },
+      { name, category, description, imageUrl, approvalMode, allowedGroupIds },
       { session },
     );
     await recordAudit(
@@ -188,17 +247,17 @@ export async function create(orgId, actor, input = {}) {
  * An empty patch is not an error: it writes nothing and records nothing, which is the honest answer
  * to "change nothing". `requestId` is stripped first, since it is audit plumbing rather than a field
  * of the asset.
- * **`requiredGroupId`, when present and truthy, must name a real group in this organisation
- * (SCRUM-149)** — the same check `create()` applies, run before the write so a patch can never point
- * an asset at a group that does not exist. Clearing the restriction (`null`) is left alone, same as on
- * create.
+ * **Every id in a patched `allowedGroupIds` must name a real group in this organisation
+ * (SCRUM-149, SCRUM-150 AT-5)** — the same check `create()` applies, run before the write so a patch
+ * can never point an asset at a group that does not exist. Clearing the restriction (`[]`) is left
+ * alone, same as on create.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} assetId validated as an object id by the route's `idParams` schema
  * @param {Record<string, unknown>} patch validated `assetPatch`, plus `requestId`
  * @returns {Promise<object>} the updated asset
  * @throws {NotFoundError} (404) absent, or owned by another organisation
- * @throws {ValidationError} (400) `requiredGroupId` is set but names no group in this organisation
+ * @throws {ValidationError} (400) an `allowedGroupIds` entry names no group in this organisation
  */
 export async function update(orgId, actor, assetId, patch = {}) {
   const { requestId, ...fields } = patch;
@@ -210,9 +269,7 @@ export async function update(orgId, actor, assetId, patch = {}) {
     if (Object.keys(fields).length === 0) {
       return existing.toJSON();
     }
-    if (fields.requiredGroupId) {
-      await assertGroupExists(orgId, fields.requiredGroupId, { session });
-    }
+    await assertGroupsExist(orgId, fields.allowedGroupIds, { session });
 
     const before = snapshotOf(existing, fields);
     const updated = await assetRepo.update(orgId, assetId, fields, { session });

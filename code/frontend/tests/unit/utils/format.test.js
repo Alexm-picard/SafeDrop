@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: formatter tests
+// AI-Assisted Areas: formatter tests; restrictionNote (SCRUM-150)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -13,7 +13,14 @@
  * rather than as `Invalid Date`, `NaN`, or an exception.
  */
 import { describe, expect, it } from 'vitest';
-import { formatCount, formatDate, formatDay, humanize, pluralize } from '../../../src/utils/format';
+import {
+  formatCount,
+  formatDate,
+  formatDay,
+  humanize,
+  pluralize,
+  restrictionNote,
+} from '../../../src/utils/format';
 describe('format', () => {
   it('formatDate handles dates, strings and garbage', () => {
     expect(formatDate('2026-10-01T12:00:00Z')).toMatch(/2026/);
@@ -39,5 +46,31 @@ describe('format', () => {
     expect(humanize('CHECKED_OUT')).toBe('Checked out');
     expect(humanize('ORG_ADMIN')).toBe('Org admin');
     expect(humanize('')).toBe('');
+  });
+});
+
+describe('restrictionNote (SCRUM-150)', () => {
+  const g = (name) => ({ id: name, name });
+  it('names a single group', () => {
+    expect(restrictionNote([g('Drone Pilots')])).toBe(
+      'Only members of Drone Pilots can request this',
+    );
+  });
+  it('joins two groups with "or"', () => {
+    expect(restrictionNote([g('A'), g('B')])).toBe('Only members of A or B can request this');
+  });
+  it('lists three or more with commas, then "or"', () => {
+    expect(restrictionNote([g('A'), g('B'), g('C')])).toBe(
+      'Only members of A, B or C can request this',
+    );
+  });
+  it('explains an asset whose every group was deleted (SCRUM-203), when told it is restricted', () => {
+    expect(restrictionNote([], { restricted: true })).toBe(
+      'It is restricted to groups that no longer exist, so nobody can request it',
+    );
+  });
+  it('is empty for an unrestricted asset, like the other formatters given nothing', () => {
+    expect(restrictionNote([])).toBe('');
+    expect(restrictionNote(undefined)).toBe('');
   });
 });

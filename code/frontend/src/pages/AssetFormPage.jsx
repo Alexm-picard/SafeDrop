@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
-// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148)
+// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148); group picker restricting who can request it (SCRUM-150, SCRUM-176)
 // Human Contributions: pending team review
 // Notes: Follows the form patterns in OrgSetupPage and MembersPage. Fields mirror the `assetBody`
 // Zod schema in backend routes/assets.routes.js. Verified by
@@ -39,6 +39,7 @@ import { ErrorState } from '../components/ErrorState';
 import { FormField } from '../components/FormField';
 import { LoadingState } from '../components/LoadingState';
 import { useAsset } from '../hooks/useAssets';
+import { useGroups } from '../hooks/useGroups';
 import { errorMessage, isApiError } from '../services/api';
 import * as assetsApi from '../services/assets.api';
 import { APPROVAL_MODE, ASSET_APPROVAL_OPTIONS, ROUTES } from '../utils/constants';
@@ -51,16 +52,24 @@ const EMPTY_FORM = Object.freeze({
   description: '',
   imageUrl: '',
   approvalMode: APPROVAL_MODE.INHERIT,
+  allowedGroupIds: [],
 });
+
+/**
+ * One page of groups is enough for the picker: the API's largest page is 100, far more groups than an
+ * organisation restricting equipment by certification is likely to have.
+ */
+const GROUP_PICKER_PARAMS = Object.freeze({ page: 1, limit: 100 });
 
 /**
  * Map an asset from the API onto the form's values.
  *
  * `null` becomes `''` because a controlled input cannot hold `null` without React warning that it
  * has switched from uncontrolled to controlled; `toPayload` reverses this on the way back out.
- * @param {object} asset
  * An asset from before SCRUM-148 has no `approvalMode`; it behaves as INHERIT, so the form shows that.
- * @returns {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string }}
+ * One from before SCRUM-150 has no `allowedGroupIds`; it is open to everyone, so nothing is ticked.
+ * @param {object} asset
+ * @returns {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string, allowedGroupIds: string[] }}
  */
 function toValues(asset) {
   return {
@@ -69,6 +78,7 @@ function toValues(asset) {
     description: asset.description ?? '',
     imageUrl: asset.imageUrl ?? '',
     approvalMode: asset.approvalMode ?? APPROVAL_MODE.INHERIT,
+    allowedGroupIds: asset.allowedGroupIds ?? [],
   };
 }
 
@@ -77,8 +87,8 @@ function toValues(asset) {
  *
  * Trimming here rather than on each keystroke lets an admin type a space mid-value; the schema trims
  * too, so this only keeps the request honest about what will be stored.
- * @param {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string }} values
- * @returns {{ name: string, category: string, description: string, imageUrl: string|null, approvalMode: string }}
+ * @param {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string, allowedGroupIds: string[] }} values
+ * @returns {{ name: string, category: string, description: string, imageUrl: string|null, approvalMode: string, allowedGroupIds: string[] }}
  */
 function toPayload(values) {
   const imageUrl = values.imageUrl.trim();
@@ -88,6 +98,7 @@ function toPayload(values) {
     description: values.description.trim(),
     imageUrl: imageUrl === '' ? null : imageUrl,
     approvalMode: values.approvalMode,
+    allowedGroupIds: values.allowedGroupIds,
   };
 }
 
@@ -107,6 +118,13 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
   const [pending, setPending] = useState(false);
 
   const set = (name) => (event) => setValues((prev) => ({ ...prev, [name]: event.target.value }));
+  const toggleGroup = (groupId) => (event) =>
+    setValues((prev) => ({
+      ...prev,
+      allowedGroupIds: event.target.checked
+        ? [...prev.allowedGroupIds, groupId]
+        : prev.allowedGroupIds.filter((id) => id !== groupId),
+    }));
 
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -220,6 +238,11 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
           </select>
         )}
       </FormField>
+      <GroupPicker
+        selected={values.allowedGroupIds}
+        onToggle={toggleGroup}
+        error={fieldErrors.allowedGroupIds}
+      />
       <div className="actions">
         <button type="submit" disabled={pending}>
           {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create asset'}
@@ -229,6 +252,71 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Who may request this asset (SCRUM-150, SCRUM-176): a checkbox per group in the organisation.
+ *
+ * Nothing ticked means everyone may; ticking several means membership of any one is enough, so an
+ * asset can accept both a narrow certification and a broad one that covers it.
+ *
+ * If the groups cannot be loaded the picker says so and shows no boxes, and the form still sends the
+ * asset's current `allowedGroupIds` unchanged — an admin editing a description must not silently lift
+ * a restriction because the group list failed to load.
+ * @param {{ selected: string[], onToggle: (groupId: string) => (event: object) => void, error?: string }} props
+ * @returns {JSX.Element}
+ */
+function GroupPicker({ selected, onToggle, error }) {
+  const { status, data } = useGroups(GROUP_PICKER_PARAMS);
+  const groups = data?.items ?? [];
+
+  let body;
+  if (status === 'error') {
+    body = (
+      <p className="hint">
+        Could not load the groups, so this cannot be changed right now. Saving keeps the current
+        setting.
+      </p>
+    );
+  } else if (!data) {
+    body = <p className="hint">Loading groups…</p>;
+  } else if (groups.length === 0) {
+    body = <p className="hint">No groups yet, so everyone in the organization can request this.</p>;
+  } else {
+    body = groups.map((group) => (
+      <div key={group.id} className="radio-option">
+        <input
+          type="checkbox"
+          id={`asset-group-${group.id}`}
+          checked={selected.includes(group.id)}
+          onChange={onToggle(group.id)}
+        />
+        <label htmlFor={`asset-group-${group.id}`}>{group.name}</label>
+      </div>
+    ));
+  }
+
+  return (
+    <fieldset
+      className="radio-group"
+      aria-describedby={['asset-groups-hint', error ? 'asset-groups-error' : null]
+        .filter(Boolean)
+        .join(' ')}
+      aria-invalid={error ? true : undefined}
+    >
+      <legend>Who can request this</legend>
+      <p id="asset-groups-hint" className="hint">
+        Leave every group unticked to let anyone in the organization request it. Tick groups to
+        restrict it: a member of any one of them can request it.
+      </p>
+      {body}
+      {error ? (
+        <span id="asset-groups-error" className="field-error">
+          {error}
+        </span>
+      ) : null}
+    </fieldset>
   );
 }
 

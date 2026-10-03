@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149)
+// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149); MAX_ALLOWED_GROUPS (SCRUM-150)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); GROUP_* additions pending review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the user-groups ticket.
 
@@ -99,6 +99,12 @@ export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
 export const APPROVAL_MODE = freezeEnum(['INHERIT', 'REQUIRED', 'AUTO']);
 export const APPROVAL_MODE_LIST = Object.freeze(Object.keys(APPROVAL_MODE));
 export const ORG_APPROVAL_MODE_LIST = Object.freeze([APPROVAL_MODE.REQUIRED, APPROVAL_MODE.AUTO]);
+
+/**
+ * The most groups one asset may be restricted to (SCRUM-150). Generous for real use — a narrow
+ * certification plus a few broad ones — while keeping the eligibility query and the badge bounded.
+ */
+export const MAX_ALLOWED_GROUPS = 20;
 
 export const AUDIT_TARGET_TYPE = freezeEnum([
   'Organization',

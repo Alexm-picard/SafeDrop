@@ -30,6 +30,7 @@ import { resetAuthRateLimiter } from '../../../src/middleware/rateLimit.js';
 import { AuditEvent } from '../../../src/models/AuditEvent.js';
 import { User } from '../../../src/models/User.js';
 import { UserGroup } from '../../../src/models/UserGroup.js';
+import * as assetRepo from '../../../src/repositories/asset.repository.js';
 import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../../../src/utils/constants.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
@@ -317,6 +318,51 @@ describe('GET /api/groups and GET /api/groups/:id', () => {
 
     const member = detail.body.group.members.find((m) => m.id === String(seed.a.member._id));
     expect(member.deactivatedAt).not.toBeNull();
+  });
+});
+
+/**
+ * SCRUM-204: a group's page names the equipment it restricts, and flags the assets for which it is the
+ * only listed group — deleting it would leave those requestable by nobody.
+ */
+describe('GET /api/groups/:id — restrictedAssets (SCRUM-204)', () => {
+  it('lists the assets restricted to the group, flagging where it is the only group', async () => {
+    const pilots = await createGroup('Certified Drone Pilots');
+    const heavy = await createGroup('Heavy Machinery Certified');
+    const [laptop, camera] = [seed.a.asset, seed.a.extraAssets[0].asset];
+    await assetRepo.update(seed.a.orgId, laptop._id, { allowedGroupIds: [pilots.id] });
+    await assetRepo.update(seed.a.orgId, camera._id, { allowedGroupIds: [pilots.id, heavy.id] });
+
+    const res = await get(pilots.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.group.restrictedAssets).toEqual(
+      expect.arrayContaining([
+        { id: String(laptop._id), name: laptop.name, onlyGroup: true },
+        { id: String(camera._id), name: camera.name, onlyGroup: false },
+      ]),
+    );
+    expect(res.body.group.restrictedAssets).toHaveLength(2);
+  });
+
+  it('leaves out retired assets, which nobody can request anyway', async () => {
+    const pilots = await createGroup();
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+    await assetRepo.retire(seed.a.orgId, seed.a.asset._id);
+
+    const res = await get(pilots.id);
+
+    expect(res.body.group.restrictedAssets).toEqual([]);
+  });
+
+  it('never lists another organisation’s asset, even one pointing at this group id', async () => {
+    const pilots = await createGroup();
+    // Not reachable through the API (AT-5 refuses it); written directly to prove the read is scoped.
+    await assetRepo.update(seed.b.orgId, seed.b.asset._id, { allowedGroupIds: [pilots.id] });
+
+    const res = await get(pilots.id);
+
+    expect(res.body.group.restrictedAssets).toEqual([]);
   });
 });
 

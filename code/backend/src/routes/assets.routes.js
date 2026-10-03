@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: /api/assets routes with permissions and schemas — controllers are Sprint 1 stubs; approvalMode field (SCRUM-148)
+// AI-Assisted Areas: /api/assets routes with permissions and schemas — controllers are Sprint 1 stubs; approvalMode field (SCRUM-148); allowedGroupIds (SCRUM-150)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -25,7 +25,12 @@
  */
 import { z } from 'zod';
 import * as assets from '../controllers/assets.controller.js';
-import { APPROVAL_MODE, APPROVAL_MODE_LIST, ASSET_CONDITION_LIST } from '../utils/constants.js';
+import {
+  APPROVAL_MODE,
+  APPROVAL_MODE_LIST,
+  ASSET_CONDITION_LIST,
+  MAX_ALLOWED_GROUPS,
+} from '../utils/constants.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
 import { emptyBody, idParams, objectId, pagination } from './schemas.js';
@@ -47,9 +52,13 @@ const assetFields = {
   imageUrl: z.url().max(2048).nullable(),
   // SCRUM-148: does a request for this asset need an approver? INHERIT uses the organisation default.
   approvalMode: z.enum(APPROVAL_MODE_LIST),
-  // SCRUM-149: restrict this asset to an active member of one group. null (the default) means open
-  // to the whole organisation, the behaviour every asset had before this existed.
-  requiredGroupId: objectId.nullable(),
+  // SCRUM-149, SCRUM-150: restrict this asset to active members of any one of these groups. An empty
+  // list (the default) means open to the whole organisation. Duplicates are dropped rather than
+  // refused; the cap keeps the eligibility query and the badge bounded.
+  allowedGroupIds: z
+    .array(objectId)
+    .max(MAX_ALLOWED_GROUPS)
+    .transform((ids) => [...new Set(ids)]),
 };
 
 /**
@@ -64,7 +73,7 @@ export const assetBody = z.object({
   description: assetFields.description.default(''),
   imageUrl: assetFields.imageUrl.default(null),
   approvalMode: assetFields.approvalMode.default(APPROVAL_MODE.INHERIT),
-  requiredGroupId: assetFields.requiredGroupId.default(null),
+  allowedGroupIds: assetFields.allowedGroupIds.default([]),
 });
 
 /**

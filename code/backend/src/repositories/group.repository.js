@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
-// AI-Assisted Areas: tenant-scoped persistence for the usergroups collection, including race-safe membership changes (SCRUM-149)
+// AI-Assisted Areas: tenant-scoped persistence for the usergroups collection, including race-safe membership changes (SCRUM-149); findByIds and isMemberOfAny for restricted equipment (SCRUM-150)
 // Human Contributions: pending review
 // Notes: Written from the ticket's acceptance criteria and design notes. Must be reviewed and tested by the owning team member before merge.
 //
@@ -18,8 +18,8 @@
  * either the group does not exist in this tenant, or the write's precondition did not hold — and the
  * service distinguishes the two with a follow-up `findById` only when it actually needs to.
  *
- * Exports: `create`, `findById`, `findByNameLower`, `list`, `update`, `remove`, `addMember`,
- * `removeMember`, `isMember`.
+ * Exports: `create`, `findById`, `findByIds`, `findByNameLower`, `list`, `update`, `remove`,
+ * `addMember`, `removeMember`, `isMember`, `isMemberOfAny`.
  */
 import mongoose from 'mongoose';
 import { UserGroup } from '../models/UserGroup.js';
@@ -183,5 +183,53 @@ export async function isMember(orgId, groupId, userId, { session } = {}) {
     await UserGroup.exists({ _id: groupId, orgId, memberIds: toObjectId(userId) }).session(
       session ?? null,
     ),
+  );
+}
+
+/**
+ * Fetch several groups by id, scoped to the tenant, with just their names (SCRUM-150).
+ *
+ * Two callers: `asset.service.js` checks that every id in an asset's `allowedGroupIds` belongs to
+ * this organisation (fewer results than ids means one does not), and resolves the ids to names for
+ * the Restricted badge. An id from another tenant is simply not matched.
+ * @param {string} orgId
+ * @param {string[]} groupIds
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<{ _id: import('mongoose').Types.ObjectId, name: string }[]>}
+ */
+export async function findByIds(orgId, groupIds, { session } = {}) {
+  if (groupIds.length === 0) {
+    return [];
+  }
+  // `sanitizeFilter` is on globally and neutralises operators it did not build; this one is ours.
+  return UserGroup.find(
+    { _id: mongoose.trusted({ $in: groupIds.map(toObjectId) }), orgId },
+    { name: 1 },
+  )
+    .lean()
+    .session(session ?? null);
+}
+
+/**
+ * Is `userId` a member of at least one of these groups, scoped to the tenant? (SCRUM-150)
+ *
+ * The any-of form of `isMember`, for an asset restricted to several groups: one query rather than one
+ * per group, served by the `orgId_memberIds` index.
+ * @param {string} orgId
+ * @param {string[]} groupIds
+ * @param {string} userId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<boolean>} false for an empty list
+ */
+export async function isMemberOfAny(orgId, groupIds, userId, { session } = {}) {
+  if (groupIds.length === 0) {
+    return false;
+  }
+  return Boolean(
+    await UserGroup.exists({
+      _id: mongoose.trusted({ $in: groupIds.map(toObjectId) }),
+      orgId,
+      memberIds: toObjectId(userId),
+    }).session(session ?? null),
   );
 }

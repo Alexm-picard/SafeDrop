@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-148 approval row and auto-approved notice
+// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-148 approval row and auto-approved notice; SCRUM-150 Restricted badge and disabled Request button for an ineligible caller, also when every group was deleted (SCRUM-203)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -30,6 +30,12 @@
  * it back, from the row it is in. Unlike retiring, it is reversible by the button beside it, so it
  * takes no confirmation step. It is the per-unit counterpart to retiring the whole asset — which is
  * why it belongs in the table rather than in the page-level actions.
+ *
+ * SCRUM-150 (AT-4) marks restricted equipment. A restricted asset shows a Restricted badge; when the
+ * API reports the caller is not `eligible`, the page names the groups that may request it and
+ * disables every Request button, pointing each one at that sentence. Roles do not bypass it — an
+ * admin outside the groups sees the same thing. This is usability only: the API refuses an
+ * ineligible request regardless (AT-1).
  */
 import { useCallback, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
@@ -40,12 +46,13 @@ import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { RequestUnitForm } from '../components/RequestUnitForm';
+import { RestrictedBadge } from '../components/RestrictedBadge';
 import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
 import { errorMessage } from '../services/api';
 import * as assetsApi from '../services/assets.api';
 import { assetApprovalLabel, ROLES, ROUTES, UNIT_STATUS } from '../utils/constants';
-import { formatDate, humanize } from '../utils/format';
+import { formatDate, humanize, restrictionNote } from '../utils/format';
 /**
  * Render one asset's details, keyed by the `:id` route parameter.
  *
@@ -83,6 +90,13 @@ export function AssetDetailPage() {
   // A retired asset is out of circulation, so its units are not requestable even while they still
   // read as AVAILABLE — the server would refuse, and offering the button would be a lie.
   const canRequest = !isRetired;
+  // SCRUM-150: restricted to groups the caller is not in. Only an explicit `false` disables Request,
+  // so a response without the field (an older API) behaves as before. `restricted` rather than the
+  // number of names (SCRUM-203): an asset whose groups were all deleted has no names but is still
+  // restricted, to nobody.
+  const allowedGroups = data?.allowedGroups ?? [];
+  const restricted = data?.restricted ?? allowedGroups.length > 0;
+  const ineligible = restricted && data?.eligible === false;
   const requestingUnit = data?.units?.find((u) => u.id === requestingUnitId) ?? null;
 
   const onRetire = useCallback(async () => {
@@ -183,6 +197,17 @@ export function AssetDetailPage() {
       ) : null}
       {status !== 'error' && data ? (
         <>
+          {restricted ? (
+            <p>
+              <RestrictedBadge allowedGroups={allowedGroups} restricted />{' '}
+              {ineligible ? (
+                <span id="restriction-note">
+                  {restrictionNote(allowedGroups, { restricted: true })}. Ask your organization
+                  admin about access.
+                </span>
+              ) : null}
+            </p>
+          ) : null}
           {isRetired ? (
             <p className="notice">
               This asset was retired {formatDate(data.retiredAt)} and no longer appears in the
@@ -241,7 +266,8 @@ export function AssetDetailPage() {
                       type="button"
                       className="secondary"
                       aria-label={`Request unit ${u.tag}`}
-                      disabled={requestingUnitId === u.id}
+                      aria-describedby={ineligible ? 'restriction-note' : undefined}
+                      disabled={ineligible || requestingUnitId === u.id}
                       onClick={() => setRequestingUnitId(u.id)}
                     >
                       Request this

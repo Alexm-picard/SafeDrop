@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: SCRUM-135/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-120/return (record a physical handoff, OD-4). SCRUM-123 (request detail)
+// AI-Assisted Areas: SCRUM-135/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-120/return (record a physical handoff, OD-4). SCRUM-123 (request detail). SCRUM-150 restricted equipment: any-of-several groups, AT-3 re-check at approval
 // Human Contributions: pending team review
 
 /**
@@ -723,8 +723,8 @@ describe('POST /api/requests/:id/cancel (SCRUM-135)', () => {
 });
 
 /**
- * Restricted equipment (SCRUM-149): an asset with `requiredGroupId` set may only be requested by an
- * active member of that group. Enforced live in `checkout.service.js`'s `submit()`, before the
+ * Restricted equipment (SCRUM-149, SCRUM-150): an asset with a non-empty `allowedGroupIds` may only
+ * be requested by an active member of at least one of those groups. Enforced live in `checkout.service.js`'s `submit()`, before the
  * approval policy is even asked — the TODO it replaced warned specifically that an auto-approving
  * asset must not let eligibility slip through just because nothing is left to approve.
  */
@@ -742,7 +742,7 @@ describe('POST /api/requests — restricted equipment (SCRUM-149)', () => {
       .send({
         name: 'Restricted Drone',
         category: 'drone',
-        requiredGroupId: group.id,
+        allowedGroupIds: [group.id],
         ...(approvalMode ? { approvalMode } : {}),
       });
     expect(assetRes.status).toBe(201);
@@ -845,8 +845,119 @@ describe('POST /api/requests — restricted equipment (SCRUM-149)', () => {
     expect(res.body.state).toBe('APPROVED');
   });
 
-  it('an unrestricted asset (requiredGroupId null) is unaffected — the default, open behaviour', async () => {
+  it('an unrestricted asset (allowedGroupIds empty) is unaffected — the default, open behaviour', async () => {
     const res = await submitFor(seed.a.extraAssets[0].units[0]._id, seed.a.member);
     expect(res.status).toBe(201);
+  });
+
+  it('membership of any one of several allowed groups is enough (SCRUM-150)', async () => {
+    const { assetId, unitId } = await createRestrictedAsset(seed.a.admin);
+    const admin = { userId: seed.a.admin._id, role: 'ORG_ADMIN' };
+    const { group: heavy } = await groupService.createGroup(seed.a.orgId, admin, {
+      name: 'Heavy Machinery Certified',
+    });
+    await groupService.addGroupMember(seed.a.orgId, admin, heavy.id, String(seed.a.member._id));
+    const asset = await request(app)
+      .get(`/api/assets/${assetId}`)
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    await request(app)
+      .patch(`/api/assets/${assetId}`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({ allowedGroupIds: [...asset.body.allowedGroupIds, heavy.id] })
+      .expect(200);
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(201);
+  });
+
+  /**
+   * AT-3 (SCRUM-150, SCRUM-175): eligibility can change between submit and approve — a time-of-check
+   * to time-of-use gap — so `approve()` asks again. A refused approval leaves the request PENDING so an
+   * approver can still deny it.
+   */
+  describe('AT-3: eligibility is re-checked at approval', () => {
+    /** A PENDING request from the member, who was in the group when they submitted. */
+    async function pendingFromEligibleMember() {
+      const restricted = await createRestrictedAsset(seed.a.admin);
+      const admin = { userId: seed.a.admin._id, role: 'ORG_ADMIN' };
+      await groupService.addGroupMember(
+        seed.a.orgId,
+        admin,
+        restricted.group.id,
+        String(seed.a.member._id),
+      );
+      const submitted = await submitFor(restricted.unitId, seed.a.member);
+      expect(submitted.status).toBe(201);
+      return { ...restricted, admin, requestId: submitted.body.id };
+    }
+
+    it('refuses to approve once the requester has left the group, and the request stays PENDING', async () => {
+      const { group, admin, unitId, requestId } = await pendingFromEligibleMember();
+      await groupService.removeGroupMember(
+        seed.a.orgId,
+        admin,
+        group.id,
+        String(seed.a.member._id),
+      );
+
+      const res = await request(app)
+        .post(`/api/requests/${requestId}/approve`)
+        .set('Cookie', accessCookieFor(seed.a.approver))
+        .send({});
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('requester is no longer eligible');
+      expect((await checkoutRepo.findById(seed.a.orgId, requestId)).state).toBe('PENDING');
+      expect((await assetUnitRepo.findById(seed.a.orgId, unitId)).status).toBe('REQUESTED');
+      const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_APPROVED });
+      expect(audit.total).toBe(0);
+    });
+
+    it('the stale request can still be denied', async () => {
+      const { group, admin, unitId, requestId } = await pendingFromEligibleMember();
+      await groupService.removeGroupMember(
+        seed.a.orgId,
+        admin,
+        group.id,
+        String(seed.a.member._id),
+      );
+
+      const res = await request(app)
+        .post(`/api/requests/${requestId}/deny`)
+        .set('Cookie', accessCookieFor(seed.a.approver))
+        .send({ note: 'no longer certified' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe('DENIED');
+      expect((await assetUnitRepo.findById(seed.a.orgId, unitId)).status).toBe('AVAILABLE');
+    });
+
+    it('refuses to approve once the requester has been deactivated', async () => {
+      const { requestId } = await pendingFromEligibleMember();
+      await User.collection.updateOne(
+        { _id: seed.a.member._id },
+        { $set: { deactivatedAt: new Date() } },
+      );
+
+      const res = await request(app)
+        .post(`/api/requests/${requestId}/approve`)
+        .set('Cookie', accessCookieFor(seed.a.approver))
+        .send({});
+
+      expect(res.status).toBe(409);
+    });
+
+    it('approves as normal while the requester is still eligible', async () => {
+      const { requestId } = await pendingFromEligibleMember();
+
+      const res = await request(app)
+        .post(`/api/requests/${requestId}/approve`)
+        .set('Cookie', accessCookieFor(seed.a.approver))
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.state).toBe('APPROVED');
+    });
   });
 });

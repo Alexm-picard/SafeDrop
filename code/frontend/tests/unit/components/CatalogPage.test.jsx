@@ -14,7 +14,14 @@ import { userEvent } from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { CatalogPage } from '../../../src/pages/CatalogPage';
-import { adminUser, assets, errorResponse, memberUser, plainSearch } from '../../mocks/handlers';
+import {
+  adminUser,
+  assets,
+  errorResponse,
+  groups,
+  memberUser,
+  plainSearch,
+} from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 describe('CatalogPage', () => {
@@ -109,6 +116,48 @@ describe('CatalogPage search (SCRUM-201)', () => {
     expect(screen.queryByRole('table', { name: 'Assets' })).not.toBeInTheDocument();
     // Debounced: five keystrokes, one request, carrying the whole word.
     expect(queries).toEqual(['canon']);
+  });
+
+  it('badges a restricted match in the search results, as on the list (SCRUM-202)', async () => {
+    recordSearches(() =>
+      HttpResponse.json({
+        q: 'canon',
+        matches: [
+          {
+            assetId: assets[1].id,
+            name: assets[1].name,
+            category: assets[1].category,
+            description: '',
+            allowedGroups: [{ id: groups[0].id, name: groups[0].name }],
+            restricted: true,
+          },
+        ],
+        clarification: null,
+        aiAssisted: false,
+      }),
+    );
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    const [row] = within(results).getAllByRole('row').slice(1);
+    expect(within(row).getByRole('link', { name: assets[1].name })).toBeInTheDocument();
+    expect(within(row).getByText('Restricted')).toHaveAttribute(
+      'title',
+      `Only members of ${groups[0].name} can request this`,
+    );
+  });
+
+  it('shows no badge on an unrestricted search match', async () => {
+    recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeInTheDocument();
+    expect(within(results).queryByText('Restricted')).not.toBeInTheDocument();
   });
 
   it('shows a searching state while the request is in flight', async () => {
@@ -249,5 +298,38 @@ describe('CatalogPage search (SCRUM-201)', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('table', { name: 'Search results' })).toBeVisible();
     expect(calls).toBe(2);
+  });
+});
+
+describe('CatalogPage — restricted equipment (SCRUM-150)', () => {
+  it('badges a restricted asset, naming its groups, and leaves its link name unchanged', async () => {
+    server.use(
+      http.get('*/api/assets', () =>
+        HttpResponse.json({
+          items: [
+            {
+              ...assets[0],
+              allowedGroups: [{ id: groups[0].id, name: groups[0].name }],
+              restricted: true,
+            },
+            assets[1],
+          ],
+          total: 2,
+          page: 1,
+          limit: 25,
+        }),
+      ),
+    );
+    renderWithAuth(<CatalogPage />, { user: memberUser });
+
+    const table = await screen.findByRole('table', { name: 'Assets' });
+    const [restrictedRow, openRow] = within(table).getAllByRole('row').slice(1);
+    // Restricted assets stay visible (the ticket's design note), with the reason beside the name.
+    expect(within(restrictedRow).getByRole('link', { name: assets[0].name })).toBeInTheDocument();
+    expect(within(restrictedRow).getByText('Restricted')).toHaveAttribute(
+      'title',
+      `Only members of ${groups[0].name} can request this`,
+    );
+    expect(within(openRow).queryByText('Restricted')).not.toBeInTheDocument();
   });
 });

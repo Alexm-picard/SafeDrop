@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: AssetDetailPage tests — units and their statuses, not-found and error states
+// AI-Assisted Areas: AssetDetailPage tests — units and their statuses, not-found and error states; Restricted badge and disabled Request button (SCRUM-150 AT-4)
 // Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -16,7 +16,14 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { AssetDetailPage } from '../../../src/pages/AssetDetailPage';
-import { adminUser, assets, assetUnits, errorResponse, memberUser } from '../../mocks/handlers';
+import {
+  adminUser,
+  assets,
+  assetUnits,
+  errorResponse,
+  groups,
+  memberUser,
+} from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 const renderDetail = (id, options) =>
@@ -393,5 +400,108 @@ describe('AssetDetailPage — unit maintenance (SCRUM-141)', () => {
     expect(
       within(table).queryByRole('button', { name: /maintenance for unit/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Restricted equipment (SCRUM-150, AT-4): a restricted asset stays visible, names the groups that may
+ * borrow it, and — for someone outside them — disables Request with the reason. The API refuses the
+ * request anyway (AT-1); this is what keeps the member from finding that out by trying.
+ */
+describe('AssetDetailPage — restricted equipment (SCRUM-150)', () => {
+  /** Serve assets[0] restricted to the drone pilots, with the caller's eligibility as given. */
+  const serveRestricted = (eligible) =>
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          allowedGroupIds: [groups[0].id],
+          allowedGroups: [{ id: groups[0].id, name: groups[0].name }],
+          restricted: true,
+          units: assetUnits[assets[0].id],
+          eligible,
+        }),
+      ),
+    );
+
+  it('AT-4: shows a Restricted badge naming the group, and disables Request with an explanation', async () => {
+    serveRestricted(false);
+    renderDetail(assets[0].id, { user: memberUser });
+
+    await screen.findByRole('heading', { level: 1, name: assets[0].name });
+    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    const explanation = screen.getByText(/only members of certified drone pilots can request/i);
+    expect(explanation).toBeInTheDocument();
+
+    const available = assetUnits[assets[0].id].find((u) => u.status === 'AVAILABLE');
+    const button = screen.getByRole('button', { name: `Request unit ${available.tag}` });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(/only members of certified drone pilots/i);
+  });
+
+  it('names every allowed group when there are several', async () => {
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          allowedGroupIds: groups.map((g) => g.id),
+          allowedGroups: groups.map((g) => ({ id: g.id, name: g.name })),
+          restricted: true,
+          units: assetUnits[assets[0].id],
+          eligible: false,
+        }),
+      ),
+    );
+    renderDetail(assets[0].id, { user: memberUser });
+
+    expect(
+      await screen.findByText(
+        /only members of certified drone pilots or heavy machinery certified can request/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the badge but leaves Request enabled for an eligible member', async () => {
+    serveRestricted(true);
+    renderDetail(assets[0].id, { user: memberUser });
+
+    await screen.findByRole('heading', { level: 1, name: assets[0].name });
+    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    expect(screen.queryByText(/can request this/i)).not.toBeInTheDocument();
+    const available = assetUnits[assets[0].id].find((u) => u.status === 'AVAILABLE');
+    expect(screen.getByRole('button', { name: `Request unit ${available.tag}` })).toBeEnabled();
+  });
+
+  // SCRUM-203: every listed group deleted. Nobody can request it (the API fails closed), so the page
+  // must not look open just because there are no group names left to show.
+  it('stays marked restricted, with Request disabled, when every allowed group was deleted', async () => {
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          allowedGroupIds: ['6aab2a45c6e457e01ac09aff'],
+          allowedGroups: [],
+          restricted: true,
+          units: assetUnits[assets[0].id],
+          eligible: false,
+        }),
+      ),
+    );
+    renderDetail(assets[0].id, { user: memberUser });
+
+    await screen.findByRole('heading', { level: 1, name: assets[0].name });
+    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    expect(screen.getByText(/groups that no longer exist/i)).toBeInTheDocument();
+    const available = assetUnits[assets[0].id].find((u) => u.status === 'AVAILABLE');
+    const button = screen.getByRole('button', { name: `Request unit ${available.tag}` });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription(/groups that no longer exist/i);
+  });
+
+  it('shows no badge on an unrestricted asset', async () => {
+    renderDetail(assets[0].id, { user: memberUser });
+
+    await screen.findByRole('heading', { level: 1, name: assets[0].name });
+    expect(screen.queryByText('Restricted')).not.toBeInTheDocument();
   });
 });

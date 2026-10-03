@@ -49,6 +49,9 @@ export const ROUTES = Object.freeze({
   admin: '/admin',
   approvals: '/admin/approvals',
   users: '/admin/users',
+  // SCRUM-167: user groups, the access tiers restricted equipment points to (SCRUM-150).
+  groups: '/admin/groups',
+  group: (id) => `/admin/groups/${id}`,
   auditLog: '/admin/audit',
   settings: '/admin/settings',
 });
