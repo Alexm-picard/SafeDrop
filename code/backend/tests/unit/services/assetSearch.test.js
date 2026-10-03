@@ -333,14 +333,15 @@ describe('SCRUM-103 AC4: unusable model output falls back to plain search', () =
       new ServiceUnavailableError('The AI service is unavailable'),
     );
 
-    const result = await searchAssets(ORG, 'recorder for Dana');
+    const result = await searchAssets(ORG, 'recorder');
 
     expect(result).toMatchObject({ aiAssisted: false, clarification: null });
     expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
     const warnings = logLines.map((line) => JSON.parse(line)).filter((l) => l.level === 'warn');
     expect(warnings).toHaveLength(1);
     expect(warnings[0].orgId).toBe(ORG);
-    expect(logLines.join('\n')).not.toContain('Dana');
+    // The member's words stay out of the log (services/ai/README.md).
+    expect(logLines.join('\n').toLowerCase()).not.toContain('recorder');
   });
 
   // Regression guard, not a red: nothing caught anything before the outage fallback. It exists to stop

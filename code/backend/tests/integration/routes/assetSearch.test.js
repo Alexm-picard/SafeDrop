@@ -62,12 +62,13 @@ describe('GET /api/assets/search (SCRUM-200)', () => {
     });
   });
 
-  it('refuses an orgId in the query string rather than trusting it', async () => {
-    // The tenant comes from the token and nowhere else; an undeclared key is a 400, not ignored.
+  it('ignores an orgId smuggled in the query string rather than trusting it', async () => {
+    // scopeTenant erases tenant keys before validation, so this is not a 400: the request runs, as
+    // org A, exactly as if the key had never been sent (SR-2).
     const res = await search(seed.a.member, `?q=camera&orgId=${seed.b.orgId}`);
 
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).not.toContain('Camera B');
+    expect(res.status).toBe(200);
+    expect(res.body.matches.map((m) => m.name)).toEqual(['Camera A']);
   });
 
   it('leaves retired assets out (SCRUM-145, end to end)', async () => {
