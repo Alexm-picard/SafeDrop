@@ -237,10 +237,10 @@ export function OrgSettingsPage() {
         <ErrorState error={error} title="Could not load the settings" onRetry={reload} />
       ) : null}
       {status === 'success' && data ? (
-        <>
+        <div className="stack">
           <ApprovalSettingsForm initialMode={data.approval.defaultMode} />
           <PickupSettingsForm initialHours={data.pickup.graceHours} />
-        </>
+        </div>
       ) : null}
     </>
   );

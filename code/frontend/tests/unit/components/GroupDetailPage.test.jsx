@@ -130,7 +130,8 @@ describe('GroupDetailPage', () => {
     );
     renderDetail();
 
-    const name = await screen.findByLabelText('Name');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    const name = screen.getByLabelText('Name');
     await userEvent.clear(name);
     await userEvent.type(name, 'Drone Pilots (Level 2)');
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -155,13 +156,28 @@ describe('GroupDetailPage', () => {
     );
     renderDetail();
 
-    const name = await screen.findByLabelText('Name');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit details' }));
+    const name = screen.getByLabelText('Name');
     await userEvent.clear(name);
     await userEvent.type(name, groups[1].name);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(name).toHaveAttribute('aria-invalid', 'true'));
     expect(name).toHaveAccessibleDescription(/already exists/i);
+  });
+
+  it('keeps the edit form closed until Edit details is pressed, and closes it on Cancel', async () => {
+    renderDetail();
+    const toggle = await screen.findByRole('button', { name: 'Edit details' });
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(toggle);
+    expect(screen.getByLabelText('Name')).toHaveValue(group.name);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
   });
 
   it('deletes the group only after confirmation, then returns to the list', async () => {

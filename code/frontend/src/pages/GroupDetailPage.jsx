@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167)
-// AI-Assisted Areas: one group's page: rename and redescribe, its members with remove, add a member from the organisation, delete with confirmation; the equipment it restricts, named in the delete confirmation (SCRUM-204)
+// AI-Assisted Areas: one group's page: rename and redescribe, its members with remove, add a member from the organisation, delete with confirmation; the equipment it restricts, named in the delete confirmation (SCRUM-204); UI rework: header with Edit details and Delete, members (with an add bar) and equipment as equal fixed-height panels
 // Human Contributions: pending team review
 // Notes: Follows the patterns in AssetDetailPage (single notice area, content kept on screen while it reloads, ConfirmAction) and MembersPage. Verified by tests/unit/components/GroupDetailPage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -29,12 +29,24 @@ import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { FormField } from '../components/FormField';
 import { LoadingState } from '../components/LoadingState';
+import { Pagination } from '../components/Pagination';
 import { useGroup } from '../hooks/useGroups';
 import { useMembers } from '../hooks/useMembers';
+import { usePagination } from '../hooks/usePagination';
 import { errorMessage, isApiError } from '../services/api';
 import * as groupsApi from '../services/groups.api';
 import { ROUTES } from '../utils/constants';
 import { fieldErrorsOf } from '../utils/formErrors';
+import { pluralize } from '../utils/format';
+
+/**
+ * Rows per page in the members and restricted-equipment panels. The two panels share one fixed
+ * height (`.panel--group` in index.css), sized for this many two-line member rows under the add bar,
+ * or this many one-line equipment rows — so the page keeps its shape whether a group has one member
+ * or fifty. Change these and that height together.
+ */
+const MEMBER_PAGE_SIZE = 5;
+const EQUIPMENT_PAGE_SIZE = 10;
 
 /** Candidates for the add list: one page of the organisation's members, the API's largest. */
 const MEMBERS_PARAMS = Object.freeze({ page: 1, limit: 100 });
@@ -42,12 +54,13 @@ const MEMBERS_PARAMS = Object.freeze({ page: 1, limit: 100 });
 /**
  * Rename the group or change its description.
  *
- * Seeded from the group once, which is why the page mounts it only when the group has loaded. A
- * duplicate name (409, any letter case) lands under the name input.
- * @param {{ group: object, onSaved: () => void }} props
+ * Opened from the header's Edit details button and closed by saving or cancelling, so it takes no
+ * room on the page the rest of the time. Seeded from the group each time it opens. A duplicate name
+ * (409, any letter case) lands under the name input.
+ * @param {{ group: object, onSaved: () => void, onCancel: () => void }} props
  * @returns {JSX.Element}
  */
-function EditGroupForm({ group, onSaved }) {
+function EditGroupForm({ group, onSaved, onCancel }) {
   const [values, setValues] = useState({ name: group.name, description: group.description ?? '' });
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
@@ -78,40 +91,52 @@ function EditGroupForm({ group, onSaved }) {
   };
 
   return (
-    <form className="card" onSubmit={onSubmit} noValidate aria-labelledby="edit-group-title">
-      <h2 id="edit-group-title">Name and description</h2>
+    <form
+      className="card edit-details"
+      onSubmit={onSubmit}
+      noValidate
+      aria-labelledby="edit-group-title"
+    >
+      <h2 id="edit-group-title">Edit details</h2>
       {error ? (
         <div role="alert" className="alert">
           {error}
         </div>
       ) : null}
-      <FormField id="group-name" label="Name" error={fieldErrors.name}>
-        {(props) => (
-          <input
-            {...props}
-            name="name"
-            type="text"
-            autoComplete="off"
-            required
-            value={values.name}
-            onChange={set('name')}
-          />
-        )}
-      </FormField>
-      <FormField id="group-description" label="Description" error={fieldErrors.description}>
-        {(props) => (
-          <textarea
-            {...props}
-            name="description"
-            rows={2}
-            value={values.description}
-            onChange={set('description')}
-          />
-        )}
-      </FormField>
-      <button type="submit" disabled={pending}>
-        {pending ? 'Saving…' : 'Save changes'}
-      </button>
+      <div className="form-row">
+        <FormField id="group-name" label="Name" error={fieldErrors.name}>
+          {(props) => (
+            <input
+              {...props}
+              name="name"
+              type="text"
+              autoComplete="off"
+              required
+              value={values.name}
+              onChange={set('name')}
+            />
+          )}
+        </FormField>
+        <FormField id="group-description" label="Description" error={fieldErrors.description}>
+          {(props) => (
+            <textarea
+              {...props}
+              name="description"
+              rows={1}
+              value={values.description}
+              onChange={set('description')}
+            />
+          )}
+        </FormField>
+      </div>
+      <div className="actions">
+        <button type="submit" disabled={pending}>
+          {pending ? 'Saving…' : 'Save changes'}
+        </button>
+        <button type="button" className="secondary" disabled={pending} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -152,23 +177,23 @@ function AddMemberForm({ memberIds, pending, onAdd }) {
   } else {
     body = (
       <>
-        <div className="field">
-          <label htmlFor="add-member">Member to add</label>
-          <select
-            id="add-member"
-            name="userId"
-            value={userId}
-            onChange={(event) => setUserId(event.target.value)}
-          >
-            <option value="">Choose a member…</option>
-            {candidates.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.email})
-              </option>
-            ))}
-          </select>
-        </div>
-        <button type="submit" disabled={pending || !userId}>
+        <label htmlFor="add-member" className="visually-hidden">
+          Member to add
+        </label>
+        <select
+          id="add-member"
+          name="userId"
+          value={userId}
+          onChange={(event) => setUserId(event.target.value)}
+        >
+          <option value="">Choose a member…</option>
+          {candidates.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name} ({u.email})
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="small" disabled={pending || !userId}>
           {pending ? 'Adding…' : 'Add to group'}
         </button>
       </>
@@ -176,8 +201,7 @@ function AddMemberForm({ memberIds, pending, onAdd }) {
   }
 
   return (
-    <form className="card" onSubmit={onSubmit} noValidate aria-labelledby="add-member-title">
-      <h2 id="add-member-title">Add a member</h2>
+    <form className="panel-toolbar" onSubmit={onSubmit} noValidate aria-label="Add a member">
       {body}
     </form>
   );
@@ -220,23 +244,36 @@ function deletePrompt(group) {
  * @returns {JSX.Element}
  */
 function RestrictedEquipment({ assets }) {
+  const { pageItems, page, pageCount, setPage } = usePagination(assets, EQUIPMENT_PAGE_SIZE);
   return (
-    <section aria-labelledby="restricted-equipment-title">
-      <h2 id="restricted-equipment-title">Restricted equipment</h2>
+    <section
+      className="panel panel--fixed panel--group"
+      aria-labelledby="restricted-equipment-title"
+    >
+      <div className="panel-header">
+        <h2 id="restricted-equipment-title">Restricted equipment</h2>
+        <span className="hint">{pluralize(assets.length, 'asset')}</span>
+      </div>
       {assets.length === 0 ? (
         <p className="hint">No equipment is restricted to this group.</p>
       ) : (
-        <ul aria-label="Equipment restricted to this group">
-          {assets.map((asset) => (
+        <ul className="item-list" aria-label="Equipment restricted to this group">
+          {pageItems.map((asset) => (
             <li key={asset.id}>
               <Link to={ROUTES.asset(asset.id)}>{asset.name}</Link>
               {asset.onlyGroup ? (
-                <span className="meta"> — only this group can borrow it</span>
+                <span className="hint"> — only this group can borrow it</span>
               ) : null}
             </li>
           ))}
         </ul>
       )}
+      <Pagination
+        page={page}
+        pageCount={pageCount}
+        onChange={setPage}
+        label="Restricted equipment pages"
+      />
     </section>
   );
 }
@@ -255,10 +292,12 @@ export function GroupDetailPage() {
   );
   // Which membership change is in flight: a user id while removing that row, 'add' while adding.
   const [changing, setChanging] = useState(null);
+  const [editing, setEditing] = useState(false);
 
   const group = data?.group ?? null;
 
   const onSaved = useCallback(() => {
+    setEditing(false);
     setNotice({ tone: 'success', message: 'Group updated.' });
     reload();
   }, [reload]);
@@ -309,67 +348,25 @@ export function GroupDetailPage() {
 
   return (
     <>
-      <p>
-        <Link to={ROUTES.groups}>All groups</Link>
-      </p>
-      <h1>{group ? group.name : 'Group'}</h1>
-      {status === 'loading' && !data ? <LoadingState label="Loading group…" /> : null}
-      {status === 'error' ? (
-        <ErrorState error={error} title="Could not load this group" onRetry={reload} />
-      ) : null}
-      {notice ? (
-        <div
-          role={notice.tone === 'error' ? 'alert' : 'status'}
-          className={notice.tone === 'error' ? 'alert' : 'notice'}
-        >
-          <p>{notice.message}</p>
-          <button type="button" className="secondary" onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
+      <header className="page-header">
+        <div>
+          <span className="eyebrow">
+            <Link to={ROUTES.groups}>← All groups</Link>
+          </span>
+          <h1>{group ? group.name : 'Group'}</h1>
+          {group?.description ? <p className="subtitle">{group.description}</p> : null}
         </div>
-      ) : null}
-      {status !== 'error' && group ? (
-        <>
-          {group.description ? <p className="hint">{group.description}</p> : null}
-          <DataTable
-            caption="Members of this group"
-            columns={[
-              { key: 'name', header: 'Name', render: (u) => u.name },
-              { key: 'email', header: 'Email', render: (u) => u.email },
-              {
-                key: 'status',
-                header: 'Status',
-                // Still listed, but fails every eligibility check (SCRUM-149's answer).
-                render: (u) => (u.deactivatedAt ? 'Deactivated' : 'Active'),
-              },
-              {
-                key: 'remove',
-                header: 'Remove',
-                render: (u) => (
-                  <button
-                    type="button"
-                    className="secondary"
-                    aria-label={`Remove ${u.name} from the group`}
-                    disabled={changing === u.id}
-                    onClick={() => onRemove(u)}
-                  >
-                    {changing === u.id ? 'Removing…' : 'Remove'}
-                  </button>
-                ),
-              },
-            ]}
-            rows={group.members ?? []}
-            getRowId={(u) => u.id}
-            emptyMessage="Nobody is in this group yet."
-          />
-          <AddMemberForm
-            memberIds={group.memberIds ?? []}
-            pending={changing === 'add'}
-            onAdd={onAdd}
-          />
-          <RestrictedEquipment assets={group.restrictedAssets ?? []} />
-          <EditGroupForm key={group.id} group={group} onSaved={onSaved} />
+        {status !== 'error' && group ? (
           <div className="actions">
+            <button
+              type="button"
+              className="secondary"
+              aria-expanded={editing}
+              aria-controls="edit-group"
+              onClick={() => setEditing((open) => !open)}
+            >
+              Edit details
+            </button>
             <ConfirmAction
               label="Delete group"
               prompt={deletePrompt(group)}
@@ -377,6 +374,103 @@ export function GroupDetailPage() {
               pendingLabel="Deleting…"
               onConfirm={onDelete}
             />
+          </div>
+        ) : null}
+      </header>
+      {status === 'loading' && !data ? <LoadingState label="Loading group…" /> : null}
+      {status === 'error' ? (
+        <ErrorState error={error} title="Could not load this group" onRetry={reload} />
+      ) : null}
+      {notice ? (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          className={notice.tone === 'error' ? 'alert alert--inline' : 'notice notice--inline'}
+        >
+          <p>{notice.message}</p>
+          <button type="button" className="secondary small" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+      {status !== 'error' && group ? (
+        <>
+          {editing ? (
+            <div id="edit-group">
+              <EditGroupForm
+                key={group.id}
+                group={group}
+                onSaved={onSaved}
+                onCancel={() => setEditing(false)}
+              />
+            </div>
+          ) : null}
+          <div className="split split--lists">
+            <section
+              className="panel panel--fixed panel--group"
+              aria-labelledby="group-members-title"
+            >
+              <div className="panel-header">
+                <h2 id="group-members-title">Members</h2>
+                <span className="hint">{pluralize((group.members ?? []).length, 'member')}</span>
+              </div>
+              <AddMemberForm
+                memberIds={group.memberIds ?? []}
+                pending={changing === 'add'}
+                onAdd={onAdd}
+              />
+              <DataTable
+                caption="Members of this group"
+                hideCaption
+                pageSize={MEMBER_PAGE_SIZE}
+                columns={[
+                  {
+                    key: 'name',
+                    header: 'Name',
+                    render: (u) => (
+                      <>
+                        <span className="cell-primary">{u.name}</span>
+                        <span className="cell-secondary">{u.email}</span>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    // Still listed, but fails every eligibility check (SCRUM-149's answer).
+                    render: (u) =>
+                      u.deactivatedAt ? (
+                        <span className="badge" data-tone="neutral">
+                          Deactivated
+                        </span>
+                      ) : (
+                        <span className="badge" data-tone="ok">
+                          Active
+                        </span>
+                      ),
+                  },
+                  {
+                    key: 'remove',
+                    header: 'Remove',
+                    className: 'numeric',
+                    render: (u) => (
+                      <button
+                        type="button"
+                        className="secondary small"
+                        aria-label={`Remove ${u.name} from the group`}
+                        disabled={changing === u.id}
+                        onClick={() => onRemove(u)}
+                      >
+                        {changing === u.id ? 'Removing…' : 'Remove'}
+                      </button>
+                    ),
+                  },
+                ]}
+                rows={group.members ?? []}
+                getRowId={(u) => u.id}
+                emptyMessage="Nobody is in this group yet."
+              />
+            </section>
+            <RestrictedEquipment assets={group.restrictedAssets ?? []} />
           </div>
         </>
       ) : null}

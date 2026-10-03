@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167)
-// AI-Assisted Areas: Groups screen: the organisation's groups with member counts, and the create form with a field-level duplicate-name error
+// AI-Assisted Areas: Groups screen: the organisation's groups with member counts, and the create form with a field-level duplicate-name error; UI rework: list panel beside the create form
 // Human Contributions: pending team review
 // Notes: Follows the patterns in MembersPage (list, single notice area) and AssetFormPage (FormField, field errors). Verified by tests/unit/components/GroupsPage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -148,50 +148,73 @@ export function GroupsPage() {
 
   return (
     <>
-      <h1>Groups</h1>
-      <p className="hint">
-        Groups decide who may borrow restricted equipment: an asset restricted to a group can only
-        be requested by its members. Every change is recorded in the audit log.
-      </p>
+      <header className="page-header">
+        <div>
+          <h1>Groups</h1>
+          <p className="subtitle">
+            Groups decide who may borrow restricted equipment: an asset restricted to a group can
+            only be requested by its members. Every change is recorded in the audit log.
+          </p>
+        </div>
+      </header>
 
       {notice ? (
-        <div role="status" className="notice">
+        <div role="status" className="notice notice--inline">
           <p>{notice}</p>
-          <button type="button" className="secondary" onClick={() => setNotice(null)}>
+          <button type="button" className="secondary small" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>
       ) : null}
 
-      <CreateGroupForm onCreated={onCreated} />
-
-      {status === 'loading' && !data ? <LoadingState label="Loading groups…" /> : null}
-      {status === 'error' ? (
-        <ErrorState error={error} title="Could not load the groups" onRetry={reload} />
-      ) : null}
-      {status !== 'error' && data ? (
-        <>
-          <p className="hint">
-            {pluralize(total, 'group')}
-            {total > items.length ? ` (showing the first ${items.length})` : ''}
-          </p>
-          <DataTable
-            caption="Groups in your organization"
-            columns={[
-              {
-                key: 'name',
-                header: 'Name',
-                render: (g) => <Link to={ROUTES.group(g.id)}>{g.name}</Link>,
-              },
-              { key: 'description', header: 'Description', render: (g) => g.description },
-              { key: 'members', header: 'Members', render: (g) => String(g.memberCount) },
-            ]}
-            rows={items}
-            getRowId={(g) => g.id}
-            emptyMessage="No groups yet. Create one above, then add its members."
-          />
-        </>
-      ) : null}
+      <div className="split">
+        <div className="stack">
+          {status === 'loading' && !data ? <LoadingState label="Loading groups…" /> : null}
+          {status === 'error' ? (
+            <ErrorState error={error} title="Could not load the groups" onRetry={reload} />
+          ) : null}
+          {status !== 'error' && data ? (
+            <section className="panel" aria-labelledby="groups-list-title">
+              <div className="panel-header">
+                <h2 id="groups-list-title">All groups</h2>
+                <span className="hint">
+                  {pluralize(total, 'group')}
+                  {total > items.length ? ` (showing the first ${items.length})` : ''}
+                </span>
+              </div>
+              <DataTable
+                caption="Groups in your organization"
+                hideCaption
+                pageSize={10}
+                columns={[
+                  {
+                    key: 'name',
+                    header: 'Name',
+                    render: (g) => (
+                      <Link className="cell-primary" to={ROUTES.group(g.id)}>
+                        {g.name}
+                      </Link>
+                    ),
+                  },
+                  { key: 'description', header: 'Description', render: (g) => g.description },
+                  {
+                    key: 'members',
+                    header: 'Members',
+                    className: 'numeric',
+                    render: (g) => String(g.memberCount),
+                  },
+                ]}
+                rows={items}
+                getRowId={(g) => g.id}
+                emptyMessage="No groups yet. Create one with the form alongside, then add its members."
+              />
+            </section>
+          ) : null}
+        </div>
+        <div className="stack">
+          <CreateGroupForm onCreated={onCreated} />
+        </div>
+      </div>
     </>
   );
 }

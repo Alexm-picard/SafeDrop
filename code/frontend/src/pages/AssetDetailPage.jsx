@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-148 approval row and auto-approved notice; SCRUM-150 Restricted badge and disabled Request button for an ineligible caller, also when every group was deleted (SCRUM-203)
+// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-148 approval row and auto-approved notice; SCRUM-150 Restricted badge and disabled Request button for an ineligible caller, also when every group was deleted (SCRUM-203); UI rework: page header with actions, details panel, units panel beside the add-unit form, status badges
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -47,12 +47,13 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { RequestUnitForm } from '../components/RequestUnitForm';
 import { RestrictedBadge } from '../components/RestrictedBadge';
+import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
 import { errorMessage } from '../services/api';
 import * as assetsApi from '../services/assets.api';
 import { assetApprovalLabel, ROLES, ROUTES, UNIT_STATUS } from '../utils/constants';
-import { formatDate, humanize, restrictionNote } from '../utils/format';
+import { formatDate, humanize, pluralize, restrictionNote } from '../utils/format';
 /**
  * Render one asset's details, keyed by the `:id` route parameter.
  *
@@ -177,9 +178,42 @@ export function AssetDetailPage() {
     [navigate],
   );
 
+  const units = data?.units ?? [];
+  const availableCount = units.filter((u) => u.status === UNIT_STATUS.AVAILABLE).length;
+
   return (
     <>
-      <h1>{data ? data.name : 'Asset'}</h1>
+      <header className="page-header">
+        <div>
+          <span className="eyebrow">
+            <Link to={ROUTES.catalog}>← Catalog</Link>
+          </span>
+          <h1>{data ? data.name : 'Asset'}</h1>
+          {data && (restricted || isRetired) ? (
+            <div className="badges">
+              {restricted ? <RestrictedBadge allowedGroups={allowedGroups} restricted /> : null}
+              {isRetired ? <StatusBadge value="RETIRED" kind="unit" /> : null}
+            </div>
+          ) : null}
+        </div>
+        {/* SCRUM-122: admin actions, beside the title they act on. */}
+        {data && isAdmin ? (
+          <div className="actions">
+            <Link className="button secondary" to={ROUTES.assetEdit(id)}>
+              Edit asset
+            </Link>
+            {isRetired ? null : (
+              <ConfirmAction
+                label="Retire asset"
+                prompt={`Retire ${data.name}? It will stop appearing in the catalog. Its units and history are kept.`}
+                confirmLabel="Yes, retire it"
+                pendingLabel="Retiring…"
+                onConfirm={onRetire}
+              />
+            )}
+          </div>
+        ) : null}
+      </header>
       {status === 'loading' && !data ? <LoadingState label="Loading asset…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load this asset" onRetry={reload} />
@@ -187,148 +221,178 @@ export function AssetDetailPage() {
       {notice ? (
         <div
           role={notice.tone === 'error' ? 'alert' : 'status'}
-          className={notice.tone === 'error' ? 'alert' : 'notice'}
+          className={notice.tone === 'error' ? 'alert alert--inline' : 'notice notice--inline'}
         >
           <p>{notice.message}</p>
-          <button type="button" className="secondary" onClick={() => setNotice(null)}>
+          <button type="button" className="secondary small" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>
       ) : null}
       {status !== 'error' && data ? (
         <>
-          {restricted ? (
-            <p>
-              <RestrictedBadge allowedGroups={allowedGroups} restricted />{' '}
-              {ineligible ? (
-                <span id="restriction-note">
-                  {restrictionNote(allowedGroups, { restricted: true })}. Ask your organization
-                  admin about access.
-                </span>
-              ) : null}
+          {ineligible ? (
+            <p className="notice notice--warn" id="restriction-note">
+              {restrictionNote(allowedGroups, { restricted: true })}. Ask your organization admin
+              about access.
             </p>
           ) : null}
           {isRetired ? (
-            <p className="notice">
+            <p className="notice notice--muted">
               This asset was retired {formatDate(data.retiredAt)} and no longer appears in the
               catalog.
             </p>
           ) : null}
-          {isAdmin ? (
-            <div className="actions">
-              <Link className="button" to={ROUTES.assetEdit(id)}>
-                Edit asset
-              </Link>
-              {isRetired ? null : (
-                <ConfirmAction
-                  label="Retire asset"
-                  prompt={`Retire ${data.name}? It will stop appearing in the catalog. Its units and history are kept.`}
-                  confirmLabel="Yes, retire it"
-                  pendingLabel="Retiring…"
-                  onConfirm={onRetire}
-                />
-              )}
+          <section className="panel" aria-labelledby="details-heading">
+            <div className="panel-header">
+              <h2 id="details-heading">Details</h2>
             </div>
-          ) : null}
-          <dl>
-            <dt>Category</dt>
-            <dd>{data.category}</dd>
-            {/* SCRUM-148: admins see the override they set; members learn the outcome on submit. */}
-            {isAdmin ? (
-              <>
-                <dt>Checkout approval</dt>
-                <dd>{assetApprovalLabel(data.approvalMode)}</dd>
-              </>
-            ) : null}
-            {data.description ? (
-              <>
-                <dt>Description</dt>
-                <dd>{data.description}</dd>
-              </>
-            ) : null}
-          </dl>
-          <DataTable
-            caption="Units"
-            columns={[
-              { key: 'tag', header: 'Tag', render: (u) => u.tag },
-              { key: 'status', header: 'Status', render: (u) => humanize(u.status) },
-              { key: 'condition', header: 'Condition', render: (u) => humanize(u.condition) },
-              {
-                key: 'request',
-                header: 'Request',
-                // Offered only on AVAILABLE units (SCRUM-124). Every role holds `requests:create`,
-                // so this is not role-gated — an approver borrows things too. The label carries the
-                // tag, because five identical "Request this" buttons are indistinguishable to
-                // anyone navigating by button name rather than by row.
-                render: (u) =>
-                  canRequest && u.status === UNIT_STATUS.AVAILABLE ? (
-                    <button
-                      type="button"
-                      className="secondary"
-                      aria-label={`Request unit ${u.tag}`}
-                      aria-describedby={ineligible ? 'restriction-note' : undefined}
-                      disabled={ineligible || requestingUnitId === u.id}
-                      onClick={() => setRequestingUnitId(u.id)}
-                    >
-                      Request this
-                    </button>
-                  ) : (
-                    <span className="meta">—</span>
-                  ),
-              },
-              // SCRUM-141. Admin-only and only while the asset is in circulation, mirroring the other
-              // admin controls: presentation, not security — the API enforces `assets:write` (SR-1).
-              // One action per row, whichever applies: AVAILABLE can go for repair, MAINTENANCE can
-              // come back, and anything else (OUT, HELD, REQUESTED, RETIRED) would be refused with a
-              // 409, so offering a button would be a lie. The label carries the tag, because several
-              // identical "Start maintenance" buttons are indistinguishable to anyone navigating by
-              // button name rather than by row.
-              ...(isAdmin && !isRetired
-                ? [
+            <div className="panel-body">
+              <dl className="details-grid">
+                <div>
+                  <dt>Category</dt>
+                  <dd>{data.category}</dd>
+                </div>
+                <div>
+                  <dt>Availability</dt>
+                  <dd>
+                    {availableCount} of {pluralize(units.length, 'unit')} available
+                  </dd>
+                </div>
+                {/* SCRUM-148: admins see the override they set; members learn the outcome on submit. */}
+                {isAdmin ? (
+                  <div>
+                    <dt>Checkout approval</dt>
+                    <dd>{assetApprovalLabel(data.approvalMode)}</dd>
+                  </div>
+                ) : null}
+                {restricted ? (
+                  <div>
+                    <dt>Who can request</dt>
+                    <dd>
+                      {allowedGroups.length > 0
+                        ? allowedGroups.map((g) => g.name).join(', ')
+                        : 'Nobody (its groups were deleted)'}
+                    </dd>
+                  </div>
+                ) : null}
+                {data.description ? (
+                  <div className="wide">
+                    <dt>Description</dt>
+                    <dd>{data.description}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          </section>
+          <div className={isAdmin && !isRetired ? 'split' : undefined}>
+            <div className="stack">
+              <section className="panel" aria-labelledby="units-heading">
+                <div className="panel-header">
+                  <h2 id="units-heading">Units</h2>
+                  <span className="hint">
+                    {availableCount} of {units.length} available
+                  </span>
+                </div>
+                <DataTable
+                  caption="Units"
+                  hideCaption
+                  pageSize={10}
+                  columns={[
                     {
-                      key: 'maintenance',
-                      header: 'Maintenance',
-                      render: (u) => {
-                        const direction =
-                          u.status === UNIT_STATUS.AVAILABLE
-                            ? 'start'
-                            : u.status === UNIT_STATUS.MAINTENANCE
-                              ? 'end'
-                              : null;
-                        if (!direction) {
-                          return <span className="meta">—</span>;
-                        }
-                        const label =
-                          direction === 'start' ? 'Start maintenance' : 'End maintenance';
-                        return (
+                      key: 'tag',
+                      header: 'Tag',
+                      render: (u) => <span className="tag">{u.tag}</span>,
+                    },
+                    {
+                      key: 'status',
+                      header: 'Status',
+                      render: (u) => <StatusBadge value={u.status} kind="unit" />,
+                    },
+                    { key: 'condition', header: 'Condition', render: (u) => humanize(u.condition) },
+                    {
+                      key: 'request',
+                      header: 'Request',
+                      // Offered only on AVAILABLE units (SCRUM-124). Every role holds `requests:create`,
+                      // so this is not role-gated — an approver borrows things too. The label carries the
+                      // tag, because five identical "Request this" buttons are indistinguishable to
+                      // anyone navigating by button name rather than by row.
+                      render: (u) =>
+                        canRequest && u.status === UNIT_STATUS.AVAILABLE ? (
                           <button
                             type="button"
-                            className="secondary"
-                            aria-label={`${label} for unit ${u.tag}`}
-                            disabled={maintainingUnitId === u.id}
-                            onClick={() => onMaintenance(u, direction)}
+                            className="small"
+                            aria-label={`Request unit ${u.tag}`}
+                            aria-describedby={ineligible ? 'restriction-note' : undefined}
+                            disabled={ineligible || requestingUnitId === u.id}
+                            onClick={() => setRequestingUnitId(u.id)}
                           >
-                            {maintainingUnitId === u.id ? 'Working…' : label}
+                            Request this
                           </button>
-                        );
-                      },
+                        ) : (
+                          <span className="meta">—</span>
+                        ),
                     },
-                  ]
-                : []),
-            ]}
-            rows={data.units}
-            getRowId={(u) => u.id}
-            emptyMessage="This asset has no units yet."
-          />
-          {requestingUnit ? (
-            <RequestUnitForm
-              unit={requestingUnit}
-              onCreated={onRequested}
-              onFailed={reload}
-              onCancel={() => setRequestingUnitId(null)}
-            />
-          ) : null}
-          {isAdmin && !isRetired ? <AddUnitForm assetId={id} onAdded={onUnitAdded} /> : null}
+                    // SCRUM-141. Admin-only and only while the asset is in circulation, mirroring the other
+                    // admin controls: presentation, not security — the API enforces `assets:write` (SR-1).
+                    // One action per row, whichever applies: AVAILABLE can go for repair, MAINTENANCE can
+                    // come back, and anything else (OUT, HELD, REQUESTED, RETIRED) would be refused with a
+                    // 409, so offering a button would be a lie. The label carries the tag, because several
+                    // identical "Start maintenance" buttons are indistinguishable to anyone navigating by
+                    // button name rather than by row.
+                    ...(isAdmin && !isRetired
+                      ? [
+                          {
+                            key: 'maintenance',
+                            header: 'Maintenance',
+                            render: (u) => {
+                              const direction =
+                                u.status === UNIT_STATUS.AVAILABLE
+                                  ? 'start'
+                                  : u.status === UNIT_STATUS.MAINTENANCE
+                                    ? 'end'
+                                    : null;
+                              if (!direction) {
+                                return <span className="meta">—</span>;
+                              }
+                              const label =
+                                direction === 'start' ? 'Start maintenance' : 'End maintenance';
+                              return (
+                                <button
+                                  type="button"
+                                  className="secondary small"
+                                  aria-label={`${label} for unit ${u.tag}`}
+                                  disabled={maintainingUnitId === u.id}
+                                  onClick={() => onMaintenance(u, direction)}
+                                >
+                                  {maintainingUnitId === u.id ? 'Working…' : label}
+                                </button>
+                              );
+                            },
+                          },
+                        ]
+                      : []),
+                  ]}
+                  rows={units}
+                  getRowId={(u) => u.id}
+                  emptyMessage="This asset has no units yet."
+                />
+              </section>
+              {requestingUnit ? (
+                <RequestUnitForm
+                  unit={requestingUnit}
+                  onCreated={onRequested}
+                  onFailed={reload}
+                  onCancel={() => setRequestingUnitId(null)}
+                />
+              ) : null}
+            </div>
+            {isAdmin && !isRetired ? (
+              <div className="stack">
+                <AddUnitForm assetId={id} onAdded={onUnitAdded} />
+              </div>
+            ) : null}
+          </div>
           {/*
             SCRUM-29. Rendered for an admin only, and for a retired asset too: a retired laptop is
             exactly the one somebody asks about afterwards, so its history outlives its circulation.

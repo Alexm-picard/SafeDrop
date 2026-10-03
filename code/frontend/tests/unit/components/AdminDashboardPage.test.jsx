@@ -77,6 +77,20 @@ describe('AdminDashboardPage', () => {
     expect(within(list).getByText('Overdue').nextElementSibling).toHaveTextContent('1');
   });
 
+  it('links each actionable tile to the screen that answers it', async () => {
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+    const list = await screen.findByLabelText('Inventory summary');
+    const linkOf = (label) => within(screen.getByText(label).closest('.stat')).getByRole('link');
+    expect(linkOf('Pending requests')).toHaveAttribute('href', '/admin/approvals?state=PENDING');
+    expect(linkOf('Overdue')).toHaveAttribute('href', '/admin/approvals?state=OVERDUE');
+    expect(linkOf('Checked out')).toHaveAttribute('href', '/admin/approvals?state=CHECKED_OUT');
+    expect(linkOf('Total assets')).toHaveAttribute('href', '/catalog');
+    // Retired assets leave the catalogue, so there is nowhere useful for that tile to go.
+    expect(
+      within(within(list).getByText('Retired').closest('.stat')).queryByRole('link'),
+    ).not.toBeInTheDocument();
+  });
+
   it('flags a non-zero overdue count, and leaves it plain at zero', async () => {
     const { unmount } = renderWithAuth(<AdminDashboardPage />, { user: adminUser });
     const overdue = await screen.findByText('Overdue');

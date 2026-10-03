@@ -31,6 +31,7 @@
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { DueBadge } from '../components/DueBadge';
+import { StatusBadge } from '../components/StatusBadge';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { useAuth } from '../hooks/useAuth';
@@ -86,7 +87,12 @@ function Timeline({ timeline }) {
     <ol className="timeline" aria-label="Request history">
       {timeline.map((entry) => (
         <li key={`${entry.event}-${entry.at}`}>
-          <strong>{humanize(entry.event)}</strong> <span>{formatDate(entry.at)}</span>
+          <div className="timeline-head">
+            <strong>{humanize(entry.event)}</strong>
+            <time className="timeline-time" dateTime={entry.at}>
+              {formatDate(entry.at)}
+            </time>
+          </div>
         </li>
       ))}
     </ol>
@@ -168,168 +174,213 @@ export function RequestDetailPage() {
 
   return (
     <section>
-      <h1>{asset ? asset.name : 'Request'}</h1>
-      <p className="hint">
-        <Link to={ROUTES.myRequests}>My requests</Link>
-        {user?.role === ROLES.APPROVER || user?.role === ROLES.ORG_ADMIN ? (
-          <>
-            {' · '}
-            <Link to={ROUTES.approvals}>Approval queue</Link>
-          </>
-        ) : null}
-      </p>
-
-      <dl className="detail" aria-label="Request details">
-        <dt>State</dt>
-        <dd>{humanize(request.state)}</dd>
-        <dt>Requested by</dt>
-        <dd>{requester ? `${requester.name} (${requester.email})` : 'Unknown'}</dd>
-        <dt>Unit</dt>
-        <dd>{unit ? `${unit.tag}${unit.serial ? ` · ${unit.serial}` : ''}` : 'Unknown'}</dd>
-        <dt>Needed</dt>
-        <dd>
-          {formatDate(request.neededFrom)} – {formatDate(request.neededTo)}
-        </dd>
-        {request.dueAt ? (
-          <>
-            <dt>Due back</dt>
-            <dd>
-              {formatDate(request.dueAt)} <DueBadge request={request} />
-            </dd>
-          </>
-        ) : null}
-        {decidedBy ? (
-          <>
-            <dt>Decided by</dt>
-            <dd>{decidedBy.name}</dd>
-          </>
-        ) : null}
-        {/* SCRUM-148: no person decided this one, so say so instead of leaving the row out. */}
-        {request.autoApproved ? (
-          <>
-            <dt>Decided by</dt>
-            <dd>Approved automatically by your organization’s rules</dd>
-          </>
-        ) : null}
-        {request.note ? (
-          <>
-            <dt>Note</dt>
-            <dd>{request.note}</dd>
-          </>
-        ) : null}
-        {request.decisionNote ? (
-          <>
-            <dt>Decision note</dt>
-            <dd>{request.decisionNote}</dd>
-          </>
-        ) : null}
-        {/* SCRUM-205: what the borrower said when they started the return. */}
-        {request.reportedCondition ? (
-          <>
-            <dt>Reported condition</dt>
-            <dd>{humanize(request.reportedCondition)}</dd>
-          </>
-        ) : null}
-        {request.reportedNote ? (
-          <>
-            <dt>Return note</dt>
-            <dd>{request.reportedNote}</dd>
-          </>
-        ) : null}
-      </dl>
-
-      <h2>History</h2>
-      <Timeline timeline={timeline} />
-
-      <h2>Actions</h2>
-      {actionError ? (
-        <div role="alert" className="alert">
-          {actionError}
+      <header className="page-header">
+        <div>
+          <span className="eyebrow">
+            <Link to={ROUTES.myRequests}>My requests</Link>
+            {user?.role === ROLES.APPROVER || user?.role === ROLES.ORG_ADMIN ? (
+              <>
+                {' · '}
+                <Link to={ROUTES.approvals}>Approval queue</Link>
+              </>
+            ) : null}
+          </span>
+          <h1>{asset ? asset.name : 'Request'}</h1>
+          {asset ? (
+            <p className="subtitle">
+              <Link to={ROUTES.asset(asset.id)}>View asset</Link>
+            </p>
+          ) : null}
         </div>
-      ) : null}
-      {pendingReturn && isRequester ? (
-        <p className="hint" role="status">
-          Waiting for someone else to confirm this return. You are responsible for the item until
-          they do.
-        </p>
-      ) : null}
-      {actions.length === 0 ? (
-        pendingReturn && isRequester ? null : (
-          <p className="hint">There is nothing to do on this request.</p>
-        )
-      ) : (
-        <div className="actions">
-          {offers('initiateReturn') ? (
-            <>
-              <label>
-                Condition you are returning it in
-                <select
-                  value={reportedCondition}
-                  onChange={(event) => setReportedCondition(event.target.value)}
-                >
-                  {UNIT_CONDITIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {humanize(value)}
-                    </option>
+      </header>
+
+      <div className="split">
+        <section className="panel" aria-labelledby="request-details-heading">
+          <div className="panel-header">
+            <h2 id="request-details-heading">Details</h2>
+          </div>
+          <div className="panel-body">
+            <dl className="detail" aria-label="Request details">
+              <dt>State</dt>
+              <dd>
+                <StatusBadge value={request.state} />
+              </dd>
+              <dt>Requested by</dt>
+              <dd>{requester ? `${requester.name} (${requester.email})` : 'Unknown'}</dd>
+              <dt>Unit</dt>
+              <dd>
+                {unit ? (
+                  <>
+                    <span className="tag">{unit.tag}</span>
+                    {unit.serial ? <span className="hint"> · {unit.serial}</span> : null}
+                  </>
+                ) : (
+                  'Unknown'
+                )}
+              </dd>
+              <dt>Needed</dt>
+              <dd>
+                {formatDate(request.neededFrom)} – {formatDate(request.neededTo)}
+              </dd>
+              {request.dueAt ? (
+                <>
+                  <dt>Due back</dt>
+                  <dd>
+                    {formatDate(request.dueAt)} <DueBadge request={request} />
+                  </dd>
+                </>
+              ) : null}
+              {decidedBy ? (
+                <>
+                  <dt>Decided by</dt>
+                  <dd>{decidedBy.name}</dd>
+                </>
+              ) : null}
+              {/* SCRUM-148: no person decided this one, so say so instead of leaving the row out. */}
+              {request.autoApproved ? (
+                <>
+                  <dt>Decided by</dt>
+                  <dd>Approved automatically by your organization’s rules</dd>
+                </>
+              ) : null}
+              {request.note ? (
+                <>
+                  <dt>Note</dt>
+                  <dd>{request.note}</dd>
+                </>
+              ) : null}
+              {request.decisionNote ? (
+                <>
+                  <dt>Decision note</dt>
+                  <dd>{request.decisionNote}</dd>
+                </>
+              ) : null}
+              {/* SCRUM-205: what the borrower said when they started the return. */}
+              {request.reportedCondition ? (
+                <>
+                  <dt>Reported condition</dt>
+                  <dd>{humanize(request.reportedCondition)}</dd>
+                </>
+              ) : null}
+              {request.reportedNote ? (
+                <>
+                  <dt>Return note</dt>
+                  <dd>{request.reportedNote}</dd>
+                </>
+              ) : null}
+            </dl>
+          </div>
+        </section>
+
+        <div className="stack">
+          <section className="panel" aria-labelledby="request-actions-heading">
+            <div className="panel-header">
+              <h2 id="request-actions-heading">Actions</h2>
+            </div>
+            <div className="panel-body">
+              {actionError ? (
+                <div role="alert" className="alert">
+                  {actionError}
+                </div>
+              ) : null}
+              {pendingReturn && isRequester ? (
+                <p className="hint" role="status">
+                  Waiting for someone else to confirm this return. You are responsible for the item
+                  until they do.
+                </p>
+              ) : null}
+              {actions.length === 0 ? (
+                pendingReturn && isRequester ? null : (
+                  <p className="hint">There is nothing to do on this request.</p>
+                )
+              ) : (
+                <div className="actions request-actions">
+                  {offers('initiateReturn') ? (
+                    <>
+                      <label>
+                        Condition you are returning it in
+                        <select
+                          value={reportedCondition}
+                          onChange={(event) => setReportedCondition(event.target.value)}
+                        >
+                          {UNIT_CONDITIONS.map((value) => (
+                            <option key={value} value={value}>
+                              {humanize(value)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Note (optional)
+                        <input
+                          type="text"
+                          maxLength={1000}
+                          value={reportedNote}
+                          onChange={(event) => setReportedNote(event.target.value)}
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                  {offers('return') ? (
+                    <label>
+                      {pendingReturn ? 'Condition received' : 'Returned condition'}
+                      <select
+                        value={condition}
+                        onChange={(event) => setReceivedCondition(event.target.value)}
+                      >
+                        {UNIT_CONDITIONS.map((value) => (
+                          <option key={value} value={value}>
+                            {humanize(value)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {offers('rejectReturn') ? (
+                    <label>
+                      Reason for rejecting
+                      <input
+                        type="text"
+                        maxLength={1000}
+                        value={rejectReason}
+                        onChange={(event) => setRejectReason(event.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                  {actions.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      className={
+                        action.key === 'deny' ||
+                        action.key === 'cancel' ||
+                        action.key === 'rejectReturn'
+                          ? 'secondary'
+                          : undefined
+                      }
+                      disabled={
+                        busy !== null ||
+                        (action.key === 'rejectReturn' && rejectReason.trim() === '')
+                      }
+                      onClick={() => run(action.key)}
+                    >
+                      {busy === action.key ? 'Working…' : action.label}
+                    </button>
                   ))}
-                </select>
-              </label>
-              <label>
-                Note (optional)
-                <input
-                  type="text"
-                  maxLength={1000}
-                  value={reportedNote}
-                  onChange={(event) => setReportedNote(event.target.value)}
-                />
-              </label>
-            </>
-          ) : null}
-          {offers('return') ? (
-            <label>
-              {pendingReturn ? 'Condition received' : 'Returned condition'}
-              <select
-                value={condition}
-                onChange={(event) => setReceivedCondition(event.target.value)}
-              >
-                {UNIT_CONDITIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {humanize(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {offers('rejectReturn') ? (
-            <label>
-              Reason for rejecting
-              <input
-                type="text"
-                maxLength={1000}
-                value={rejectReason}
-                onChange={(event) => setRejectReason(event.target.value)}
-              />
-            </label>
-          ) : null}
-          {actions.map((action) => (
-            <button
-              key={action.key}
-              type="button"
-              className={
-                action.key === 'deny' || action.key === 'cancel' || action.key === 'rejectReturn'
-                  ? 'secondary'
-                  : undefined
-              }
-              disabled={
-                busy !== null || (action.key === 'rejectReturn' && rejectReason.trim() === '')
-              }
-              onClick={() => run(action.key)}
-            >
-              {busy === action.key ? 'Working…' : action.label}
-            </button>
-          ))}
+                </div>
+              )}
+            </div>
+          </section>
+          <section className="panel" aria-labelledby="request-history-heading">
+            <div className="panel-header">
+              <h2 id="request-history-heading">History</h2>
+            </div>
+            <div className="panel-body">
+              <Timeline timeline={timeline} />
+            </div>
+          </section>
         </div>
-      )}
+      </div>
     </section>
   );
 }
