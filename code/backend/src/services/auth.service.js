@@ -132,7 +132,7 @@ export async function verifyPassword(password, passwordHash) {
  * (a hash, a token, an internal flag) is not exposed by default. This is the shape the frontend's
  * `User` typedef expects.
  * @param {object} user a Mongoose user document
- * @returns {{ id: string, orgId: string, email: string, name: string, role: string, createdAt: Date }}
+ * @returns {{ id: string, orgId: string, email: string, name: string, role: string, mustChangePassword: boolean, deactivatedAt: Date|null, createdAt: Date }}
  */
 export function publicUser(user) {
   return {
@@ -143,6 +143,10 @@ export function publicUser(user) {
     role: user.role,
     // The SPA needs this to send the person straight to the change-password screen.
     mustChangePassword: Boolean(user.mustChangePassword),
+    // Added for the user-groups ticket (SCRUM-149): an admin managing a group's membership needs to
+    // see who in it is deactivated, since eligibility checks will exclude them automatically rather
+    // than removing them from the group. `null` while active, matching the field itself.
+    deactivatedAt: user.deactivatedAt ?? null,
     createdAt: user.createdAt,
   };
 }

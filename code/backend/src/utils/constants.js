@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
+// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); GROUP_* additions pending review
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the user-groups ticket.
 
 /**
  * Domain enums and fixed limits shared across the backend (SDD §2.4).
@@ -78,6 +78,14 @@ export const AUDIT_ACTION = freezeEnum([
   // An Org Admin changed an organisation-wide setting (SCRUM-148: the approval default). Recorded with
   // before/after values, because a rule change explains every request decided differently after it.
   'ORG_SETTINGS_UPDATED',
+  // User groups (SCRUM-149): named cohorts the restricted-equipment story will gate access on.
+  // Membership changes get their own actions, distinct from GROUP_UPDATED (a rename or description
+  // edit), so the trail reads as "who was added or removed" without decoding a memberIds diff.
+  'GROUP_CREATED',
+  'GROUP_UPDATED',
+  'GROUP_DELETED',
+  'GROUP_MEMBER_ADDED',
+  'GROUP_MEMBER_REMOVED',
 ]);
 export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
 
@@ -98,6 +106,7 @@ export const AUDIT_TARGET_TYPE = freezeEnum([
   'Asset',
   'AssetUnit',
   'CheckoutRequest',
+  'UserGroup',
 ]);
 export const AUDIT_TARGET_TYPE_LIST = Object.freeze(Object.keys(AUDIT_TARGET_TYPE));
 

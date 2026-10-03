@@ -44,6 +44,9 @@ const assetFields = {
   imageUrl: z.url().max(2048).nullable(),
   // SCRUM-148: does a request for this asset need an approver? INHERIT uses the organisation default.
   approvalMode: z.enum(APPROVAL_MODE_LIST),
+  // SCRUM-149: restrict this asset to an active member of one group. null (the default) means open
+  // to the whole organisation, the behaviour every asset had before this existed.
+  requiredGroupId: objectId.nullable(),
 };
 
 /**
@@ -58,6 +61,7 @@ export const assetBody = z.object({
   description: assetFields.description.default(''),
   imageUrl: assetFields.imageUrl.default(null),
   approvalMode: assetFields.approvalMode.default(APPROVAL_MODE.INHERIT),
+  requiredGroupId: assetFields.requiredGroupId.default(null),
 });
 
 /**

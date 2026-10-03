@@ -17,6 +17,7 @@ import { auditRouter } from './audit.routes.js';
 import { authRouter } from './auth.routes.js';
 import { dashboardRouter } from './dashboard.routes.js';
 import { createRouter, mount } from './define.js';
+import { groupsRouter } from './groups.routes.js';
 import { organizationsRouter } from './organizations.routes.js';
 import { requestsRouter } from './requests.routes.js';
 import { usersRouter } from './users.routes.js';
@@ -36,6 +37,7 @@ export function registerRoutes(app) {
   mount(api, '/organizations', organizationsRouter);
   mount(api, '/users', usersRouter);
   mount(api, '/assets', assetsRouter);
+  mount(api, '/groups', groupsRouter);
   mount(api, '/requests', requestsRouter);
   mount(api, '/audit', auditRouter);
   mount(api, '/dashboard', dashboardRouter);

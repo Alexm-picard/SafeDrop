@@ -1,8 +1,8 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back; submit() now enforces restricted-equipment eligibility via group.service.isActiveMember (SCRUM-149)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); SCRUM-149 eligibility check pending review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
@@ -46,6 +46,7 @@ import {
 } from '../utils/errors.js';
 import { PERMISSIONS, roleHasPermission } from '../utils/permissions.js';
 import * as auditService from './audit.service.js';
+import { isActiveMember } from './group.service.js';
 import { policyFor } from './policies/approvalPolicy.js';
 
 /**
@@ -173,9 +174,17 @@ export function canTransition(from, to) {
  * @param {{ userId: string, role: string }} actor
  * @param {{ unitId: string, neededFrom: Date, neededTo: Date, note?: string, requestId?: string }} [input]
  *   validated `createRequestBody`, plus the HTTP request id for audit correlation
+ * **Restricted equipment (SCRUM-149).** When the asset carries a `requiredGroupId`, the requester
+ * must be an active member of that group — checked live, here, before the policy is asked, so an
+ * auto-approving asset can never let an ineligible member skip the check by having nothing to
+ * approve. "Active" excludes a deactivated member even though they remain listed in the group (the
+ * user-groups ticket's own answer to that question): a deactivated account must never reach a
+ * checkout outcome, privileged or not. The check runs inside this transaction, against the same
+ * snapshot the rest of the write sees, so a membership change mid-flight cannot race it.
  * @returns {Promise<object>} the new request — PENDING, or APPROVED when auto-approved
  * @throws {NotFoundError} (404) no such unit in this organisation
  * @throws {ConflictError} (409) the unit is not AVAILABLE, including a lost race
+ * @throws {ForbiddenError} (403) the asset is restricted to a group the requester is not an active member of
  */
 export async function submit(orgId, actor, input = {}) {
   return withTransaction(async (session) => {
@@ -187,10 +196,16 @@ export async function submit(orgId, actor, input = {}) {
       throw new ConflictError('That unit is no longer available');
     }
 
-    // TODO(restricted-equipment story): an eligibility check belongs here, *before* the policy is
-    // asked — an auto-approving asset must not let an ineligible member skip the check.
     // Sequential, not Promise.all: operations sharing one transaction session must not run in parallel.
     const asset = await assetRepo.findById(orgId, unit.assetId, { session });
+    if (asset.requiredGroupId) {
+      const eligible = await isActiveMember(orgId, asset.requiredGroupId, actor.userId, {
+        session,
+      });
+      if (!eligible) {
+        throw new ForbiddenError('You are not eligible to request this asset');
+      }
+    }
     const org = await organizationRepo.findById(orgId, { session });
     const policy = policyFor(org);
     const autoApprove = !policy.requiresApproval({ request: input, asset, org });

@@ -1,8 +1,8 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents; write path added for SCRUM-134)
-// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148); requiredGroupId validation for restricted equipment (SCRUM-149)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); requiredGroupId validation pending review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
@@ -31,9 +31,10 @@ import { withTransaction } from '../config/db.js';
 import * as assetRepo from '../repositories/asset.repository.js';
 import * as assetUnitRepo from '../repositories/assetUnit.repository.js';
 import * as checkoutRequestRepo from '../repositories/checkoutRequest.repository.js';
+import * as groupRepo from '../repositories/group.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE, UNIT_STATUS } from '../utils/constants.js';
-import { ConflictError, NotFoundError } from '../utils/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { listForTargets, record as recordAudit } from './audit.service.js';
 
 /**
@@ -56,6 +57,27 @@ const BLOCKING_UNIT_STATUSES = Object.freeze([
  * @returns {boolean}
  */
 const isDuplicateKey = (err) => Boolean(err) && err.code === 11000;
+
+/**
+ * Confirm `requiredGroupId` names a real group in this organisation before it is stamped onto an
+ * asset (SCRUM-149). A falsy value (null/undefined, "open to the whole organisation") is left alone —
+ * only a truthy value is checked, so clearing the restriction never has to resolve anything.
+ * @param {string} orgId
+ * @param {string|null|undefined} requiredGroupId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @throws {ValidationError} (400) when `requiredGroupId` is set but names no group in this organisation
+ */
+async function assertGroupExists(orgId, requiredGroupId, { session } = {}) {
+  if (!requiredGroupId) {
+    return;
+  }
+  const group = await groupRepo.findById(orgId, requiredGroupId, { session });
+  if (!group) {
+    throw new ValidationError('Invalid request', [
+      { field: 'requiredGroupId', message: 'No such group in this organisation' },
+    ]);
+  }
+}
 
 /**
  * Snapshot just the keys of `patch` as they currently stand on `doc`.
@@ -117,18 +139,23 @@ export async function get(orgId, assetId) {
  *
  * The audit entry has an `after` and no `before`, because nothing preceded it. It carries the whole
  * created asset rather than a field list: for a creation, "what changed" is the record itself.
+ * **`requiredGroupId`, when set, must name a real group in this organisation (SCRUM-149)** — checked
+ * inside the same transaction as the insert, so the asset can never be created pointing at a group
+ * that does not exist (or exists in a different organisation).
  * @param {string} orgId the caller's organisation, from the access token
  * @param {{ userId: string, role: string }} actor
- * @param {{ name: string, category: string, description?: string, imageUrl?: string|null, requestId?: string }} input
+ * @param {{ name: string, category: string, description?: string, imageUrl?: string|null, requiredGroupId?: string|null, requestId?: string }} input
  *   validated `assetBody`, plus the HTTP request id for audit correlation
  * @returns {Promise<object>} the created asset
+ * @throws {ValidationError} (400) `requiredGroupId` is set but names no group in this organisation
  */
 export async function create(orgId, actor, input = {}) {
-  const { name, category, description, imageUrl, approvalMode, requestId } = input;
+  const { name, category, description, imageUrl, approvalMode, requiredGroupId, requestId } = input;
   return withTransaction(async (session) => {
+    await assertGroupExists(orgId, requiredGroupId, { session });
     const asset = await assetRepo.create(
       orgId,
-      { name, category, description, imageUrl, approvalMode },
+      { name, category, description, imageUrl, approvalMode, requiredGroupId },
       { session },
     );
     await recordAudit(
@@ -161,12 +188,17 @@ export async function create(orgId, actor, input = {}) {
  * An empty patch is not an error: it writes nothing and records nothing, which is the honest answer
  * to "change nothing". `requestId` is stripped first, since it is audit plumbing rather than a field
  * of the asset.
+ * **`requiredGroupId`, when present and truthy, must name a real group in this organisation
+ * (SCRUM-149)** — the same check `create()` applies, run before the write so a patch can never point
+ * an asset at a group that does not exist. Clearing the restriction (`null`) is left alone, same as on
+ * create.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} assetId validated as an object id by the route's `idParams` schema
  * @param {Record<string, unknown>} patch validated `assetPatch`, plus `requestId`
  * @returns {Promise<object>} the updated asset
  * @throws {NotFoundError} (404) absent, or owned by another organisation
+ * @throws {ValidationError} (400) `requiredGroupId` is set but names no group in this organisation
  */
 export async function update(orgId, actor, assetId, patch = {}) {
   const { requestId, ...fields } = patch;
@@ -177,6 +209,9 @@ export async function update(orgId, actor, assetId, patch = {}) {
     }
     if (Object.keys(fields).length === 0) {
       return existing.toJSON();
+    }
+    if (fields.requiredGroupId) {
+      await assertGroupExists(orgId, fields.requiredGroupId, { session });
     }
 
     const before = snapshotOf(existing, fields);
