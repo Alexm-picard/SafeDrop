@@ -53,6 +53,12 @@ const MAX_CANDIDATES = 100;
 const PLAIN_SEARCH_LIMIT = 50;
 
 /**
+ * The most alternatives a dead-end page offers (SCRUM-151). A member who cannot have the thing they
+ * came for needs a handful of options to choose between, not a second catalogue to search.
+ */
+const MAX_ALTERNATIVES = 5;
+
+/**
  * Search the caller's catalogue.
  * @param {string} orgId tenant id, from the verified token
  * @param {string} query what the member typed
@@ -123,8 +129,9 @@ export async function searchAssets(orgId, query) {
  * wanted, so they go to the model in place of typed words and the SCRUM-103 candidate-and-ranking
  * pipeline is reused unchanged — one prompt contract, one place where model output is validated.
  *
- * Only AT-1 is implemented so far: the candidate filtering (AT-2), the fallback (AT-3) and the
- * early return for an asset that is still available (AT-4) arrive with the tests that demand them.
+ * **Every failure is a fallback, never an error (AT-3).** Foundry switched off, unreachable, or
+ * answering outside its contract all end in the same place: the candidates the backend had already
+ * chosen, unranked. A member at a dead end gets a worse answer, never an error page.
  * @param {string} orgId tenant id, from the verified token
  * @param {string} userId the caller, who must be eligible for anything recommended (AT-2)
  * @param {string} assetId the asset the member is looking at
@@ -143,36 +150,45 @@ export async function getAlternatives(orgId, userId, assetId) {
     return { alternatives: [], aiAssisted: false };
   }
 
-  const possible = (await pickCandidates(orgId, queryFor(asset))).filter(
-    (candidate) => String(candidate._id) !== String(assetId),
-  );
-  const possibleUnits = await unitRepo.listByAssets(
-    orgId,
-    possible.map((candidate) => candidate._id),
-  );
+  // Chosen once, for both paths. The fallback is the same set unranked rather than a second,
+  // narrower query, so what the section *contains* does not change when Foundry flaps — only whether
+  // it is ordered and explained. It also means the AT-2 filters cannot be bypassed by the fallback,
+  // which is the obvious way for this feature to leak.
+  const { candidates, candidateUnits } = await recommendableCandidates(orgId, userId, asset);
+  if (!isFoundryEnabled()) {
+    return unranked(candidates);
+  }
 
-  // **Narrowed here, before the model sees anything (AT-2).** Tenant scoping and the retired rule
-  // come free — every repository call folds in `orgId`, and `search`/`list` exclude retired assets
-  // (SCRUM-145). What this adds is the two rules specific to a *recommendation*: it must be borrowable
-  // right now, and by this caller. Doing it after the model answered would mean the prompt had
-  // carried assets the member may not have, and a filter can only be trusted if the model never had
-  // the option.
-  const unitsByAsset = Map.groupBy(possibleUnits, (unit) => String(unit.assetId));
-  const borrowable = possible.filter((candidate) =>
-    (unitsByAsset.get(String(candidate._id)) ?? []).some(
-      (unit) => unit.status === UNIT_STATUS.AVAILABLE,
-    ),
-  );
-  const candidates = await filterEligible(orgId, userId, borrowable);
-  const candidateUnits = possibleUnits.filter((unit) =>
-    candidates.some((candidate) => String(candidate._id) === String(unit.assetId)),
-  );
   const input = JSON.stringify({
     query: queryFor(asset),
     assets: toPromptAssets(candidates, candidateUnits),
   });
-  const response = await foundryRequest(orgId, { input }, { prompt: input });
+  let response;
+  try {
+    response = await foundryRequest(orgId, { input }, { prompt: input });
+  } catch (err) {
+    // The transport turns every upstream failure into this one class, so it means "the AI is down".
+    // Anything else is a bug here and is rethrown: catching it too would report a defect as an
+    // outage and hide it. The error's own message is never forwarded or logged — Foundry quotes the
+    // offending request back, prompt included (services/ai/README.md).
+    if (!(err instanceof ServiceUnavailableError)) {
+      throw err;
+    }
+    log.warn({ orgId }, 'Foundry unavailable; alternatives returned unranked');
+    return unranked(candidates);
+  }
+
   const answer = readAnswer(response);
+  if (!answer) {
+    // Logged so a prompt or model change that breaks the contract is noticed rather than silently
+    // turning every page into the fallback — but only the org, never the reply, which quotes
+    // catalogue data.
+    log.warn(
+      { orgId },
+      'model output did not fit the asset-search contract; alternatives returned unranked',
+    );
+    return unranked(candidates);
+  }
 
   // Same rule as search: the candidates sent are the only ids the model may return (prompt rule 1),
   // and anything else is dropped rather than looked up.
@@ -182,6 +198,58 @@ export async function getAlternatives(orgId, userId, assetId) {
       .filter(({ assetId: id }) => byId.has(id))
       .map(({ assetId: id, reason }) => ({ assetId: id, ...describe(byId.get(id)), reason })),
     aiAssisted: true,
+  };
+}
+
+/**
+ * The assets this member could actually borrow instead, and their units (SCRUM-151 AT-2).
+ *
+ * Tenant scoping and the retired rule come free: every repository call folds in `orgId`, and
+ * `search`/`list` exclude retired assets (SCRUM-145). What this adds is the two rules specific to a
+ * *recommendation* — it has to be borrowable right now, and by this caller. Suggesting something the
+ * member cannot request would hand them a second dead end, which is the thing the story removes.
+ *
+ * Both callers get the same set, so the filters are applied once and cannot be skipped by the
+ * fallback path.
+ */
+async function recommendableCandidates(orgId, userId, asset) {
+  const possible = (await pickCandidates(orgId, queryFor(asset))).filter(
+    (candidate) => String(candidate._id) !== String(asset._id),
+  );
+  const possibleUnits = await unitRepo.listByAssets(
+    orgId,
+    possible.map((candidate) => candidate._id),
+  );
+
+  const unitsByAsset = Map.groupBy(possibleUnits, (unit) => String(unit.assetId));
+  const borrowable = possible.filter((candidate) =>
+    (unitsByAsset.get(String(candidate._id)) ?? []).some(
+      (unit) => unit.status === UNIT_STATUS.AVAILABLE,
+    ),
+  );
+  const candidates = await filterEligible(orgId, userId, borrowable);
+  const keep = new Set(candidates.map((candidate) => String(candidate._id)));
+  return {
+    candidates,
+    candidateUnits: possibleUnits.filter((unit) => keep.has(String(unit.assetId))),
+  };
+}
+
+/**
+ * The fallback answer (AT-3): the same candidates, in the order the backend chose, with no reason.
+ *
+ * `reason` is `null` rather than a sentence composed here. The field means "why the model picked
+ * this", and writing plausible prose into it would attribute words to a model that never ran. The
+ * page says "available now" from `aiAssisted: false` instead.
+ */
+function unranked(candidates) {
+  return {
+    alternatives: candidates.slice(0, MAX_ALTERNATIVES).map((candidate) => ({
+      assetId: String(candidate._id),
+      ...describe(candidate),
+      reason: null,
+    })),
+    aiAssisted: false,
   };
 }
 
