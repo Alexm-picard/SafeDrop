@@ -62,4 +62,51 @@ describe('GET /api/assets/:id/alternatives (SCRUM-151)', () => {
     expect(ids).not.toContain(String(stuckOn._id));
     expect(ids).toContain(String(seed.a.extraAssets[0].asset._id));
   });
+
+  it('answers 404, never 403, for another organisation’s asset id (SR-2)', async () => {
+    const res = await alternatives(seed.a.member, seed.b.asset._id);
+
+    // A 403 would confirm the id exists somewhere. So would a 200 carrying an empty list, since the
+    // caller could then tell a real id in another tenant from one that never existed by… nothing —
+    // which is the point: both must answer identically, and the story says that answer is 404.
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+    expect(res.body.alternatives).toBeUndefined();
+  });
+
+  it('answers 404 for an id that does not exist', async () => {
+    const res = await alternatives(seed.a.member, '0'.repeat(24));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('rejects a malformed id with 400 before it reaches the service', async () => {
+    const res = await alternatives(seed.a.member, 'not-an-id');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects a caller with no session', async () => {
+    const res = await request(app).get(`/api/assets/${stuckOn._id}/alternatives`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it('every role may ask (assets:read is universal)', async () => {
+    for (const role of ['member', 'approver', 'admin']) {
+      const res = await alternatives(seed.a[role], stuckOn._id);
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it('answers 200 with an empty list, not an error, when the asset is available (AT-4)', async () => {
+    // The camera has AVAILABLE units, so there is no dead end and nothing to recommend. The page
+    // asks the same question either way and must not have to treat "nothing to suggest" as a failure.
+    const res = await alternatives(seed.a.member, seed.a.extraAssets[0].asset._id);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ alternatives: [], aiAssisted: false });
+  });
 });
