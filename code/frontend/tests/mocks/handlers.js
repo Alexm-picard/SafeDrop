@@ -162,6 +162,27 @@ export function groupWithMembers(group) {
   };
 }
 
+/**
+ * What `GET /api/assets/:id/alternatives` answers (SCRUM-151).
+ *
+ * The recommended assets deliberately are not members of `assets` above: the endpoint returns the
+ * fields the section renders rather than ids to look up, so the fixture should not imply the page
+ * needs the catalogue loaded as well. A test that wants the fallback shape overrides this handler with
+ * `reason: null` and `aiAssisted: false`.
+ */
+export const similarItems = {
+  alternatives: [
+    {
+      assetId: '6aab2a45c6e457e01ac0973a',
+      name: 'Sony A7 IV',
+      category: 'camera',
+      description: 'Full-frame mirrorless',
+      reason: 'Full-frame mirrorless like the R6, two available now',
+    },
+  ],
+  aiAssisted: true,
+};
+
 /** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */
 export const assetUnits = {
   [assets[0].id]: [
@@ -623,6 +644,7 @@ export const handlers = [
   http.get('*/api/assets/search', ({ request }) =>
     HttpResponse.json(plainSearch(new URL(request.url).searchParams)),
   ),
+  http.get('*/api/assets/:id/alternatives', () => HttpResponse.json(similarItems)),
   http.get('*/api/assets/:id/history', ({ request }) =>
     HttpResponse.json(assetHistoryPage(new URL(request.url).searchParams)),
   ),
