@@ -57,6 +57,7 @@ const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
 const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
 const { searchAssets } = await import('../../../src/services/ai/assetSearch.service.js');
+const { ServiceUnavailableError } = await import('../../../src/utils/errors.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
 const OTHER_ORG = '6aab2a45c6e457e01ac0968b';
@@ -323,6 +324,33 @@ describe('SCRUM-103 AC4: unusable model output falls back to plain search', () =
 
     expect(result).toMatchObject({ aiAssisted: false, clarification: null });
     expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
+
+  it('SCRUM-200: falls back when Foundry is unavailable, and logs a warning without the query', async () => {
+    const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    // What the transport throws for every upstream failure: timeout, 5xx, bad key, network.
+    foundry.foundryRequest.mockRejectedValue(
+      new ServiceUnavailableError('The AI service is unavailable'),
+    );
+
+    const result = await searchAssets(ORG, 'recorder');
+
+    expect(result).toMatchObject({ aiAssisted: false, clarification: null });
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+    const warnings = logLines.map((line) => JSON.parse(line)).filter((l) => l.level === 'warn');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].orgId).toBe(ORG);
+    // The member's words stay out of the log (services/ai/README.md).
+    expect(logLines.join('\n').toLowerCase()).not.toContain('recorder');
+  });
+
+  // Regression guard, not a red: nothing caught anything before the outage fallback. It exists to stop
+  // that fallback from catching every error and reporting a real bug as "AI was unavailable".
+  it('SCRUM-200: still throws an error that is not an outage, rather than hiding a bug', async () => {
+    await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+    foundry.foundryRequest.mockRejectedValue(new TypeError('response.output is not iterable'));
+
+    await expect(searchAssets(ORG, 'recorder')).rejects.toThrow(TypeError);
   });
 
   it('logs a warning when it falls back, without the query or the model reply', async () => {

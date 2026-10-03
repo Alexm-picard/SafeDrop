@@ -14,6 +14,7 @@
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
+import { ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
 
@@ -61,7 +62,19 @@ export async function searchAssets(orgId, query) {
     candidates.map((asset) => asset._id),
   );
   const input = JSON.stringify({ query, assets: toPromptAssets(candidates, units) });
-  const response = await foundryRequest(orgId, { input }, { prompt: input });
+  let response;
+  try {
+    response = await foundryRequest(orgId, { input }, { prompt: input });
+  } catch (err) {
+    // The transport turns every upstream failure into this one class, so it means "the AI is down",
+    // and the member still gets plain search (SCRUM-103 AT2). Anything else is a bug here and is
+    // rethrown: catching it too would report a defect as an outage and hide it.
+    if (!(err instanceof ServiceUnavailableError)) {
+      throw err;
+    }
+    log.warn({ orgId }, 'Foundry unavailable; used plain search');
+    return plainSearch(orgId, query);
+  }
   const answer = readAnswer(response);
   if (!answer) {
     // AI is an enhancement, not a dependency: an unusable answer costs the member the ranking,

@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: asset catalogue handlers (Sprint 1 stubs → 501)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * HTTP layer for `/api/assets`.
  *
@@ -18,6 +11,7 @@
  * auditable event.
  */
 import * as assetService from '../services/asset.service.js';
+import { searchAssets } from '../services/ai/assetSearch.service.js';
 
 /**
  * `GET /api/assets` — list the catalogue. Query filters are already validated and coerced.
@@ -26,6 +20,17 @@ import * as assetService from '../services/asset.service.js';
  */
 export async function list(req, res) {
   res.status(200).json(await assetService.list(req.orgId, req.query));
+}
+
+/**
+ * `GET /api/assets/search` — search the catalogue in plain words (SCRUM-103, SCRUM-200).
+ *
+ * The query is not audited, logged or stored: it is the member's own words (services/ai/README.md).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function search(req, res) {
+  res.status(200).json(await searchAssets(req.orgId, req.query.q));
 }
 
 /**
