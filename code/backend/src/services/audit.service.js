@@ -19,9 +19,17 @@
  * `auditEvent.repository.js` exposes only `append` and `query`, and `models/AuditEvent.js` throws on
  * every mutating Mongoose operation (SR-8).
  *
- * Exports: `record(orgId, event, options)`, `list(orgId, filters)`, `listForTargets(orgId, targets, page)`.
+ * Exports: `SYSTEM_ACTOR`, `record(orgId, event, options)`, `list(orgId, filters)`,
+ * `listForTargets(orgId, targets, page)`.
  */
 import * as auditRepo from '../repositories/auditEvent.repository.js';
+import { SYSTEM_ACTOR_ROLE } from '../utils/constants.js';
+
+/**
+ * The actor for an event no person caused (SCRUM-205: the expiry sweep). Stored as `actorId: null`
+ * with the SYSTEM role, so the log never names someone who did not act.
+ */
+export const SYSTEM_ACTOR = Object.freeze({ userId: null, role: SYSTEM_ACTOR_ROLE });
 
 /**
  * Append one audit event for a state change.

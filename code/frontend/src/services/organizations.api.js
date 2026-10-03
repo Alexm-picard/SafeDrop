@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: typed call for POST /api/organizations (SCRUM-100); approval settings calls (SCRUM-148)
+// AI-Assisted Areas: typed call for POST /api/organizations (SCRUM-100); approval settings calls (SCRUM-148); pickup settings calls (SCRUM-205)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -46,3 +46,20 @@ export const getApprovalSettings = (signal) =>
  */
 export const updateApprovalSettings = (input) =>
   apiRequest('/api/organizations/me/approval-settings', { method: 'PATCH', body: input });
+
+/**
+ * Read how long an approval may wait to be collected (`GET /api/organizations/me/pickup-settings`,
+ * SCRUM-205). ORG_ADMIN only (`org:settings`).
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ graceHours: number }>}
+ */
+export const getPickupSettings = (signal) =>
+  apiRequest('/api/organizations/me/pickup-settings', { signal });
+
+/**
+ * Change the pickup grace period (`PATCH /api/organizations/me/pickup-settings`, SCRUM-205).
+ * @param {{ graceHours: number }} input
+ * @returns {Promise<{ graceHours: number }>}
+ */
+export const updatePickupSettings = (input) =>
+  apiRequest('/api/organizations/me/pickup-settings', { method: 'PATCH', body: input });

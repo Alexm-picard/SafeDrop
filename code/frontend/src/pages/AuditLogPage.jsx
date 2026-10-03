@@ -218,13 +218,17 @@ export function AuditLogPage() {
                 // authority they acted with *at the time*, stored on the row, so it is not looked up
                 // from the member list — a later promotion must not rewrite the record. The id is the
                 // fallback for an actor the member list does not cover: someone who has since left,
-                // or, past ACTOR_LIMIT, someone simply not on the loaded page.
-                render: (e) => (
-                  <>
-                    {actorNameById.get(e.actorId) ?? e.actorId}
-                    <span className="meta"> {ROLE_LABELS[e.actorRole] ?? e.actorRole}</span>
-                  </>
-                ),
+                // or, past ACTOR_LIMIT, someone simply not on the loaded page. No id at all is an
+                // event no person caused (SCRUM-205: an expired approval), shown by its role label.
+                render: (e) =>
+                  e.actorId ? (
+                    <>
+                      {actorNameById.get(e.actorId) ?? e.actorId}
+                      <span className="meta"> {ROLE_LABELS[e.actorRole] ?? e.actorRole}</span>
+                    </>
+                  ) : (
+                    (ROLE_LABELS[e.actorRole] ?? e.actorRole)
+                  ),
               },
               {
                 key: 'target',

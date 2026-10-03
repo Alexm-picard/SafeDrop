@@ -20,7 +20,7 @@
  * count that silently returned zero would be worse than one that failed.
  *
  * Exports: `create`, `findById`, `listForRequester`, `list`, `listIdsForUnits`, `transition`,
- * `countByState`, `countOverdue`, `countCheckoutsByDay`.
+ * `findExpirableApprovals`, `countByState`, `countOverdue`, `countCheckoutsByDay`.
  */
 import mongoose from 'mongoose';
 import { CheckoutRequest } from '../models/CheckoutRequest.js';
@@ -92,14 +92,20 @@ export async function listForRequester(orgId, requesterId, { state, page = 1, li
  * List every request in the organisation, newest first, optionally filtered by state.
  *
  * Backs the approval queue (`state=PENDING`), so it is reachable only with `requests:decide`.
+ * `excludeRequesterId` leaves one person's own requests out: the "Pending returns" queue (SCRUM-205)
+ * is the requests someone *else* must confirm, so the caller's own never belong in it.
  * @param {string} orgId
- * @param {{ state?: string, page?: number, limit?: number }} [query]
+ * @param {{ state?: string, page?: number, limit?: number, excludeRequesterId?: unknown }} [query]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function list(orgId, { state, page = 1, limit = 50 } = {}) {
+export async function list(orgId, { state, page = 1, limit = 50, excludeRequesterId } = {}) {
   const filter = { orgId };
   if (state) {
     filter.state = state;
+  }
+  if (excludeRequesterId) {
+    // `sanitizeFilter` is on globally and rewrites operators it did not put there; this one is ours.
+    filter.requesterId = mongoose.trusted({ $ne: excludeRequesterId });
   }
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -158,6 +164,25 @@ export async function transition(orgId, requestId, { expectedState, patch }, { s
 }
 
 /**
+ * The APPROVED requests in one tenant whose pickup window has closed (SCRUM-205).
+ *
+ * The window is `neededFrom` plus the organisation's grace period, so a request is expirable once
+ * `neededFrom` is before `now - grace`. The caller computes that cutoff, which keeps the clock and the
+ * setting out of this file. Strictly before, the same convention as lateness: a request whose window
+ * closes at this very instant is still collectable.
+ * @param {string} orgId
+ * @param {Date} neededFromBefore the cutoff: `now` minus the grace period
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function findExpirableApprovals(orgId, neededFromBefore) {
+  return CheckoutRequest.find({
+    orgId,
+    state: REQUEST_STATE.APPROVED,
+    neededFrom: mongoose.trusted({ $lt: neededFromBefore }),
+  }).sort({ neededFrom: 1 });
+}
+
+/**
  * Count requests per state for one tenant — the pending figure on the admin dashboard.
  *
  * Mirrors `assetUnit.repository.countByStatus`: the aggregation returns only the states that occur,
@@ -205,16 +230,22 @@ function lateFilter(orgId, asOf, states) {
 /**
  * Count the checkouts that are still out and whose due date has passed (SCRUM-102, AT1).
  *
- * "Still out" is CHECKED_OUT or OVERDUE: those are the two states in which the organisation does not
- * have the item back. RETURNED and LOST are excluded — a late return that has arrived is no longer
- * something the admin can chase, and a lost item is a different problem with its own state.
+ * "Still out" is CHECKED_OUT, OVERDUE or RETURN_PENDING: the states in which the organisation does
+ * not have the item back. RETURN_PENDING counts because the borrower saying it is back is not the item
+ * being back (SCRUM-205): until someone confirms it, it is still late. RETURNED and LOST are excluded —
+ * a late return that has arrived is no longer something the admin can chase, and a lost item is a
+ * different problem with its own state.
  * @param {string} orgId
  * @param {Date} [asOf] the instant to measure lateness against; defaults to now
  * @returns {Promise<number>}
  */
 export async function countOverdue(orgId, asOf = new Date()) {
   return CheckoutRequest.countDocuments(
-    lateFilter(orgId, asOf, [REQUEST_STATE.CHECKED_OUT, REQUEST_STATE.OVERDUE]),
+    lateFilter(orgId, asOf, [
+      REQUEST_STATE.CHECKED_OUT,
+      REQUEST_STATE.OVERDUE,
+      REQUEST_STATE.RETURN_PENDING,
+    ]),
   );
 }
 

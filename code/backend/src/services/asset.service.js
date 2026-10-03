@@ -667,7 +667,11 @@ export async function history(orgId, assetId, query = {}) {
           id: json.actorId,
           // A deleted account still has to read as something. The id is already on the row, so the
           // fallback says what is true — the person is gone — rather than repeating it as a name.
-          name: nameById.get(String(event.actorId)) ?? 'Former member',
+          // No id at all is a system event (SCRUM-205: an expired approval), which nobody did.
+          name:
+            event.actorId === null
+              ? 'System'
+              : (nameById.get(String(event.actorId)) ?? 'Former member'),
           role: json.actorRole,
         },
         unitTag: tagById.get(String(event.targetId)) ?? null,

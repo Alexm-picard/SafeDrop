@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: POST /api/organizations (public bootstrap, SCRUM-100); GET/PATCH /me/approval-settings (SCRUM-148)
+// AI-Assisted Areas: POST /api/organizations (public bootstrap, SCRUM-100); GET/PATCH /me/approval-settings (SCRUM-148); GET/PATCH /me/pickup-settings (SCRUM-205)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -17,13 +17,16 @@
  * organisation's approval default, both behind `org:settings` (ORG_ADMIN). "me" rather than an id: the
  * tenant always comes from the session, never the URL.
  *
- * Exports: `organizationsRouter`, and `createOrganizationBody` / `approvalSettingsBody` for reuse in
- * tests.
+ * `GET` / `PATCH /api/organizations/me/pickup-settings` (SCRUM-205) do the same for the pickup grace
+ * period: how long after `neededFrom` an approval may wait to be collected before it expires.
+ *
+ * Exports: `organizationsRouter`, and `createOrganizationBody` / `approvalSettingsBody` /
+ * `pickupSettingsBody` for reuse in tests.
  */
 import { z } from 'zod';
 import * as organizations from '../controllers/organizations.controller.js';
 import { createRouter, defineRoute } from './define.js';
-import { ORG_APPROVAL_MODE_LIST } from '../utils/constants.js';
+import { MAX_PICKUP_GRACE_HOURS, ORG_APPROVAL_MODE_LIST } from '../utils/constants.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { email, orgName, password, personName } from './schemas.js';
 
@@ -74,4 +77,30 @@ defineRoute(
     schemas: { body: approvalSettingsBody },
   },
   organizations.updateApprovalSettings,
+);
+
+/**
+ * Body for `PATCH /api/organizations/me/pickup-settings` (SCRUM-205): whole hours, 0 to 30 days.
+ *
+ * Zero is allowed and means "collect it by the start of the window". Whole hours only, because a
+ * fractional value is never what an admin means and would be hard to show back to them.
+ */
+export const pickupSettingsBody = z.object({
+  graceHours: z.number().int().min(0).max(MAX_PICKUP_GRACE_HOURS),
+});
+
+defineRoute(
+  organizationsRouter,
+  { method: 'GET', path: '/me/pickup-settings', permission: PERMISSIONS.ORG_SETTINGS },
+  organizations.getPickupSettings,
+);
+defineRoute(
+  organizationsRouter,
+  {
+    method: 'PATCH',
+    path: '/me/pickup-settings',
+    permission: PERMISSIONS.ORG_SETTINGS,
+    schemas: { body: pickupSettingsBody },
+  },
+  organizations.updatePickupSettings,
 );

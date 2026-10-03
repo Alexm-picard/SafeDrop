@@ -33,7 +33,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * other state has no deadline to describe. OVERDUE is included because the backend flags it
  * separately — see the note in `dueStatus` about which wins.
  */
-const OUT_ON_LOAN = Object.freeze(['CHECKED_OUT', 'OVERDUE']);
+// RETURN_PENDING (SCRUM-205) is still out: the borrower's word that it is back is not a confirmed
+// return, so the deadline still applies until someone confirms it.
+const OUT_ON_LOAN = Object.freeze(['CHECKED_OUT', 'OVERDUE', 'RETURN_PENDING']);
 
 /**
  * Midnight at the start of `date`'s day, in the browser's timezone.

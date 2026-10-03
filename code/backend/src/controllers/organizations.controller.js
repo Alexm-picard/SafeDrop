@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: organisation bootstrap handler (SCRUM-100); approval settings handlers (SCRUM-148)
+// AI-Assisted Areas: organisation bootstrap handler (SCRUM-100); approval settings handlers (SCRUM-148); pickup settings handlers (SCRUM-205)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -54,6 +54,28 @@ export async function getApprovalSettings(req, res) {
  */
 export async function updateApprovalSettings(req, res) {
   const settings = await organizationService.updateApprovalSettings(req.orgId, req.auth, req.body, {
+    requestId: req.id,
+  });
+  res.status(200).json(settings);
+}
+
+/**
+ * `GET /api/organizations/me/pickup-settings` — the caller's organisation's pickup grace period
+ * (SCRUM-205).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function getPickupSettings(req, res) {
+  res.status(200).json(await organizationService.getPickupSettings(req.orgId));
+}
+
+/**
+ * `PATCH /api/organizations/me/pickup-settings` — change the pickup grace period (SCRUM-205).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function updatePickupSettings(req, res) {
+  const settings = await organizationService.updatePickupSettings(req.orgId, req.auth, req.body, {
     requestId: req.id,
   });
   res.status(200).json(settings);

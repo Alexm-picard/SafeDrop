@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label
+// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label; SCRUM-205 borrower pickup, start/confirm/reject return; every approver action lives here (the approval queue links in)
 // Human Contributions: pending team review
 // Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
 
@@ -21,6 +21,12 @@
  * id and another member's id are indistinguishable from an id that never existed, so neither can be
  * used to discover that a request exists (SR-2). The page renders the same not-found panel for all
  * three rather than an error dump.
+ *
+ * **Custody confirmation (SCRUM-205).** The borrower records their own pickup ("I've picked it up")
+ * and starts their own return, reporting the condition. Someone else confirms the return with the
+ * condition they received, or rejects it with a reason. Whether *this* viewer may confirm comes from
+ * the API (`canConfirmReturn`), because only the server knows whether a requester is the
+ * organisation's only confirmer.
  */
 import { useCallback, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -31,7 +37,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useRequest } from '../hooks/useRequests';
 import { errorMessage, isApiError } from '../services/api';
 import * as requestsApi from '../services/requests.api';
-import { ROUTES, UNIT_CONDITIONS } from '../utils/constants';
+import { ROLES, ROUTES, UNIT_CONDITIONS } from '../utils/constants';
 import { formatDate, humanize } from '../utils/format';
 import { actionsFor } from '../utils/requestState';
 
@@ -39,10 +45,11 @@ import { actionsFor } from '../utils/requestState';
  * Send one action to the API.
  * @param {string} key one of the action keys from `actionsFor`
  * @param {string} id request id
- * @param {{ condition?: string }} [payload] only meaningful for `return`
+ * @param {{ condition?: string, note?: string, reason?: string }} [payload] the form values the
+ *   return actions need: a condition for `return` and `initiateReturn`, a reason for `rejectReturn`
  * @returns {Promise<unknown>}
  */
-function callAction(key, id, payload) {
+function callAction(key, id, payload = {}) {
   switch (key) {
     case 'approve':
       return requestsApi.approve(id);
@@ -53,7 +60,11 @@ function callAction(key, id, payload) {
     case 'checkout':
       return requestsApi.checkout(id);
     case 'return':
-      return requestsApi.returnUnit(id, payload);
+      return requestsApi.returnUnit(id, { condition: payload.condition });
+    case 'initiateReturn':
+      return requestsApi.initiateReturn(id, { condition: payload.condition, note: payload.note });
+    case 'rejectReturn':
+      return requestsApi.rejectReturn(id, payload.reason);
     default:
       return Promise.reject(new Error(`unknown action ${key}`));
   }
@@ -82,12 +93,15 @@ function Timeline({ timeline }) {
   );
 }
 
+/** The condition a return form starts on when nothing better is known. */
+const DEFAULT_CONDITION = UNIT_CONDITIONS[1] ?? 'GOOD';
+
 /**
  * Render the request, or the not-found panel, or the failure.
  *
- * `condition` is held here rather than in the action loop because only the return action uses it,
- * and the API requires it: a return with no condition recorded tells a later reader nothing about
- * what came back.
+ * The return forms' values are held here rather than in the action loop because only the return
+ * actions use them. `receivedCondition` starts empty and falls back to what the borrower reported, so
+ * a confirmer who agrees just presses Confirm, and one who disagrees changes it.
  * @returns {JSX.Element}
  */
 export function RequestDetailPage() {
@@ -96,14 +110,25 @@ export function RequestDetailPage() {
   const { status, data, error, reload } = useRequest(id);
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [condition, setCondition] = useState(UNIT_CONDITIONS[1] ?? 'GOOD');
+  const [receivedCondition, setReceivedCondition] = useState(null);
+  const [reportedCondition, setReportedCondition] = useState(DEFAULT_CONDITION);
+  const [reportedNote, setReportedNote] = useState('');
+  const [rejectReason, setRejectReason] = useState('');
+
+  const condition = receivedCondition ?? data?.request?.reportedCondition ?? DEFAULT_CONDITION;
 
   const run = useCallback(
     async (key) => {
       setBusy(key);
       setActionError(null);
       try {
-        await callAction(key, id, key === 'return' ? { condition } : undefined);
+        await callAction(key, id, {
+          condition: key === 'initiateReturn' ? reportedCondition : condition,
+          note: reportedNote,
+          reason: rejectReason,
+        });
+        setReceivedCondition(null);
+        setRejectReason('');
         reload();
       } catch (err) {
         // A 409 from the state machine is the interesting one: the request moved under us, or the
@@ -113,7 +138,7 @@ export function RequestDetailPage() {
         setBusy(null);
       }
     },
-    [condition, id, reload],
+    [condition, id, rejectReason, reload, reportedCondition, reportedNote],
   );
 
   if (status === 'loading') {
@@ -135,15 +160,23 @@ export function RequestDetailPage() {
     return <ErrorState error={error} title="That request could not be loaded" onRetry={reload} />;
   }
 
-  const { request, asset, unit, requester, decidedBy, timeline } = data;
-  const actions = actionsFor(request, { role: user?.role, userId: user?.id });
-  const offersReturn = actions.some((action) => action.key === 'return');
+  const { request, asset, unit, requester, decidedBy, timeline, canConfirmReturn } = data;
+  const actions = actionsFor(request, { role: user?.role, userId: user?.id, canConfirmReturn });
+  const offers = (key) => actions.some((action) => action.key === key);
+  const isRequester = Boolean(user?.id) && user.id === String(request.requesterId);
+  const pendingReturn = request.state === 'RETURN_PENDING';
 
   return (
     <section>
       <h1>{asset ? asset.name : 'Request'}</h1>
       <p className="hint">
         <Link to={ROUTES.myRequests}>My requests</Link>
+        {user?.role === ROLES.APPROVER || user?.role === ROLES.ORG_ADMIN ? (
+          <>
+            {' · '}
+            <Link to={ROUTES.approvals}>Approval queue</Link>
+          </>
+        ) : null}
       </p>
 
       <dl className="detail" aria-label="Request details">
@@ -190,6 +223,19 @@ export function RequestDetailPage() {
             <dd>{request.decisionNote}</dd>
           </>
         ) : null}
+        {/* SCRUM-205: what the borrower said when they started the return. */}
+        {request.reportedCondition ? (
+          <>
+            <dt>Reported condition</dt>
+            <dd>{humanize(request.reportedCondition)}</dd>
+          </>
+        ) : null}
+        {request.reportedNote ? (
+          <>
+            <dt>Return note</dt>
+            <dd>{request.reportedNote}</dd>
+          </>
+        ) : null}
       </dl>
 
       <h2>History</h2>
@@ -201,14 +247,51 @@ export function RequestDetailPage() {
           {actionError}
         </div>
       ) : null}
+      {pendingReturn && isRequester ? (
+        <p className="hint" role="status">
+          Waiting for someone else to confirm this return. You are responsible for the item until
+          they do.
+        </p>
+      ) : null}
       {actions.length === 0 ? (
-        <p className="hint">There is nothing to do on this request.</p>
+        pendingReturn && isRequester ? null : (
+          <p className="hint">There is nothing to do on this request.</p>
+        )
       ) : (
         <div className="actions">
-          {offersReturn ? (
+          {offers('initiateReturn') ? (
+            <>
+              <label>
+                Condition you are returning it in
+                <select
+                  value={reportedCondition}
+                  onChange={(event) => setReportedCondition(event.target.value)}
+                >
+                  {UNIT_CONDITIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {humanize(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Note (optional)
+                <input
+                  type="text"
+                  maxLength={1000}
+                  value={reportedNote}
+                  onChange={(event) => setReportedNote(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
+          {offers('return') ? (
             <label>
-              Returned condition
-              <select value={condition} onChange={(event) => setCondition(event.target.value)}>
+              {pendingReturn ? 'Condition received' : 'Returned condition'}
+              <select
+                value={condition}
+                onChange={(event) => setReceivedCondition(event.target.value)}
+              >
                 {UNIT_CONDITIONS.map((value) => (
                   <option key={value} value={value}>
                     {humanize(value)}
@@ -217,12 +300,29 @@ export function RequestDetailPage() {
               </select>
             </label>
           ) : null}
+          {offers('rejectReturn') ? (
+            <label>
+              Reason for rejecting
+              <input
+                type="text"
+                maxLength={1000}
+                value={rejectReason}
+                onChange={(event) => setRejectReason(event.target.value)}
+              />
+            </label>
+          ) : null}
           {actions.map((action) => (
             <button
               key={action.key}
               type="button"
-              className={action.key === 'deny' || action.key === 'cancel' ? 'secondary' : undefined}
-              disabled={busy !== null}
+              className={
+                action.key === 'deny' || action.key === 'cancel' || action.key === 'rejectReturn'
+                  ? 'secondary'
+                  : undefined
+              }
+              disabled={
+                busy !== null || (action.key === 'rejectReturn' && rejectReason.trim() === '')
+              }
               onClick={() => run(action.key)}
             >
               {busy === action.key ? 'Working…' : action.label}

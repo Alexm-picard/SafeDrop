@@ -19,7 +19,7 @@
  * fact — the audit trail would no longer describe what was approved.
  */
 import mongoose from 'mongoose';
-import { REQUEST_STATE, REQUEST_STATE_LIST } from '../utils/constants.js';
+import { ASSET_CONDITION_LIST, REQUEST_STATE, REQUEST_STATE_LIST } from '../utils/constants.js';
 import { createSchema, ObjectId, orgIdField } from './base.js';
 
 const checkoutRequestSchema = createSchema(
@@ -45,6 +45,14 @@ const checkoutRequestSchema = createSchema(
     checkedOutAt: { type: Date, default: null },
     dueAt: { type: Date, default: null },
     returnedAt: { type: Date, default: null },
+    // SCRUM-205: what the borrower said when they started the return. Kept apart from the unit's own
+    // condition, which only the confirmer sets: a borrower's word does not change the record of the
+    // item. Cleared again if the return is rejected.
+    reportedCondition: { type: String, enum: [...ASSET_CONDITION_LIST, null], default: null },
+    reportedNote: { type: String, trim: true, maxlength: 1000, default: '' },
+    returnInitiatedAt: { type: Date, default: null },
+    // SCRUM-205: when the expiry sweep closed an approval nobody collected.
+    expiredAt: { type: Date, default: null },
   },
   { collection: 'checkoutrequests' },
 );
