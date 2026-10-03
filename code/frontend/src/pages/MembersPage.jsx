@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: Members screen: list, invite form (admin-set initial password) with field-level API errors, per-row role change
 // Human Contributions: pending team review
-// Notes: Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Notes: InviteForm and ResetPasswordForm live in src/components. Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
 
 /**
  * The members screen (ORG_ADMIN only): see who is in the organisation, invite people, change roles.
@@ -33,179 +33,15 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
+import { InviteForm } from '../components/InviteForm';
 import { LoadingState } from '../components/LoadingState';
+import { ResetPasswordForm } from '../components/ResetPasswordForm';
 import { useAuth } from '../hooks/useAuth';
 import { useMembers } from '../hooks/useMembers';
-import { errorMessage, isApiError } from '../services/api';
+import { errorMessage } from '../services/api';
 import * as usersApi from '../services/users.api';
-import { MEMBERS_PAGE_SIZE, ROLE_LABELS, ROLES } from '../utils/constants';
+import { MEMBERS_PAGE_SIZE, ROLE_LABELS, ROLE_OPTIONS } from '../utils/constants';
 import { formatDate, pluralize } from '../utils/format';
-import { fieldErrorsOf } from '../utils/formErrors';
-
-/** The roles an admin can invite as or change to, least privileged first. */
-const ROLE_OPTIONS = Object.freeze(Object.values(ROLES));
-
-const EMPTY_FORM = Object.freeze({
-  name: '',
-  email: '',
-  role: ROLES.MEMBER,
-  password: '',
-});
-
-/**
- * The invite form.
- *
- * Reports success upward rather than rendering it, because the confirmation belongs in the page-level
- * notice, which must outlive the form's own state.
- * @param {{ onInvited: (result: { user: object }) => void }} props
- * @returns {JSX.Element}
- */
-function InviteForm({ onInvited }) {
-  const [values, setValues] = useState(EMPTY_FORM);
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [error, setError] = useState(null);
-  const [pending, setPending] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
-  const set = (name) => (event) => setValues((prev) => ({ ...prev, [name]: event.target.value }));
-
-  const onSubmit = async (event) => {
-    event.preventDefault();
-    setPending(true);
-    setError(null);
-    setFieldErrors({});
-    try {
-      const result = await usersApi.invite({
-        name: values.name,
-        email: values.email,
-        role: values.role,
-        password: values.password,
-      });
-      // Cleared at once: the password lives in this form only as long as it takes to send.
-      setValues(EMPTY_FORM);
-      setShowPassword(false);
-      onInvited(result);
-    } catch (err) {
-      if (isApiError(err)) {
-        const perField = fieldErrorsOf(err);
-        setFieldErrors(perField);
-        if (Object.keys(perField).length === 0) {
-          setError(errorMessage(err));
-        }
-      } else {
-        setError(errorMessage(err));
-      }
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const describedBy = (name) => (fieldErrors[name] ? `${name}-error` : undefined);
-
-  return (
-    <form
-      className="card invite-form"
-      onSubmit={onSubmit}
-      noValidate
-      aria-labelledby="invite-title"
-    >
-      <h2 id="invite-title">Invite a member</h2>
-      {error ? (
-        <div role="alert" className="alert">
-          {error}
-        </div>
-      ) : null}
-      <div className="field">
-        <label htmlFor="invite-name">Name</label>
-        <input
-          id="invite-name"
-          name="name"
-          type="text"
-          autoComplete="off"
-          required
-          value={values.name}
-          onChange={set('name')}
-          aria-invalid={fieldErrors.name ? true : undefined}
-          aria-describedby={describedBy('name')}
-        />
-        {fieldErrors.name ? (
-          <span id="name-error" className="field-error">
-            {fieldErrors.name}
-          </span>
-        ) : null}
-      </div>
-      <div className="field">
-        <label htmlFor="invite-email">Email</label>
-        <input
-          id="invite-email"
-          name="email"
-          type="email"
-          autoComplete="off"
-          required
-          value={values.email}
-          onChange={set('email')}
-          aria-invalid={fieldErrors.email ? true : undefined}
-          aria-describedby={describedBy('email')}
-        />
-        {fieldErrors.email ? (
-          <span id="email-error" className="field-error">
-            {fieldErrors.email}
-          </span>
-        ) : null}
-      </div>
-      <div className="field">
-        <label htmlFor="invite-role">Role</label>
-        <select id="invite-role" name="role" value={values.role} onChange={set('role')}>
-          {ROLE_OPTIONS.map((role) => (
-            <option key={role} value={role}>
-              {ROLE_LABELS[role]}
-            </option>
-          ))}
-        </select>
-        {fieldErrors.role ? (
-          <span id="role-error" className="field-error">
-            {fieldErrors.role}
-          </span>
-        ) : null}
-      </div>
-      <div className="field">
-        <label htmlFor="invite-password">Initial password</label>
-        <input
-          id="invite-password"
-          name="password"
-          type={showPassword ? 'text' : 'password'}
-          autoComplete="new-password"
-          required
-          value={values.password}
-          onChange={set('password')}
-          aria-invalid={fieldErrors.password ? true : undefined}
-          aria-describedby={[fieldErrors.password ? 'password-error' : null, 'password-hint']
-            .filter(Boolean)
-            .join(' ')}
-        />
-        <span id="password-hint" className="hint">
-          At least 10 characters. Share it with them securely; they sign in with it.
-        </span>
-        {fieldErrors.password ? (
-          <span id="password-error" className="field-error">
-            {fieldErrors.password}
-          </span>
-        ) : null}
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={showPassword}
-            onChange={(e) => setShowPassword(e.target.checked)}
-          />{' '}
-          Show password
-        </label>
-      </div>
-      <button type="submit" disabled={pending}>
-        {pending ? 'Inviting…' : 'Invite member'}
-      </button>
-    </form>
-  );
-}
 
 /**
  * Render the members screen.
@@ -216,75 +52,6 @@ function InviteForm({ onInvited }) {
  * (`role="alert"`).
  * @returns {JSX.Element}
  */
-/**
- * Set one member's password, as an admin (SCRUM-36).
- *
- * Separate from the row so the password has a real field — labelled, with the same show-password
- * option as the invite form, because a typo in a credential nobody can read back is unrecoverable.
- * The value lives here only until it is sent.
- * @param {{ member: object, pending: boolean, onCancel: () => void, onSubmit: (member: object, password: string) => Promise<unknown> }} props
- * @returns {JSX.Element}
- */
-function ResetPasswordForm({ member, pending, onCancel, onSubmit }) {
-  const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
-  const [fieldError, setFieldError] = useState(null);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setFieldError(null);
-    const err = await onSubmit(member, password);
-    if (err) {
-      const perField = isApiError(err) ? fieldErrorsOf(err) : {};
-      setFieldError(perField.password ?? errorMessage(err));
-      return;
-    }
-    setPassword('');
-    setShow(false);
-  };
-
-  return (
-    <form className="card" onSubmit={submit} noValidate aria-labelledby="reset-title">
-      <h2 id="reset-title">Set a password for {member.name}</h2>
-      <p className="hint">
-        Use this when someone cannot use the emailed link. They must choose their own password the
-        next time they sign in, and every session they have now ends.
-      </p>
-      <div className="field">
-        <label htmlFor="reset-password">Temporary password</label>
-        <input
-          id="reset-password"
-          name="password"
-          type={show ? 'text' : 'password'}
-          autoComplete="new-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          aria-invalid={fieldError ? 'true' : undefined}
-          aria-describedby={fieldError ? 'reset-password-error' : undefined}
-        />
-        <label className="checkbox">
-          <input type="checkbox" checked={show} onChange={() => setShow((v) => !v)} />
-          Show password
-        </label>
-        {fieldError ? (
-          <span id="reset-password-error" className="field-error">
-            {fieldError}
-          </span>
-        ) : null}
-      </div>
-      <div className="actions">
-        <button type="submit" disabled={pending}>
-          {pending ? 'Setting…' : 'Set password'}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel} disabled={pending}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
 export function MembersPage() {
   const { user: me, organization } = useAuth();
   const [page, setPage] = useState(1);
