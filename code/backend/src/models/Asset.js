@@ -16,6 +16,7 @@
  * requests and audit events still resolve to a real asset.
  */
 import mongoose from 'mongoose';
+import { APPROVAL_MODE, APPROVAL_MODE_LIST } from '../utils/constants.js';
 import { createSchema, orgIdField } from './base.js';
 
 const assetSchema = createSchema(
@@ -26,6 +27,8 @@ const assetSchema = createSchema(
     description: { type: String, trim: true, maxlength: 2000, default: '' },
     imageUrl: { type: String, trim: true, maxlength: 2048, default: null },
     retiredAt: { type: Date, default: null },
+    // SCRUM-148: per-asset override of the organisation's approval default. INHERIT defers to it.
+    approvalMode: { type: String, enum: APPROVAL_MODE_LIST, default: APPROVAL_MODE.INHERIT },
   },
   { collection: 'assets' },
 );

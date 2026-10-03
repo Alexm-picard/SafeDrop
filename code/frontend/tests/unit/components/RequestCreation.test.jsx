@@ -162,6 +162,36 @@ describe('SCRUM-124: request creation flow from asset detail', () => {
     );
   });
 
+  it('SCRUM-148: tells the member an auto-approved request still needs collecting', async () => {
+    server.use(
+      http.post('*/api/requests', async ({ request }) =>
+        HttpResponse.json(
+          {
+            ...(await request.json()),
+            id: checkoutRequests[0].id,
+            state: 'APPROVED',
+            autoApproved: true,
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+    const { router } = renderDetail();
+    await screen.findByRole('heading', { level: 1, name: asset.name });
+    await userEvent.click(
+      screen.getByRole('button', { name: `Request unit ${availableUnit.tag}` }),
+    );
+    await userEvent.type(screen.getByLabelText('Needed from'), '2026-10-01');
+    await userEvent.type(screen.getByLabelText('Needed until'), '2026-10-15');
+    await userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/requests/${checkoutRequests[0].id}`),
+    );
+    expect(router.state.location.state.notice).toMatch(/approved automatically/i);
+    expect(router.state.location.state.notice).toMatch(/in person/i);
+  });
+
   it('surfaces a unit that became unavailable as a readable message and refreshes the unit state', async () => {
     let assetReads = 0;
     server.use(
@@ -282,6 +312,38 @@ describe('SCRUM-124: request creation flow from asset detail', () => {
     const error = await screen.findByText('neededTo must be after neededFrom');
     expect(screen.getByLabelText('Needed until').getAttribute('aria-describedby')).toContain(
       error.id,
+    );
+  });
+});
+
+describe('SCRUM-148: auto-approved requests on MyRequestsPage', () => {
+  it('marks an auto-approved request as automatic, and leaves a human approval plain', async () => {
+    const auto = {
+      ...checkoutRequests[0],
+      id: '6aab2a45c6e457e01ac09740',
+      state: 'APPROVED',
+      autoApproved: true,
+    };
+    const human = {
+      ...checkoutRequests[0],
+      id: '6aab2a45c6e457e01ac09741',
+      state: 'APPROVED',
+      autoApproved: false,
+    };
+    server.use(
+      http.get('*/api/requests', () =>
+        HttpResponse.json({ items: [auto, human], total: 2, page: 1, limit: 25 }),
+      ),
+    );
+    renderWithAuth(<MyRequestsPage />, { user: memberUser });
+
+    expect(await screen.findByRole('link', { name: 'Approved (automatic)' })).toHaveAttribute(
+      'href',
+      `/requests/${auto.id}`,
+    );
+    expect(screen.getByRole('link', { name: 'Approved' })).toHaveAttribute(
+      'href',
+      `/requests/${human.id}`,
     );
   });
 });

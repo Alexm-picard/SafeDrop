@@ -17,7 +17,7 @@
  * against `SLUG_PATTERN` so it stays URL-safe.
  */
 import mongoose from 'mongoose';
-import { SLUG_PATTERN } from '../utils/constants.js';
+import { APPROVAL_MODE, ORG_APPROVAL_MODE_LIST, SLUG_PATTERN } from '../utils/constants.js';
 import { createSchema } from './base.js';
 
 const organizationSchema = createSchema(
@@ -31,6 +31,15 @@ const organizationSchema = createSchema(
       lowercase: true,
       match: SLUG_PATTERN,
       immutable: true,
+    },
+    // SCRUM-148: whether checkout requests need a human approver unless an asset overrides it.
+    // REQUIRED by default, so every organisation keeps Iteration 1 behaviour until an admin opts in.
+    approvalSettings: {
+      defaultMode: {
+        type: String,
+        enum: ORG_APPROVAL_MODE_LIST,
+        default: APPROVAL_MODE.REQUIRED,
+      },
     },
   },
   { collection: 'organizations' },

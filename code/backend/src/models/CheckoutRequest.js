@@ -39,6 +39,9 @@ const checkoutRequestSchema = createSchema(
     decidedBy: { type: ObjectId, default: null },
     decidedAt: { type: Date, default: null },
     decisionNote: { type: String, trim: true, maxlength: 1000, default: '' },
+    // SCRUM-148: true when the approval policy granted this request without a human decision. Then
+    // `decidedAt` is the submission time and `decidedBy` stays null — there is nobody to name.
+    autoApproved: { type: Boolean, default: false, immutable: true },
     checkedOutAt: { type: Date, default: null },
     dueAt: { type: Date, default: null },
     returnedAt: { type: Date, default: null },

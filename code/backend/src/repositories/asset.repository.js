@@ -23,8 +23,16 @@ import { Asset } from '../models/Asset.js';
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>} the created asset
  */
-export async function create(orgId, { name, category, description, imageUrl }, { session } = {}) {
-  const [doc] = await Asset.create([{ orgId, name, category, description, imageUrl }], { session });
+export async function create(
+  orgId,
+  { name, category, description, imageUrl, approvalMode },
+  { session } = {},
+) {
+  // An omitted approvalMode is undefined, which Mongoose replaces with the schema default (INHERIT).
+  const [doc] = await Asset.create(
+    [{ orgId, name, category, description, imageUrl, approvalMode }],
+    { session },
+  );
   return doc;
 }
 

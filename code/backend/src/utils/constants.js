@@ -71,8 +71,26 @@ export const AUDIT_ACTION = freezeEnum([
   // that needs its snapshot decoded to be understood is a worse row.
   'UNIT_MAINTENANCE_STARTED',
   'UNIT_MAINTENANCE_ENDED',
+  // A request the approval policy granted without a human decision (SCRUM-148). Distinct from
+  // REQUEST_APPROVED so the audit log never shows an approval with no approver behind it: a reader
+  // can tell "Dana approved it" from "the rule approved it" by the action alone.
+  'REQUEST_AUTO_APPROVED',
+  // An Org Admin changed an organisation-wide setting (SCRUM-148: the approval default). Recorded with
+  // before/after values, because a rule change explains every request decided differently after it.
+  'ORG_SETTINGS_UPDATED',
 ]);
 export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
+
+/**
+ * Does a checkout request need a human approver? (SCRUM-148)
+ *
+ * `REQUIRED` and `AUTO` are the two answers. `INHERIT` is only meaningful on an asset, where it means
+ * "use the organisation default" — an organisation has nothing above it to inherit from, so its
+ * default is restricted to `ORG_APPROVAL_MODE_LIST`.
+ */
+export const APPROVAL_MODE = freezeEnum(['INHERIT', 'REQUIRED', 'AUTO']);
+export const APPROVAL_MODE_LIST = Object.freeze(Object.keys(APPROVAL_MODE));
+export const ORG_APPROVAL_MODE_LIST = Object.freeze([APPROVAL_MODE.REQUIRED, APPROVAL_MODE.AUTO]);
 
 export const AUDIT_TARGET_TYPE = freezeEnum([
   'Organization',

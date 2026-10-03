@@ -33,6 +33,8 @@ beforeEach(async () => {
 });
 
 const stubs = [
+  // PATCH /api/organizations/me/approval-settings is no longer here: SCRUM-148 implemented it — see
+  // approvalSettings.test.js.
   // No /api/assets route is here any more: SCRUM-115 implemented the two reads and SCRUM-134 the
   // four writes, so all six answer for real. Their acceptance criteria live in assets.test.js.
   // GET /api/requests is no longer here: SCRUM-119 implemented it — see requests.test.js.
