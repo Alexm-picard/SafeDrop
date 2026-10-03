@@ -19,18 +19,19 @@ import { Asset } from '../models/Asset.js';
  * Uses the array form of `create()` because that is the only form that accepts a session, and the
  * single document is destructured back out.
  * @param {string} orgId tenant id, from the verified token
- * @param {{ name: string, category: string, description?: string, imageUrl?: string }} data
+ * @param {{ name: string, category: string, description?: string, imageUrl?: string, requiredGroupId?: string|null }} data
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>} the created asset
  */
 export async function create(
   orgId,
-  { name, category, description, imageUrl, approvalMode },
+  { name, category, description, imageUrl, approvalMode, requiredGroupId },
   { session } = {},
 ) {
-  // An omitted approvalMode is undefined, which Mongoose replaces with the schema default (INHERIT).
+  // An omitted approvalMode/requiredGroupId is undefined, which Mongoose replaces with the schema
+  // default (INHERIT / null respectively).
   const [doc] = await Asset.create(
-    [{ orgId, name, category, description, imageUrl, approvalMode }],
+    [{ orgId, name, category, description, imageUrl, approvalMode, requiredGroupId }],
     { session },
   );
   return doc;

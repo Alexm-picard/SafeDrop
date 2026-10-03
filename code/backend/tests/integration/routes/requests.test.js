@@ -13,9 +13,11 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';
+import { User } from '../../../src/models/User.js';
 import * as assetUnitRepo from '../../../src/repositories/assetUnit.repository.js';
 import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
 import * as checkoutRepo from '../../../src/repositories/checkoutRequest.repository.js';
+import * as groupService from '../../../src/services/group.service.js';
 import { AUDIT_ACTION } from '../../../src/utils/constants.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
 import { seedTwoOrgs } from '../../helpers/seedTwoOrgs.js';
@@ -717,5 +719,134 @@ describe('POST /api/requests/:id/cancel (SCRUM-135)', () => {
       .set('Cookie', accessCookieFor(seed.a.member))
       .send({});
     expect(second.status).toBe(409);
+  });
+});
+
+/**
+ * Restricted equipment (SCRUM-149): an asset with `requiredGroupId` set may only be requested by an
+ * active member of that group. Enforced live in `checkout.service.js`'s `submit()`, before the
+ * approval policy is even asked — the TODO it replaced warned specifically that an auto-approving
+ * asset must not let eligibility slip through just because nothing is left to approve.
+ */
+describe('POST /api/requests — restricted equipment (SCRUM-149)', () => {
+  /** A fresh restricted asset with one AVAILABLE unit, gated by a brand-new group. */
+  async function createRestrictedAsset(admin, { approvalMode } = {}) {
+    const { group } = await groupService.createGroup(
+      seed.a.orgId,
+      { userId: admin._id, role: 'ORG_ADMIN' },
+      { name: 'Drone Pilots' },
+    );
+    const assetRes = await request(app)
+      .post('/api/assets')
+      .set('Cookie', accessCookieFor(admin))
+      .send({
+        name: 'Restricted Drone',
+        category: 'drone',
+        requiredGroupId: group.id,
+        ...(approvalMode ? { approvalMode } : {}),
+      });
+    expect(assetRes.status).toBe(201);
+    const unitRes = await request(app)
+      .post(`/api/assets/${assetRes.body.id}/units`)
+      .set('Cookie', accessCookieFor(admin))
+      .send({ tag: 'drone-001' });
+    expect(unitRes.status).toBe(201);
+    return { group, assetId: assetRes.body.id, unitId: unitRes.body.id };
+  }
+
+  const submitFor = (unitId, member) =>
+    request(app).post('/api/requests').set('Cookie', accessCookieFor(member)).send({
+      unitId,
+      neededFrom: '2026-11-01T00:00:00.000Z',
+      neededTo: '2026-11-05T00:00:00.000Z',
+    });
+
+  it('refuses 403 for a member who is not in the required group, and reserves nothing', async () => {
+    const { unitId } = await createRestrictedAsset(seed.a.admin);
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect((await assetUnitRepo.findById(seed.a.orgId, unitId)).status).toBe('AVAILABLE');
+    const audit = await auditRepo.query(seed.a.orgId, { action: AUDIT_ACTION.REQUEST_SUBMITTED });
+    expect(audit.total).toBe(0);
+  });
+
+  it('succeeds for an active member of the required group', async () => {
+    const { group, unitId } = await createRestrictedAsset(seed.a.admin);
+    await groupService.addGroupMember(
+      seed.a.orgId,
+      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
+      group.id,
+      String(seed.a.member._id),
+    );
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(201);
+    expect(res.body.state).toBe('PENDING');
+  });
+
+  it('a member removed from the group is subsequently blocked', async () => {
+    const { group, unitId } = await createRestrictedAsset(seed.a.admin);
+    const admin = { userId: seed.a.admin._id, role: 'ORG_ADMIN' };
+    await groupService.addGroupMember(seed.a.orgId, admin, group.id, String(seed.a.member._id));
+    await groupService.removeGroupMember(seed.a.orgId, admin, group.id, String(seed.a.member._id));
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('a deactivated member stays blocked even though they are still listed in the group', async () => {
+    const { group, unitId } = await createRestrictedAsset(seed.a.admin);
+    await groupService.addGroupMember(
+      seed.a.orgId,
+      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
+      group.id,
+      String(seed.a.member._id),
+    );
+    await User.collection.updateOne(
+      { _id: seed.a.member._id },
+      { $set: { deactivatedAt: new Date() } },
+    );
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('an ineligible member is blocked even on an auto-approving asset — eligibility is checked before the policy', async () => {
+    const { unitId } = await createRestrictedAsset(seed.a.admin, { approvalMode: 'AUTO' });
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(403);
+    expect((await assetUnitRepo.findById(seed.a.orgId, unitId)).status).toBe('AVAILABLE');
+    const audit = await auditRepo.query(seed.a.orgId, {
+      action: AUDIT_ACTION.REQUEST_AUTO_APPROVED,
+    });
+    expect(audit.total).toBe(0);
+  });
+
+  it('an eligible member on an auto-approving restricted asset is auto-approved as normal', async () => {
+    const { group, unitId } = await createRestrictedAsset(seed.a.admin, { approvalMode: 'AUTO' });
+    await groupService.addGroupMember(
+      seed.a.orgId,
+      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
+      group.id,
+      String(seed.a.member._id),
+    );
+
+    const res = await submitFor(unitId, seed.a.member);
+
+    expect(res.status).toBe(201);
+    expect(res.body.state).toBe('APPROVED');
+  });
+
+  it('an unrestricted asset (requiredGroupId null) is unaffected — the default, open behaviour', async () => {
+    const res = await submitFor(seed.a.extraAssets[0].units[0]._id, seed.a.member);
+    expect(res.status).toBe(201);
   });
 });

@@ -70,6 +70,7 @@ const newMember = { email: 'new.hire@a.test', name: 'New Hire' };
 /** The exact set of fields a member may be shown as: no hash, nothing internal. */
 const PUBLIC_USER_FIELDS = [
   'createdAt',
+  'deactivatedAt',
   'email',
   'id',
   'mustChangePassword',

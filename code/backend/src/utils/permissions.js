@@ -1,9 +1,9 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: role → permission matrix from SDD §6.4 / SR-1; public-route allowlist; password:self permission
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the member-lifecycle work.
+// AI-Assisted Areas: role → permission matrix from SDD §6.4 / SR-1; public-route allowlist; password:self permission; groups:manage permission (SCRUM-149)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); groups:manage pending review
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the member-lifecycle work and the user-groups ticket.
 //
 // This file is the single authorization policy. Routes declare a permission (never a role); the
 // authorize middleware answers "does this role hold this permission?". Deny by default: a permission
@@ -57,6 +57,8 @@ export const PERMISSIONS = Object.freeze({
   REQUESTS_MARK_OVERDUE: 'requests:mark-overdue',
   /** Change organisation-wide settings, e.g. the approval default (SCRUM-148). */
   ORG_SETTINGS: 'org:settings',
+  /** Create, rename, delete groups and manage their membership (SCRUM-149). */
+  GROUPS_MANAGE: 'groups:manage',
 });
 export const PERMISSION_LIST = Object.freeze(Object.values(PERMISSIONS));
 export const ALL_PERMISSIONS = new Set(PERMISSION_LIST);
@@ -81,6 +83,7 @@ const ORG_ADMIN_PERMISSIONS = [
   PERMISSIONS.DASHBOARD_READ,
   PERMISSIONS.REQUESTS_MARK_OVERDUE,
   PERMISSIONS.ORG_SETTINGS,
+  PERMISSIONS.GROUPS_MANAGE,
 ];
 
 /** SDD §6.4 permission matrix. */
