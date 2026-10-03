@@ -26,6 +26,24 @@ import { formatDate, humanize, pluralize } from '../utils/format';
 import { ErrorState } from './ErrorState';
 import { LoadingState } from './LoadingState';
 /**
+ * A short qualifier for an event recorded by the person it concerns (SCRUM-205), or null.
+ *
+ * A pickup the borrower recorded themselves, and a return the sole admin confirmed on their own loan,
+ * are both allowed, but a reader settling a dispute needs to see that nobody else witnessed them.
+ * @param {{ after?: { selfReported?: boolean, selfConfirmed?: boolean } | null }} event
+ * @returns {string|null}
+ */
+function selfRecordedNote(event) {
+  if (event.after?.selfConfirmed) {
+    return 'self-confirmed';
+  }
+  if (event.after?.selfReported) {
+    return 'recorded by the borrower';
+  }
+  return null;
+}
+
+/**
  * Render one event as a line of the timeline.
  *
  * The actor's name comes first because "who" is the question this screen exists to answer; the role
@@ -39,10 +57,12 @@ import { LoadingState } from './LoadingState';
  * @returns {JSX.Element}
  */
 function HistoryEntry({ event }) {
+  const note = selfRecordedNote(event);
   return (
     <li>
       <strong>{humanize(event.action)}</strong>
       {event.unitTag ? <span className="meta"> unit {event.unitTag}</span> : null}
+      {note ? <span className="meta"> ({note})</span> : null}
       <div>
         <span>{event.actor.name}</span>
         <span className="meta"> {ROLE_LABELS[event.actor.role] ?? event.actor.role}</span>

@@ -11,7 +11,7 @@
  * The odd one out among the repositories: an organisation *is* the tenant, so these functions take an
  * organisation id or slug rather than being scoped by one.
  *
- * Exports: `create`, `findById`, `findBySlug`, `touch`, `setApprovalDefault`.
+ * Exports: `create`, `findById`, `findBySlug`, `touch`, `setApprovalDefault`, `setPickupGraceHours`.
  */
 import { Organization } from '../models/Organization.js';
 
@@ -90,6 +90,24 @@ export async function setApprovalDefault(orgId, defaultMode, { session } = {}) {
   return Organization.findOneAndUpdate(
     { _id: orgId },
     { $set: { 'approvalSettings.defaultMode': defaultMode } },
+    { returnDocument: 'after', runValidators: true, session },
+  );
+}
+
+/**
+ * Set how long an approved request may wait to be collected (SCRUM-205).
+ *
+ * `runValidators` applies the schema's min/max, so a caller inside the codebase cannot store a
+ * negative or absurd window either.
+ * @param {string} orgId
+ * @param {number} graceHours
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<import('mongoose').Document|null>} the updated organisation, or null if it is gone
+ */
+export async function setPickupGraceHours(orgId, graceHours, { session } = {}) {
+  return Organization.findOneAndUpdate(
+    { _id: orgId },
+    { $set: { 'pickupSettings.graceHours': graceHours } },
     { returnDocument: 'after', runValidators: true, session },
   );
 }

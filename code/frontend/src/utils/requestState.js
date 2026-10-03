@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: frontend mirror of the checkout state machine and the actions each role may take
+// AI-Assisted Areas: frontend mirror of the checkout state machine and the actions each role may take; SCRUM-205 RETURN_PENDING/EXPIRED, borrower pickup and return, confirm/reject return
 // Human Contributions: pending team review
 // Notes: Written for SCRUM-123. Mirrors the backend's checkout.service.js TRANSITIONS — change both together. Must be reviewed by the owning team member before merge.
 
@@ -26,13 +26,16 @@ import { ROLES } from './constants';
  */
 export const TRANSITIONS = Object.freeze({
   PENDING: Object.freeze(['APPROVED', 'DENIED', 'CANCELLED']),
-  APPROVED: Object.freeze(['CANCELLED', 'CHECKED_OUT']),
-  CHECKED_OUT: Object.freeze(['RETURNED', 'OVERDUE', 'LOST']),
-  OVERDUE: Object.freeze(['RETURNED', 'LOST']),
+  APPROVED: Object.freeze(['CANCELLED', 'CHECKED_OUT', 'EXPIRED']),
+  CHECKED_OUT: Object.freeze(['RETURN_PENDING', 'RETURNED', 'OVERDUE', 'LOST']),
+  OVERDUE: Object.freeze(['RETURN_PENDING', 'RETURNED', 'LOST']),
+  // SCRUM-205: the borrower says it is back; someone else confirms (RETURNED) or rejects it.
+  RETURN_PENDING: Object.freeze(['RETURNED', 'CHECKED_OUT']),
   DENIED: Object.freeze([]),
   CANCELLED: Object.freeze([]),
   RETURNED: Object.freeze([]),
   LOST: Object.freeze([]),
+  EXPIRED: Object.freeze([]),
 });
 
 /**
@@ -58,10 +61,17 @@ export function canTransition(from, to) {
  * `to` is the state the action moves the request into, which is what makes `canTransition` the
  * arbiter of whether it is offered at all — rather than a list of hard-coded `state === 'PENDING'`
  * conditions that drift from the state machine. `allowed` adds the human question the state machine
- * cannot answer: who is entitled to press it.
+ * cannot answer: who is entitled to press it. `from`, where present, narrows the source states for
+ * the two actions that share a target: recording a pickup and rejecting a return both lead to
+ * CHECKED_OUT, from different places.
+ *
+ * `label` may be a function of the viewer, because the same action reads differently to each side of
+ * a handoff: the borrower says "I've picked it up", the desk "Record handoff".
  *
  * The permissions mirror the backend's matrix: `requests:decide` and `requests:handoff` belong to
- * APPROVER and ORG_ADMIN; cancelling is the requester's own business.
+ * APPROVER and ORG_ADMIN; cancelling is the requester's own business. Custody confirmation
+ * (SCRUM-205): the borrower may record their own pickup and start their own return, and confirming
+ * or rejecting a return follows `canConfirmReturn`, which the API computes for this viewer.
  */
 export const ACTIONS = Object.freeze([
   Object.freeze({
@@ -86,36 +96,77 @@ export const ACTIONS = Object.freeze([
   }),
   Object.freeze({
     key: 'checkout',
-    label: 'Record handoff',
+    label: ({ isRequester }) => (isRequester ? 'I’ve picked it up' : 'Record handoff'),
     to: 'CHECKED_OUT',
-    allowed: ({ role }) => role === ROLES.APPROVER || role === ROLES.ORG_ADMIN,
+    from: Object.freeze(['APPROVED']),
+    allowed: ({ role, isRequester }) => isRequester || isHandoffRole(role),
+  }),
+  Object.freeze({
+    key: 'initiateReturn',
+    label: 'Return this item',
+    to: 'RETURN_PENDING',
+    // The borrower's own, whatever their role (SCRUM-205 AT-4).
+    allowed: ({ isRequester }) => isRequester,
   }),
   Object.freeze({
     key: 'return',
-    label: 'Record return',
+    label: ({ state }) => (state === 'RETURN_PENDING' ? 'Confirm return' : 'Record return'),
     to: 'RETURNED',
-    allowed: ({ role }) => role === ROLES.APPROVER || role === ROLES.ORG_ADMIN,
+    allowed: ({ canConfirmReturn }) => canConfirmReturn,
+  }),
+  Object.freeze({
+    key: 'rejectReturn',
+    label: 'Reject return',
+    to: 'CHECKED_OUT',
+    from: Object.freeze(['RETURN_PENDING']),
+    allowed: ({ canConfirmReturn }) => canConfirmReturn,
   }),
 ]);
+
+/**
+ * Does this role hold `requests:handoff`?
+ * @param {string|undefined} role
+ * @returns {boolean}
+ */
+function isHandoffRole(role) {
+  return role === ROLES.APPROVER || role === ROLES.ORG_ADMIN;
+}
 
 /**
  * The actions to draw for this request, this viewer, right now.
  *
  * Both tests must pass: the state machine must permit the move, and the viewer must be entitled to
  * make it. A terminal state therefore produces nothing at all, without a special case.
- * @param {{ state: string }} request
- * @param {{ role: string, userId: string|null }} viewer
+ *
+ * `viewer.canConfirmReturn` is the API's answer for this viewer (SCRUM-205): only the server can tell
+ * whether a requester is the organisation's sole confirmer. Without it (an older response), the safe
+ * reading is used: a handoff role confirms anyone's return but their own.
+ * @param {{ state: string, requesterId: string }} request
+ * @param {{ role: string, userId: string|null, canConfirmReturn?: boolean }} viewer
  * @returns {Array<{ key: string, label: string, to: string }>}
  */
 export function actionsFor(request, viewer) {
   if (!request?.state) {
     return [];
   }
+  const isRequester = Boolean(viewer?.userId) && viewer.userId === String(request.requesterId);
   const context = {
     role: viewer?.role,
-    isRequester: Boolean(viewer?.userId) && viewer.userId === String(request.requesterId),
+    state: request.state,
+    isRequester,
+    canConfirmReturn:
+      typeof viewer?.canConfirmReturn === 'boolean'
+        ? viewer.canConfirmReturn
+        : isHandoffRole(viewer?.role) && !isRequester,
   };
   return ACTIONS.filter(
-    (action) => canTransition(request.state, action.to) && action.allowed(context),
-  ).map(({ key, label, to }) => ({ key, label, to }));
+    (action) =>
+      canTransition(request.state, action.to) &&
+      (!action.from || action.from.includes(request.state)) &&
+      action.allowed(context),
+  ).map(({ key, label, to }) => ({
+    key,
+    label: typeof label === 'function' ? label(context) : label,
+    to,
+  }));
 }

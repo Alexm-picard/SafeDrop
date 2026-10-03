@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Iteration 1 approval policy tests (SDD §8.5)
+// AI-Assisted Areas: Iteration 1 approval policy tests (SDD §8.5); SCRUM-205 canConfirmReturn and the sole-confirmer fallback
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -18,6 +18,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  canConfirmReturn,
   configurableApproval,
   getPolicy,
   policyFor,
@@ -139,5 +140,61 @@ describe('configurableApproval (SCRUM-148)', () => {
     expect(configurableApproval.canDecide(request, { userId: 'user-2', role: 'APPROVER' })).toEqual(
       { allowed: true },
     );
+  });
+});
+
+describe('canConfirmReturn (SCRUM-205)', () => {
+  const org = {};
+  const mine = { requesterId: 'user-1' };
+
+  it('lets a different Approver or Org Admin confirm, without the self-confirmed flag', () => {
+    for (const role of ['APPROVER', 'ORG_ADMIN']) {
+      expect(canConfirmReturn(mine, { userId: 'user-2', role }, org, {})).toEqual({
+        allowed: true,
+        selfConfirmed: false,
+      });
+    }
+  });
+
+  it('refuses a member, even on their own request and even when nobody else could confirm', () => {
+    expect(
+      canConfirmReturn(mine, { userId: 'user-1', role: 'MEMBER' }, org, { otherConfirmers: 0 })
+        .allowed,
+    ).toBe(false);
+    expect(canConfirmReturn(mine, { userId: 'user-2', role: 'MEMBER' }, org, {}).allowed).toBe(
+      false,
+    );
+  });
+
+  it('refuses the requester while anyone else could confirm', () => {
+    expect(
+      canConfirmReturn(mine, { userId: 'user-1', role: 'ORG_ADMIN' }, org, { otherConfirmers: 1 }),
+    ).toMatchObject({ allowed: false });
+  });
+
+  it('lets the sole confirmer close their own return, flagged as self-confirmed', () => {
+    expect(
+      canConfirmReturn(mine, { userId: 'user-1', role: 'ORG_ADMIN' }, org, { otherConfirmers: 0 }),
+    ).toEqual({ allowed: true, selfConfirmed: true });
+  });
+
+  it('fails closed when the count of other confirmers is unknown', () => {
+    expect(canConfirmReturn(mine, { userId: 'user-1', role: 'ORG_ADMIN' }, org, {}).allowed).toBe(
+      false,
+    );
+  });
+
+  it('compares an ObjectId requester against a string actor id', () => {
+    const withObjectId = { requesterId: { toString: () => 'user-1' } };
+    expect(
+      canConfirmReturn(withObjectId, { userId: 'user-1', role: 'APPROVER' }, org, {
+        otherConfirmers: 2,
+      }).allowed,
+    ).toBe(false);
+  });
+
+  it('is what both shipped policies answer with', () => {
+    expect(configurableApproval.canConfirmReturn).toBe(canConfirmReturn);
+    expect(requireDistinctApprover.canConfirmReturn).toBe(canConfirmReturn);
   });
 });

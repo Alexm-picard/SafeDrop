@@ -55,6 +55,8 @@ export const PERMISSIONS = Object.freeze({
   PASSWORD_SELF: 'password:self',
   /** Move this organisation's late checkouts to OVERDUE on demand (POST /api/requests/mark-overdue). */
   REQUESTS_MARK_OVERDUE: 'requests:mark-overdue',
+  /** Expire this organisation's uncollected approvals on demand (POST /api/requests/expire-approvals, SCRUM-205). */
+  REQUESTS_EXPIRE: 'requests:expire',
   /** Change organisation-wide settings, e.g. the approval default (SCRUM-148). */
   ORG_SETTINGS: 'org:settings',
   /** Create, rename, delete groups and manage their membership (SCRUM-149). */
@@ -82,6 +84,7 @@ const ORG_ADMIN_PERMISSIONS = [
   PERMISSIONS.AUDIT_READ,
   PERMISSIONS.DASHBOARD_READ,
   PERMISSIONS.REQUESTS_MARK_OVERDUE,
+  PERMISSIONS.REQUESTS_EXPIRE,
   PERMISSIONS.ORG_SETTINGS,
   PERMISSIONS.GROUPS_MANAGE,
 ];

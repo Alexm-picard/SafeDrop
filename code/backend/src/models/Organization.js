@@ -17,7 +17,13 @@
  * against `SLUG_PATTERN` so it stays URL-safe.
  */
 import mongoose from 'mongoose';
-import { APPROVAL_MODE, ORG_APPROVAL_MODE_LIST, SLUG_PATTERN } from '../utils/constants.js';
+import {
+  APPROVAL_MODE,
+  DEFAULT_PICKUP_GRACE_HOURS,
+  MAX_PICKUP_GRACE_HOURS,
+  ORG_APPROVAL_MODE_LIST,
+  SLUG_PATTERN,
+} from '../utils/constants.js';
 import { createSchema } from './base.js';
 
 const organizationSchema = createSchema(
@@ -39,6 +45,16 @@ const organizationSchema = createSchema(
         type: String,
         enum: ORG_APPROVAL_MODE_LIST,
         default: APPROVAL_MODE.REQUIRED,
+      },
+    },
+    // SCRUM-205: how many hours after `neededFrom` an approved request may wait to be collected
+    // before the expiry sweep releases its unit.
+    pickupSettings: {
+      graceHours: {
+        type: Number,
+        min: 0,
+        max: MAX_PICKUP_GRACE_HOURS,
+        default: DEFAULT_PICKUP_GRACE_HOURS,
       },
     },
   },

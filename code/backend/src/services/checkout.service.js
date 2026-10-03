@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back; submit() now enforces restricted-equipment eligibility via group.service.isActiveMember (SCRUM-149); submit() and approve() both check group.service.isEligible over allowedGroupIds (SCRUM-150, AT-3)
+// AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back; submit() now enforces restricted-equipment eligibility via group.service.isActiveMember (SCRUM-149); submit() and approve() both check group.service.isEligible over allowedGroupIds (SCRUM-150, AT-3); SCRUM-205 custody confirmation: borrower-recorded pickup, initiateReturn/rejectReturn, canConfirmReturn on every return path, expireApprovals with a system-actor audit entry
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); SCRUM-149 eligibility check pending review
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -20,11 +20,18 @@
  * `submit`/`approve`/`deny`/`cancel`/`checkout`/`returnUnit`/`get`/`list` are all implemented (see
  * each one's own doc comment for how visibility or ownership is scoped). `approve`/`deny` apply the
  * organisation's approval policy (separation of duties); `cancel` is stricter still — the requester
- * only, no role-based exception; `checkout`/`returnUnit` do not check ownership at all — access to
- * them is gated entirely by the `requests:handoff` permission at the route (OD-4).
+ * only, no role-based exception.
+ *
+ * Custody confirmation (SCRUM-205): each change of custody is recorded by the side that can verify
+ * it. `checkout` may be recorded by the borrower or by anyone holding `requests:handoff`.
+ * `initiateReturn` is the borrower saying the item is back; it moves the request to RETURN_PENDING but
+ * leaves the unit OUT. `returnUnit` and `rejectReturn` close or refuse it, and both ask the policy's
+ * `canConfirmReturn`, so nobody confirms their own return unless nobody else could.
+ * `expireApprovals` frees units whose approval nobody collected.
  *
  * Exports: `TRANSITIONS`, `TERMINAL_STATES`, `assertTransition`, `canTransition`, and the handlers
- * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `returnUnit`.
+ * `submit`, `list`, `get`, `approve`, `deny`, `cancel`, `checkout`, `initiateReturn`, `returnUnit`,
+ * `rejectReturn`, `markOverdue`, `expireApprovals`.
  */
 import { withTransaction } from '../config/db.js';
 import * as assetRepo from '../repositories/asset.repository.js';
@@ -35,6 +42,7 @@ import * as userRepo from '../repositories/user.repository.js';
 import {
   AUDIT_ACTION,
   AUDIT_TARGET_TYPE,
+  DEFAULT_PICKUP_GRACE_HOURS,
   REQUEST_STATE as S,
   UNIT_STATUS as U,
 } from '../utils/constants.js';
@@ -44,27 +52,40 @@ import {
   NotFoundError,
   StateTransitionError,
 } from '../utils/errors.js';
-import { PERMISSIONS, roleHasPermission } from '../utils/permissions.js';
+import { PERMISSIONS, ROLES, roleHasPermission } from '../utils/permissions.js';
 import * as auditService from './audit.service.js';
 import { isEligible } from './group.service.js';
-import { policyFor } from './policies/approvalPolicy.js';
+import {
+  canConfirmReturn as defaultCanConfirmReturn,
+  policyFor,
+} from './policies/approvalPolicy.js';
 
 /**
  * THE state machine. Every handler below must go through assertTransition(); nothing else may
  * change CheckoutRequest.state. Each row lists the AssetUnit side-effect that happens in the same
  * transaction (NFR-2: a failed step never leaves a unit half-checked-out).
  *
- * from          → to           unit side-effect   audit action
- * PENDING       → APPROVED     unit HELD          REQUEST_APPROVED
- * PENDING       → DENIED       unit AVAILABLE     REQUEST_DENIED
- * PENDING       → CANCELLED    unit AVAILABLE     REQUEST_CANCELLED
- * APPROVED      → CANCELLED    unit AVAILABLE     REQUEST_CANCELLED
- * APPROVED      → CHECKED_OUT  unit OUT           ASSET_CHECKED_OUT
- * CHECKED_OUT   → RETURNED     unit AVAILABLE     ASSET_RETURNED
- * CHECKED_OUT   → OVERDUE      (none)             (system; markOverdue — not audited, see there)
- * CHECKED_OUT   → LOST         unit RETIRED       (Iteration 2)
- * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
- * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
+ * from            → to              unit side-effect   audit action
+ * PENDING         → APPROVED        unit HELD          REQUEST_APPROVED
+ * PENDING         → DENIED          unit AVAILABLE     REQUEST_DENIED
+ * PENDING         → CANCELLED       unit AVAILABLE     REQUEST_CANCELLED
+ * APPROVED        → CANCELLED       unit AVAILABLE     REQUEST_CANCELLED
+ * APPROVED        → CHECKED_OUT     unit OUT           ASSET_CHECKED_OUT
+ * APPROVED        → EXPIRED         unit AVAILABLE     REQUEST_EXPIRED (system; expireApprovals)
+ * CHECKED_OUT     → RETURN_PENDING  (none: still OUT)  RETURN_INITIATED
+ * CHECKED_OUT     → RETURNED        unit AVAILABLE     ASSET_RETURNED (walk-in return)
+ * CHECKED_OUT     → OVERDUE         (none)             (system; markOverdue — not audited, see there)
+ * CHECKED_OUT     → LOST            unit RETIRED       (Iteration 2)
+ * OVERDUE         → RETURN_PENDING  (none: still OUT)  RETURN_INITIATED
+ * OVERDUE         → RETURNED        unit AVAILABLE     ASSET_RETURNED (walk-in return)
+ * OVERDUE         → LOST            unit RETIRED       (Iteration 2)
+ * RETURN_PENDING  → RETURNED        unit AVAILABLE     ASSET_RETURNED (confirmed)
+ * RETURN_PENDING  → CHECKED_OUT     (none: still OUT)  RETURN_REJECTED
+ *
+ * RETURN_PENDING (SCRUM-205) is the borrower's word that the item is back, waiting for someone else's.
+ * The unit stays OUT through it, so accountability does not end until a confirmer says so. A rejected
+ * return goes back to CHECKED_OUT even if it had been OVERDUE: the next mark-overdue run flags it
+ * again from its unchanged `dueAt`.
  *
  * Creating a request (submit()) is the one step with no row here: it moves a unit from AVAILABLE to
  * REQUESTED (PENDING) — or, when the approval policy auto-approves (SCRUM-148), straight to HELD
@@ -82,25 +103,33 @@ export const TRANSITIONS = Object.freeze({
   [S.APPROVED]: Object.freeze({
     [S.CANCELLED]: Object.freeze({ unitStatus: U.AVAILABLE }),
     [S.CHECKED_OUT]: Object.freeze({ unitStatus: U.OUT }),
+    [S.EXPIRED]: Object.freeze({ unitStatus: U.AVAILABLE }),
   }),
   [S.CHECKED_OUT]: Object.freeze({
+    [S.RETURN_PENDING]: Object.freeze({ unitStatus: null }),
     [S.RETURNED]: Object.freeze({ unitStatus: U.AVAILABLE }),
     [S.OVERDUE]: Object.freeze({ unitStatus: null }),
     [S.LOST]: Object.freeze({ unitStatus: U.RETIRED }),
   }),
   [S.OVERDUE]: Object.freeze({
+    [S.RETURN_PENDING]: Object.freeze({ unitStatus: null }),
     [S.RETURNED]: Object.freeze({ unitStatus: U.AVAILABLE }),
     [S.LOST]: Object.freeze({ unitStatus: U.RETIRED }),
+  }),
+  [S.RETURN_PENDING]: Object.freeze({
+    [S.RETURNED]: Object.freeze({ unitStatus: U.AVAILABLE }),
+    [S.CHECKED_OUT]: Object.freeze({ unitStatus: null }),
   }),
   // Terminal states: no outgoing transitions.
   [S.DENIED]: Object.freeze({}),
   [S.CANCELLED]: Object.freeze({}),
   [S.RETURNED]: Object.freeze({}),
   [S.LOST]: Object.freeze({}),
+  [S.EXPIRED]: Object.freeze({}),
 });
 
 /**
- * The states with no outgoing transitions: DENIED, CANCELLED, RETURNED, LOST.
+ * The states with no outgoing transitions: DENIED, CANCELLED, RETURNED, LOST, EXPIRED.
  *
  * Derived from the table rather than listed separately, so it cannot fall out of step with it.
  */
@@ -283,17 +312,27 @@ export async function submit(orgId, actor, input = {}) {
  * A caller who cannot decide requests but sends `scope: 'org'` anyway is not rejected — the flag is
  * simply ignored and they get their own requests, the same way a smuggled `orgId` elsewhere in the
  * API is ignored rather than treated as an error.
+ *
+ * `scope: 'others'` (SCRUM-205) is the organisation-wide view minus the caller's own requests. The
+ * "Pending returns" queue asks for it, because a return is confirmed by someone other than its
+ * requester: an approver's own pending return belongs in every queue but theirs.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
- * @param {{ state?: string, page?: number, limit?: number, scope?: 'own'|'org' }} [query] validated `listQuery`
+ * @param {{ state?: string, page?: number, limit?: number, scope?: 'own'|'org'|'others' }} [query] validated `listQuery`
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export async function list(orgId, actor, query = {}) {
   const { state, page, limit, scope } = query;
   const wantsOrgWide =
-    scope === 'org' && roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
+    (scope === 'org' || scope === 'others') &&
+    roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
   if (wantsOrgWide) {
-    return checkoutRequestRepo.list(orgId, { state, page, limit });
+    return checkoutRequestRepo.list(orgId, {
+      state,
+      page,
+      limit,
+      excludeRequesterId: scope === 'others' ? actor.userId : undefined,
+    });
   }
   return checkoutRequestRepo.listForRequester(orgId, actor.userId, { state, page, limit });
 }
@@ -317,10 +356,15 @@ export async function list(orgId, actor, query = {}) {
  * The timeline is derived from the request's own timestamps rather than from the audit log: the
  * audit trail needs `audit:read`, which a member does not hold, and the request document already
  * records when each transition happened.
+ *
+ * `canConfirmReturn` (SCRUM-205) tells the screen whether *this viewer* may confirm or reject the
+ * return. The browser cannot work that out alone: the sole-confirmer fallback depends on who else in
+ * the organisation could confirm, which only the server can count. It is false whenever the request
+ * is in no state a return can close, so the count is only made when it matters.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} requestId
- * @returns {Promise<{ request: object, asset: object|null, unit: object|null, requester: object|null, decidedBy: object|null, timeline: Array<{ at: Date, event: string }> }>}
+ * @returns {Promise<{ request: object, asset: object|null, unit: object|null, requester: object|null, decidedBy: object|null, timeline: Array<{ at: Date, event: string }>, canConfirmReturn: boolean }>}
  * @throws {NotFoundError} (404) when no such request is visible to this caller
  */
 export async function get(orgId, actor, requestId) {
@@ -331,10 +375,13 @@ export async function get(orgId, actor, requestId) {
   }
 
   const unit = await assetUnitRepo.findById(orgId, request.unitId);
-  const [asset, requester, decidedBy] = await Promise.all([
+  const [asset, requester, decidedBy, confirmation] = await Promise.all([
     unit ? assetRepo.findById(orgId, unit.assetId) : null,
     userRepo.findById(orgId, request.requesterId),
     request.decidedBy ? userRepo.findById(orgId, request.decidedBy) : null,
+    canTransition(request.state, S.RETURNED)
+      ? returnConfirmation(orgId, request, actor)
+      : { allowed: false },
   ]);
 
   return {
@@ -344,7 +391,44 @@ export async function get(orgId, actor, requestId) {
     requester: requester ? publicPerson(requester) : null,
     decidedBy: decidedBy ? publicPerson(decidedBy) : null,
     timeline: timelineOf(request),
+    canConfirmReturn: confirmation.allowed,
   };
+}
+
+/**
+ * The roles that can confirm a return: the holders of `requests:handoff`.
+ *
+ * Derived from the permission matrix rather than listed, so a role that gains the permission later is
+ * counted by the sole-confirmer rule without anyone remembering this file.
+ */
+const CONFIRMER_ROLES = Object.freeze(
+  Object.values(ROLES).filter((role) => roleHasPermission(role, PERMISSIONS.REQUESTS_HANDOFF)),
+);
+
+/**
+ * Ask the organisation's policy whether `actor` may confirm or reject the return of `request`.
+ *
+ * Counts the *other* active confirmers first, because the policy cannot read the database and the
+ * sole-confirmer fallback (AT-8) depends on that number. The count is skipped when the actor is not
+ * the requester, where it cannot change the answer.
+ * @param {string} orgId
+ * @param {object} request
+ * @param {{ userId: string, role: string }} actor
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<{ allowed: boolean, selfConfirmed?: boolean, reason?: string }>}
+ */
+async function returnConfirmation(orgId, request, actor, { session } = {}) {
+  const org = await organizationRepo.findById(orgId, { session });
+  const isRequester = String(request.requesterId) === String(actor.userId);
+  const otherConfirmers = isRequester
+    ? await userRepo.countActiveWithRoles(orgId, CONFIRMER_ROLES, {
+        excludeUserId: actor.userId,
+        session,
+      })
+    : undefined;
+  const policy = policyFor(org);
+  const ask = policy.canConfirmReturn ?? defaultCanConfirmReturn;
+  return ask(request, actor, org, { otherConfirmers });
 }
 
 /**
@@ -379,7 +463,11 @@ function timelineOf(request) {
         { at: request.createdAt, event: 'AUTO_APPROVED' }
       : { at: request.decidedAt, event: request.state === S.DENIED ? 'DENIED' : 'APPROVED' },
     { at: request.checkedOutAt, event: 'CHECKED_OUT' },
+    // SCRUM-205: the borrower's side of a return. Cleared again if the return is rejected, so a
+    // rejected attempt does not read as still waiting.
+    { at: request.returnInitiatedAt, event: 'RETURN_INITIATED' },
     { at: request.returnedAt, event: 'RETURNED' },
+    { at: request.expiredAt, event: 'EXPIRED' },
   ];
   // A cancellation leaves no timestamp of its own, so the document's last write is the best
   // evidence of when it happened. Only shown when the request actually is cancelled.
@@ -611,18 +699,38 @@ export async function cancel(orgId, actor, requestId, input = {}) {
 }
 
 /**
+ * The states in which the item is with the borrower: what a second attempt to record the same
+ * pickup finds (SCRUM-205 AT-1). Used only to word the 409, never to decide anything.
+ */
+const ALREADY_OUT_STATES = Object.freeze([S.CHECKED_OUT, S.OVERDUE, S.RETURN_PENDING]);
+
+/**
  * Hand the item over (`POST /api/requests/:id/checkout`).
  *
- * APPROVED -> CHECKED_OUT, unit -> OUT, `dueAt` stamped from the request's own `neededTo` (OD-4:
- * gated by `requests:handoff` at the route, not by separation of duties — anyone holding that
- * permission may record a handoff). ASSET_CHECKED_OUT audit event in the same transaction.
+ * APPROVED -> CHECKED_OUT, unit -> OUT, `dueAt` stamped from the request's own `neededTo`.
+ * ASSET_CHECKED_OUT audit event in the same transaction.
+ *
+ * **Who may record it (SCRUM-205).** Either side of the handoff: the borrower ("I've picked it up"),
+ * whatever their role, or anyone holding `requests:handoff`. The route is open to every role so a
+ * member can reach this, and the check lives here. Members are not given `requests:handoff`, because
+ * that permission also covers confirming returns. Another member is refused with 403. The request is
+ * in their organisation, so the 404-for-privacy rule `cancel()` follows is the story's explicit
+ * exception here (AT-2).
+ *
+ * The audit entry names whoever recorded it, with `selfReported: true` when that was the requester,
+ * so a reader can tell "the desk saw it leave" from "the borrower says they took it".
+ *
+ * **Recorded once.** The compare-and-set on APPROVED means the second side to click loses, and gets a
+ * 409 that says the item is already checked out rather than a raw state-machine message.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} requestId
  * @param {{ requestId?: string }} [input] the HTTP request id, for audit correlation
  * @returns {Promise<object>} the checked-out request
  * @throws {NotFoundError} (404) no such request in this organisation
- * @throws {StateTransitionError} (409) the request isn't APPROVED (including a lost race)
+ * @throws {ForbiddenError} (403) the caller is neither the requester nor holds `requests:handoff`
+ * @throws {ConflictError} (409) the item is already checked out (including a lost race)
+ * @throws {StateTransitionError} (409) the request is in some other state that cannot be checked out
  */
 export async function checkout(orgId, actor, requestId, input = {}) {
   const request = await checkoutRequestRepo.findById(orgId, requestId);
@@ -630,6 +738,14 @@ export async function checkout(orgId, actor, requestId, input = {}) {
     throw new NotFoundError('Request not found');
   }
 
+  const isRequester = String(request.requesterId) === String(actor.userId);
+  if (!isRequester && !roleHasPermission(actor.role, PERMISSIONS.REQUESTS_HANDOFF)) {
+    throw new ForbiddenError('Only the borrower or an approver can record this pickup');
+  }
+
+  if (ALREADY_OUT_STATES.includes(request.state)) {
+    throw new ConflictError('This item is already checked out');
+  }
   const { unitStatus } = assertTransition(request.state, S.CHECKED_OUT);
 
   return withTransaction(async (session) => {
@@ -647,7 +763,8 @@ export async function checkout(orgId, actor, requestId, input = {}) {
       { session },
     );
     if (!updated) {
-      throw new StateTransitionError(request.state, S.CHECKED_OUT);
+      // The other side recorded the same pickup between our read and this write.
+      throw new ConflictError('This item is already checked out');
     }
 
     await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
@@ -660,7 +777,76 @@ export async function checkout(orgId, actor, requestId, input = {}) {
         targetType: AUDIT_TARGET_TYPE.AssetUnit,
         targetId: updated.unitId,
         before: { status: U.HELD },
-        after: { status: unitStatus },
+        after: { status: unitStatus, selfReported: isRequester },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
+}
+
+/**
+ * Start a return (`POST /api/requests/:id/initiate-return`, SCRUM-205 AT-4).
+ *
+ * The borrower's half of a return: CHECKED_OUT or OVERDUE -> RETURN_PENDING, with the condition they
+ * report. **The unit stays OUT** and nothing about it changes: the borrower's word is not evidence the
+ * item arrived, so accountability carries on until a different Approver or Org Admin confirms it
+ * (`returnUnit`) or rejects it (`rejectReturn`). The reported condition is kept on the request, not
+ * written to the unit, for the same reason.
+ *
+ * The requester only, whatever their role, and anyone else gets 404, as with `cancel()`: the route is
+ * open to every member, so a 403 would let a member learn which ids exist.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ condition: string, note?: string, requestId?: string }} input validated
+ *   `initiateReturnBody`, plus the HTTP request id for audit correlation
+ * @returns {Promise<object>} the request, now RETURN_PENDING
+ * @throws {NotFoundError} (404) no such request, or the caller is not its requester
+ * @throws {StateTransitionError} (409) the request isn't CHECKED_OUT/OVERDUE (including a lost race)
+ */
+export async function initiateReturn(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request || String(request.requesterId) !== String(actor.userId)) {
+    throw new NotFoundError('Request not found');
+  }
+
+  assertTransition(request.state, S.RETURN_PENDING);
+
+  return withTransaction(async (session) => {
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: request.state,
+        patch: {
+          state: S.RETURN_PENDING,
+          reportedCondition: input.condition,
+          reportedNote: input.note ?? '',
+          returnInitiatedAt: new Date(),
+        },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.RETURN_PENDING);
+    }
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.RETURN_INITIATED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: request.state },
+        after: {
+          state: S.RETURN_PENDING,
+          reportedCondition: input.condition,
+          ...(input.note ? { reportedNote: input.note } : {}),
+        },
         requestId: input.requestId,
       },
       { session },
@@ -673,10 +859,19 @@ export async function checkout(orgId, actor, requestId, input = {}) {
 /**
  * Take the item back (`POST /api/requests/:id/return`).
  *
- * CHECKED_OUT or OVERDUE -> RETURNED, unit -> AVAILABLE, with any reported condition change recorded
- * in the same write. OVERDUE itself is Iteration 2 (needs a scheduler) — nothing puts a request there
- * yet, so this path exists for when it does, without depending on that work. ASSET_RETURNED audit
- * event in the same transaction. Gated by `requests:handoff` at the route (OD-4).
+ * Two ways in, one way out, all to RETURNED with the unit AVAILABLE and an ASSET_RETURNED audit event
+ * in the same transaction:
+ *
+ * - **Confirming a pending return (SCRUM-205 AT-5).** RETURN_PENDING -> RETURNED. The confirmer
+ *   records the condition they *received*, which becomes the unit's condition. The audit entry keeps
+ *   both that and the borrower's reported condition, so a disagreement stays visible.
+ * - **A walk-in return (AT-6).** CHECKED_OUT or OVERDUE -> RETURNED, when the borrower hands the item
+ *   over without starting a return first, exactly as in Iteration 1.
+ *
+ * **Who may confirm** is the policy's `canConfirmReturn`: `requests:handoff` (also enforced at the
+ * route), and never the requester, unless they are the organisation's only Approver or Org Admin
+ * (AT-7, AT-8). That fallback is recorded as `selfConfirmed: true` on the audit entry. The policy is
+ * asked again inside the transaction, so a second admin invited mid-flight is counted.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {string} requestId
@@ -684,7 +879,8 @@ export async function checkout(orgId, actor, requestId, input = {}) {
  *   plus the HTTP request id for audit correlation
  * @returns {Promise<object>} the returned request
  * @throws {NotFoundError} (404) no such request in this organisation
- * @throws {StateTransitionError} (409) the request isn't CHECKED_OUT/OVERDUE (including a lost race)
+ * @throws {ForbiddenError} (403) the caller may not confirm this return (role, or their own request)
+ * @throws {StateTransitionError} (409) the request isn't CHECKED_OUT/OVERDUE/RETURN_PENDING (including a lost race)
  */
 export async function returnUnit(orgId, actor, requestId, input = {}) {
   const request = await checkoutRequestRepo.findById(orgId, requestId);
@@ -692,9 +888,11 @@ export async function returnUnit(orgId, actor, requestId, input = {}) {
     throw new NotFoundError('Request not found');
   }
 
+  await assertMayConfirmReturn(orgId, request, actor);
   const { unitStatus } = assertTransition(request.state, S.RETURNED);
 
   return withTransaction(async (session) => {
+    const { selfConfirmed } = await assertMayConfirmReturn(orgId, request, actor, { session });
     const updated = await checkoutRequestRepo.transition(
       orgId,
       requestId,
@@ -715,6 +913,7 @@ export async function returnUnit(orgId, actor, requestId, input = {}) {
       { session },
     );
 
+    const wasPending = request.state === S.RETURN_PENDING;
     await auditService.record(
       orgId,
       {
@@ -723,7 +922,18 @@ export async function returnUnit(orgId, actor, requestId, input = {}) {
         targetType: AUDIT_TARGET_TYPE.AssetUnit,
         targetId: updated.unitId,
         before: { status: U.OUT },
-        after: { status: unitStatus, ...(input.condition ? { condition: input.condition } : {}) },
+        after: {
+          status: unitStatus,
+          ...(input.condition ? { condition: input.condition } : {}),
+          ...(wasPending
+            ? {
+                reportedCondition: request.reportedCondition,
+                receivedCondition: input.condition ?? null,
+              }
+            : {}),
+          ...(input.note ? { note: input.note } : {}),
+          selfConfirmed,
+        },
         requestId: input.requestId,
       },
       { session },
@@ -731,6 +941,104 @@ export async function returnUnit(orgId, actor, requestId, input = {}) {
 
     return updated;
   });
+}
+
+/**
+ * Refuse a pending return (`POST /api/requests/:id/reject-return`, SCRUM-205 AT-6).
+ *
+ * For when the borrower says the item is back and it is not: RETURN_PENDING -> CHECKED_OUT, the unit
+ * still OUT, and a RETURN_REJECTED audit entry with the confirmer's reason. The borrower's report is
+ * cleared from the request, so the screen no longer shows a return waiting; the audit trail keeps both
+ * the RETURN_INITIATED and the RETURN_REJECTED entries.
+ *
+ * The same people may reject as may confirm (`canConfirmReturn`), for the same reason: the requester
+ * rejecting their own return would be pointless, and letting them do it would make the queue
+ * something they can tidy away themselves.
+ * @param {string} orgId
+ * @param {{ userId: string, role: string }} actor
+ * @param {string} requestId
+ * @param {{ reason: string, requestId?: string }} input validated `rejectReturnBody`, plus the HTTP
+ *   request id for audit correlation
+ * @returns {Promise<object>} the request, back to CHECKED_OUT
+ * @throws {NotFoundError} (404) no such request in this organisation
+ * @throws {ForbiddenError} (403) the caller may not confirm this return (role, or their own request)
+ * @throws {StateTransitionError} (409) the request isn't RETURN_PENDING (including a lost race)
+ */
+export async function rejectReturn(orgId, actor, requestId, input = {}) {
+  const request = await checkoutRequestRepo.findById(orgId, requestId);
+  if (!request) {
+    throw new NotFoundError('Request not found');
+  }
+
+  await assertMayConfirmReturn(orgId, request, actor);
+  if (request.state !== S.RETURN_PENDING) {
+    // CHECKED_OUT -> CHECKED_OUT is not a move; without this a rejection of a request nobody started
+    // to return would fall through to the table and read as a confusing self-transition.
+    throw new StateTransitionError(
+      request.state,
+      S.CHECKED_OUT,
+      'No return is waiting to be confirmed',
+    );
+  }
+  assertTransition(request.state, S.CHECKED_OUT);
+
+  return withTransaction(async (session) => {
+    const { selfConfirmed } = await assertMayConfirmReturn(orgId, request, actor, { session });
+    const updated = await checkoutRequestRepo.transition(
+      orgId,
+      requestId,
+      {
+        expectedState: S.RETURN_PENDING,
+        patch: {
+          state: S.CHECKED_OUT,
+          reportedCondition: null,
+          reportedNote: '',
+          returnInitiatedAt: null,
+        },
+      },
+      { session },
+    );
+    if (!updated) {
+      throw new StateTransitionError(request.state, S.CHECKED_OUT);
+    }
+
+    await auditService.record(
+      orgId,
+      {
+        actor,
+        action: AUDIT_ACTION.RETURN_REJECTED,
+        targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+        targetId: requestId,
+        before: { state: S.RETURN_PENDING, reportedCondition: request.reportedCondition },
+        after: { state: S.CHECKED_OUT, reason: input.reason, selfConfirmed },
+        requestId: input.requestId,
+      },
+      { session },
+    );
+
+    return updated;
+  });
+}
+
+/**
+ * Refuse with 403 unless the policy lets `actor` confirm or reject this return.
+ * @param {string} orgId
+ * @param {object} request
+ * @param {{ userId: string, role: string }} actor
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<{ selfConfirmed: boolean }>}
+ * @throws {ForbiddenError} (403)
+ */
+async function assertMayConfirmReturn(orgId, request, actor, { session } = {}) {
+  const decision = await returnConfirmation(orgId, request, actor, { session });
+  if (!decision.allowed) {
+    throw new ForbiddenError(
+      decision.reason === 'requester cannot confirm their own return'
+        ? 'Someone other than the borrower must confirm this return'
+        : 'Not allowed to confirm this return',
+    );
+  }
+  return { selfConfirmed: Boolean(decision.selfConfirmed) };
 }
 
 /**
@@ -773,4 +1081,79 @@ export async function markOverdue(orgId, { now } = {}) {
   }
   assertTransition(S.CHECKED_OUT, S.OVERDUE);
   return checkoutRequestRepo.markOverdue(orgId, now);
+}
+
+/**
+ * Expire one organisation's uncollected approvals (SCRUM-205 AT-3): every APPROVED request whose
+ * pickup window has closed becomes EXPIRED, and its unit goes from HELD back to AVAILABLE. Returns how
+ * many moved.
+ *
+ * The pickup window is `neededFrom` plus the organisation's `pickupSettings.graceHours` (48 by
+ * default). Without this, an approval nobody collects would hold its unit until someone thought to
+ * cancel it.
+ *
+ * **`now` is required and never defaulted**, for the same reason as `markOverdue`: the caller says
+ * what "now" is, so a test never depends on the day it runs. The tenant is required too, since a
+ * missing `orgId` would otherwise match every organisation (SR-2).
+ *
+ * **Audited, unlike `markOverdue`.** Expiry changes custody (it releases a reserved unit), so each
+ * request gets a REQUEST_EXPIRED entry with the system actor (`actorId: null`, role SYSTEM). Nobody is
+ * named, because nobody decided it. That means one transaction per request rather than one bulk
+ * write: the state change, the unit release and the audit entry must commit together (NFR-2). Each
+ * write is a compare-and-set on APPROVED, so a request picked up or cancelled mid-sweep is skipped and
+ * a repeated run is a no-op.
+ * @param {string} orgId
+ * @param {{ now: Date, requestId?: string }} options `now` — the instant to measure the window against
+ * @returns {Promise<number>} how many requests were moved to EXPIRED
+ * @throws {TypeError} when `orgId` is missing or `now` is not a valid Date
+ */
+export async function expireApprovals(orgId, { now, requestId } = {}) {
+  if (!orgId) {
+    throw new TypeError('expireApprovals: orgId is required');
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new TypeError('expireApprovals: now must be a valid Date');
+  }
+  const { unitStatus } = assertTransition(S.APPROVED, S.EXPIRED);
+
+  const org = await organizationRepo.findById(orgId);
+  const graceHours = org?.pickupSettings?.graceHours ?? DEFAULT_PICKUP_GRACE_HOURS;
+  const cutoff = new Date(now.getTime() - graceHours * 60 * 60 * 1000);
+  const candidates = await checkoutRequestRepo.findExpirableApprovals(orgId, cutoff);
+
+  let expired = 0;
+  for (const request of candidates) {
+    // Sequential: each is its own transaction, and a sweep over a handful of requests gains nothing
+    // from racing them against each other.
+    const moved = await withTransaction(async (session) => {
+      const updated = await checkoutRequestRepo.transition(
+        orgId,
+        request._id,
+        { expectedState: S.APPROVED, patch: { state: S.EXPIRED, expiredAt: now } },
+        { session },
+      );
+      if (!updated) {
+        return false; // picked up or cancelled since the read; nothing to expire
+      }
+      await assetUnitRepo.updateStatus(orgId, updated.unitId, unitStatus, { session });
+      await auditService.record(
+        orgId,
+        {
+          actor: auditService.SYSTEM_ACTOR,
+          action: AUDIT_ACTION.REQUEST_EXPIRED,
+          targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+          targetId: updated._id,
+          before: { state: S.APPROVED },
+          after: { state: S.EXPIRED, unitStatus, graceHours },
+          requestId,
+        },
+        { session },
+      );
+      return true;
+    });
+    if (moved) {
+      expired += 1;
+    }
+  }
+  return expired;
 }

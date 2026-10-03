@@ -340,11 +340,20 @@ describe('POST /api/requests/:id/checkout (SCRUM-120, OD-4)', () => {
     expect(String(audit.items[0].targetId)).toBe(String(seed.a.units[0]._id));
   });
 
-  it('a MEMBER cannot record a checkout handoff', async () => {
+  // SCRUM-205 replaced "a MEMBER cannot record a checkout handoff": the borrower may now record their
+  // own pickup, and only *other* members are refused. See custodyConfirmation.test.js (AT-1, AT-2).
+  it('a MEMBER cannot record the handoff of a request that is not theirs', async () => {
     const approved = await createApprovedRequest(seed.a);
+    const other = await User.create({
+      orgId: seed.a.orgId,
+      email: 'other-member@a.test',
+      name: 'Other member',
+      role: 'MEMBER',
+      passwordHash: 'x'.repeat(60),
+    });
     const res = await request(app)
       .post(`/api/requests/${approved._id}/checkout`)
-      .set('Cookie', accessCookieFor(seed.a.member))
+      .set('Cookie', accessCookieFor(other))
       .send({});
     expect(res.status).toBe(403);
   });

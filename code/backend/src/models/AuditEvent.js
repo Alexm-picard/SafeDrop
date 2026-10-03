@@ -21,7 +21,11 @@
  * exposes only append and query, and it is a CI review checklist item.
  */
 import mongoose from 'mongoose';
-import { AUDIT_ACTION_LIST, AUDIT_TARGET_TYPE_LIST } from '../utils/constants.js';
+import {
+  AUDIT_ACTION_LIST,
+  AUDIT_TARGET_TYPE_LIST,
+  SYSTEM_ACTOR_ROLE,
+} from '../utils/constants.js';
 import { ROLE_LIST } from '../utils/permissions.js';
 import { createSchema, ObjectId, orgIdField } from './base.js';
 
@@ -43,8 +47,22 @@ export class AuditImmutabilityError extends Error {
 const auditEventSchema = createSchema(
   {
     orgId: orgIdField,
-    actorId: { type: ObjectId, required: true, immutable: true },
-    actorRole: { type: String, required: true, enum: ROLE_LIST, immutable: true },
+    // Null only for an event no person caused (SCRUM-205: the expiry sweep), which carries the SYSTEM
+    // role instead. Every event made by a person still has to name them.
+    actorId: {
+      type: ObjectId,
+      required() {
+        return this.actorRole !== SYSTEM_ACTOR_ROLE;
+      },
+      default: null,
+      immutable: true,
+    },
+    actorRole: {
+      type: String,
+      required: true,
+      enum: [...ROLE_LIST, SYSTEM_ACTOR_ROLE],
+      immutable: true,
+    },
     action: { type: String, required: true, enum: AUDIT_ACTION_LIST, immutable: true },
     targetType: { type: String, required: true, enum: AUDIT_TARGET_TYPE_LIST, immutable: true },
     targetId: { type: ObjectId, required: true, immutable: true },

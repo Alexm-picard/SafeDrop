@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: typed calls for /api/requests/* (SCRUM-119, SCRUM-120, SCRUM-123, SCRUM-135)
+// AI-Assisted Areas: typed calls for /api/requests/* (SCRUM-119, SCRUM-120, SCRUM-123, SCRUM-135); SCRUM-205 initiate-return, reject-return, expire-approvals
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -78,13 +78,16 @@ export const deny = (id, note = '') =>
  */
 export const cancel = (id) => apiRequest(path(id, 'cancel'), { method: 'POST', body: {} });
 /**
- * Record handing the item over. Requires `requests:handoff`.
+ * Record handing the item over: by the borrower ("I've picked it up") or by anyone holding
+ * `requests:handoff` (SCRUM-205).
  * @param {string} id
  * @returns {Promise<object>}
  */
 export const checkout = (id) => apiRequest(path(id, 'checkout'), { method: 'POST', body: {} });
 /**
- * Record the item coming back, with any condition change. Requires `requests:handoff`.
+ * Record the item coming back, with any condition change. Requires `requests:handoff`, and the
+ * caller must not be the requester unless nobody else could confirm (SCRUM-205). Confirms a pending
+ * return, or records a walk-in one.
  *
  * Named `returnUnit` because `return` is a reserved word.
  * @param {string} id
@@ -93,3 +96,27 @@ export const checkout = (id) => apiRequest(path(id, 'checkout'), { method: 'POST
  */
 export const returnUnit = (id, input = {}) =>
   apiRequest(path(id, 'return'), { method: 'POST', body: input });
+/**
+ * Start a return as the borrower, reporting the condition (SCRUM-205). The item stays out until
+ * someone else confirms it.
+ * @param {string} id
+ * @param {{ condition: string, note?: string }} input
+ * @returns {Promise<object>}
+ */
+export const initiateReturn = (id, input) =>
+  apiRequest(path(id, 'initiate-return'), { method: 'POST', body: input });
+/**
+ * Refuse a pending return that never arrived, with a reason (SCRUM-205). Requires
+ * `requests:handoff`, and the caller must not be the requester.
+ * @param {string} id
+ * @param {string} reason
+ * @returns {Promise<object>}
+ */
+export const rejectReturn = (id, reason) =>
+  apiRequest(path(id, 'reject-return'), { method: 'POST', body: { reason } });
+/**
+ * Expire the organisation's uncollected approvals now (SCRUM-205). ORG_ADMIN only.
+ * @returns {Promise<{ expired: number }>}
+ */
+export const expireApprovals = () =>
+  apiRequest('/api/requests/expire-approvals', { method: 'POST', body: {} });

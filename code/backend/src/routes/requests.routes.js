@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: /api/requests routes with permissions and schemas — controllers are Sprint 1 stubs
+// AI-Assisted Areas: /api/requests routes with permissions and schemas — controllers are Sprint 1 stubs; SCRUM-205 borrower-recorded pickup, initiate-return, reject-return, expire-approvals, scope=others
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -18,12 +18,18 @@
  * than a PATCH setting `state`. That way each transition has its own permission and its own audit
  * event, and a client cannot move a request to an arbitrary state by naming it.
  *
- * Exports: `requestsRouter`, and the `createRequestBody` / `decisionBody` / `returnBody` / `listQuery`
- * schemas for reuse in tests.
+ * Custody confirmation (SCRUM-205) changes two gates. `/checkout` is open to every role
+ * (`requests:create`) because the borrower may record their own pickup; the service refuses anyone who
+ * is neither the borrower nor a handoff holder. `/initiate-return` is the borrower's, any role.
+ * `/return` and `/reject-return` stay behind `requests:handoff`, and the service adds the rule that
+ * the requester cannot confirm their own return.
+ *
+ * Exports: `requestsRouter`, and the `createRequestBody` / `decisionBody` / `returnBody` /
+ * `initiateReturnBody` / `rejectReturnBody` / `listQuery` schemas for reuse in tests.
  */
 import { z } from 'zod';
 import * as requests from '../controllers/requests.controller.js';
-import { REQUEST_STATE_LIST } from '../utils/constants.js';
+import { ASSET_CONDITION_LIST, REQUEST_STATE_LIST } from '../utils/constants.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
 import { emptyBody, idParams, objectId, pagination } from './schemas.js';
@@ -61,8 +67,25 @@ export const decisionBody = z.object({ note: z.string().trim().max(1000).default
  * taking an item back only has to record a change.
  */
 export const returnBody = z.object({
-  condition: z.enum(['NEW', 'GOOD', 'FAIR', 'POOR']).optional(),
+  condition: z.enum(ASSET_CONDITION_LIST).optional(),
   note: z.string().trim().max(1000).default(''),
+});
+/**
+ * Body for `/initiate-return` (SCRUM-205): the condition the borrower reports, and an optional note.
+ *
+ * Condition is required here, unlike on `/return`: reporting it is the point of starting a return,
+ * and the confirmer compares it with what they receive.
+ */
+export const initiateReturnBody = z.object({
+  condition: z.enum(ASSET_CONDITION_LIST),
+  note: z.string().trim().max(1000).default(''),
+});
+/**
+ * Body for `/reject-return` (SCRUM-205): why the return is refused. Required, because "it never
+ * arrived" is the whole content of the audit entry.
+ */
+export const rejectReturnBody = z.object({
+  reason: z.string().trim().min(1).max(1000),
 });
 /**
  * Query for listing requests: pagination, an optional state filter, and `scope`.
@@ -74,11 +97,12 @@ export const returnBody = z.object({
  * `scope=org` asks for the organisation-wide view, and the service still ignores it for a caller who
  * cannot decide requests, the same way a smuggled `orgId` is ignored elsewhere rather than rejected.
  * The state filter is restricted to known states, so an unknown value is a 400 rather than a query
- * that silently matches nothing.
+ * that silently matches nothing. `scope=others` (SCRUM-205) is the organisation-wide view without the
+ * caller's own requests, which is what the "Pending returns" queue asks for.
  */
 export const listQuery = pagination.extend({
   state: z.enum(REQUEST_STATE_LIST).optional(),
-  scope: z.enum(['own', 'org']).optional(),
+  scope: z.enum(['own', 'org', 'others']).optional(),
 });
 
 export const requestsRouter = createRouter();
@@ -148,10 +172,23 @@ defineRoute(
   {
     method: 'POST',
     path: '/:id/checkout',
-    permission: PERMISSIONS.REQUESTS_HANDOFF,
+    // SCRUM-205: every role, so the borrower can record their own pickup. checkout() refuses anyone
+    // who is neither the requester nor a `requests:handoff` holder.
+    permission: PERMISSIONS.REQUESTS_CREATE,
     schemas: { params: idParams, body: emptyBody.optional() },
   },
   requests.checkout,
+);
+defineRoute(
+  requestsRouter,
+  {
+    method: 'POST',
+    path: '/:id/initiate-return',
+    // The requester only, whatever their role; initiateReturn() answers 404 to anyone else.
+    permission: PERMISSIONS.REQUESTS_CREATE,
+    schemas: { params: idParams, body: initiateReturnBody },
+  },
+  requests.initiateReturn,
 );
 defineRoute(
   requestsRouter,
@@ -162,6 +199,16 @@ defineRoute(
     schemas: { params: idParams, body: returnBody.optional() },
   },
   requests.returnUnit,
+);
+defineRoute(
+  requestsRouter,
+  {
+    method: 'POST',
+    path: '/:id/reject-return',
+    permission: PERMISSIONS.REQUESTS_HANDOFF,
+    schemas: { params: idParams, body: rejectReturnBody },
+  },
+  requests.rejectReturn,
 );
 
 // Org Admin only, and no body: the instant is the server's, never the caller's (see the controller).
@@ -174,4 +221,16 @@ defineRoute(
     schemas: { body: emptyBody.optional() },
   },
   requests.markOverdue,
+);
+
+// Org Admin only, no body, and the server's clock, exactly like mark-overdue (SCRUM-205).
+defineRoute(
+  requestsRouter,
+  {
+    method: 'POST',
+    path: '/expire-approvals',
+    permission: PERMISSIONS.REQUESTS_EXPIRE,
+    schemas: { body: emptyBody.optional() },
+  },
+  requests.expireApprovals,
 );

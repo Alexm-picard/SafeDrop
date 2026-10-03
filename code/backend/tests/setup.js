@@ -32,6 +32,7 @@ import { up as upResetTokenIndex } from '../migrations/20260920100000-password-r
 import { up as upApprovalSettings } from '../migrations/20261002000000-approval-settings.js';
 import { up as upGroupIndexes } from '../migrations/20261003000000-group-indexes.js';
 import { up as upAllowedGroupIds } from '../migrations/20261003100000-allowed-group-ids.js';
+import { up as upPickupSettings } from '../migrations/20261004000000-pickup-settings.js';
 import { configureMongoose } from '../src/config/db.js';
 import { resetAuthRateLimiter } from '../src/middleware/rateLimit.js';
 
@@ -51,6 +52,7 @@ beforeAll(async () => {
   await upApprovalSettings(mongoose.connection.db); // data-only; a no-op on an empty database
   await upGroupIndexes(mongoose.connection.db);
   await upAllowedGroupIds(mongoose.connection.db); // data-only; a no-op on an empty database
+  await upPickupSettings(mongoose.connection.db); // data-only; a no-op on an empty database
 });
 
 afterEach(async () => {

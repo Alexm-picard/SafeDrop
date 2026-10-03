@@ -615,6 +615,12 @@ export const handlers = [
     const { defaultMode } = await request.json();
     return HttpResponse.json({ defaultMode });
   }),
+  // SCRUM-205: the pickup grace period. 48 hours is every organisation's default.
+  http.get('*/api/organizations/me/pickup-settings', () => HttpResponse.json({ graceHours: 48 })),
+  http.patch('*/api/organizations/me/pickup-settings', async ({ request }) => {
+    const { graceHours } = await request.json();
+    return HttpResponse.json({ graceHours });
+  }),
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
@@ -762,6 +768,24 @@ export const handlers = [
     const found = checkoutRequests.find((r) => r.id === params.id);
     return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'RETURNED' });
   }),
+  // Custody confirmation (SCRUM-205), mirroring the implemented backend.
+  http.post('*/api/requests/:id/initiate-return', async ({ params, request }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    const { condition, note } = await request.json();
+    return HttpResponse.json({
+      ...(found ?? {}),
+      id: params.id,
+      state: 'RETURN_PENDING',
+      reportedCondition: condition,
+      reportedNote: note ?? '',
+      returnInitiatedAt: '2026-10-03T12:00:00.000Z',
+    });
+  }),
+  http.post('*/api/requests/:id/reject-return', ({ params }) => {
+    const found = checkoutRequests.find((r) => r.id === params.id);
+    return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'CHECKED_OUT' });
+  }),
+  http.post('*/api/requests/expire-approvals', () => HttpResponse.json({ expired: 0 })),
   // SCRUM-149's /api/groups, as the merged backend answers it (SCRUM-167 builds the screen). Add and
   // remove return the group *without* resolved members, which is why the screen re-reads the group.
   http.get('*/api/groups', () =>
