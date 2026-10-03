@@ -62,7 +62,9 @@ const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
 const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
 const { getAlternatives } = await import('../../../src/services/ai/assetSearch.service.js');
+const groupService = await import('../../../src/services/group.service.js');
 const { UNIT_STATUS } = await import('../../../src/utils/constants.js');
+const { seedTwoOrgs } = await import('../../helpers/seedTwoOrgs.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
 const MEMBER = '6aab2a45c6e457e01ac0968c';
@@ -127,6 +129,171 @@ describe('SCRUM-151 AT-1: alternatives when nothing is available', () => {
       category: 'camera',
       reason: 'Full-frame mirrorless, two available now',
     });
+  });
+});
+
+describe('SCRUM-151 AT-2: recommendations respect every boundary', () => {
+  let seed;
+  /** Org A's fully-out camera: the asset a member is looking at when they hit the dead end. */
+  let stuckOn;
+
+  beforeEach(async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    seed = await seedTwoOrgs();
+    stuckOn = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Canon EOS R6', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT, UNIT_STATUS.HELD],
+    );
+  });
+
+  /**
+   * The ids of the assets actually sent to the model on the first call.
+   *
+   * Asserting on the prompt is the point of these tests. A filter that was never written would still
+   * produce a clean *result* whenever the model happened not to mention the forbidden asset, so a
+   * test that only read the return value would pass for the wrong reason. What the backend was
+   * willing to show the model is the boundary.
+   */
+  function assetIdsSentToModel() {
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    return JSON.parse(body.input).assets.map((asset) => asset.id);
+  }
+
+  /** Make the model name `assetId` as its single recommendation, so a missing filter cannot hide. */
+  function modelRecommends(assetId) {
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({
+        matches: [{ assetId: String(assetId), reason: 'Comparable item' }],
+        clarification: null,
+      }),
+    );
+  }
+
+  it('never another organisation’s asset, even when the model names it (SR-2)', async () => {
+    const theirs = await assetWithUnits(
+      seed.b.orgId,
+      { name: 'Sony A7 IV', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+    modelRecommends(theirs._id);
+
+    const result = await getAlternatives(
+      seed.a.orgId,
+      String(seed.a.member._id),
+      String(stuckOn._id),
+    );
+
+    expect(assetIdsSentToModel()).not.toContain(String(theirs._id));
+    expect(result.alternatives).toEqual([]);
+  });
+
+  it('never a retired asset', async () => {
+    const retired = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Nikon D750', category: 'camera', description: 'Full-frame DSLR' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+    await assetRepo.retire(seed.a.orgId, String(retired._id));
+    modelRecommends(retired._id);
+
+    const result = await getAlternatives(
+      seed.a.orgId,
+      String(seed.a.member._id),
+      String(stuckOn._id),
+    );
+
+    // Retirement is a soft delete: nobody can borrow it, so suggesting it is the dead end again.
+    expect(assetIdsSentToModel()).not.toContain(String(retired._id));
+    expect(result.alternatives).toEqual([]);
+  });
+
+  it('never an asset with no AVAILABLE units', async () => {
+    const alsoOut = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Sony A7 IV', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT, UNIT_STATUS.REQUESTED, UNIT_STATUS.MAINTENANCE],
+    );
+    modelRecommends(alsoOut._id);
+
+    const result = await getAlternatives(
+      seed.a.orgId,
+      String(seed.a.member._id),
+      String(stuckOn._id),
+    );
+
+    // "Available right now" is the whole promise of the section. MAINTENANCE counts as unavailable
+    // here exactly as OUT does (SCRUM-141).
+    expect(assetIdsSentToModel()).not.toContain(String(alsoOut._id));
+    expect(result.alternatives).toEqual([]);
+  });
+
+  it('never an asset restricted to a group the caller is not in', async () => {
+    const { group } = await groupService.createGroup(
+      seed.a.orgId,
+      { userId: String(seed.a.admin._id), role: 'ORG_ADMIN' },
+      { name: 'Certified Drone Pilots' },
+    );
+    const restricted = await assetRepo.create(seed.a.orgId, {
+      name: 'Sony A7 IV',
+      category: 'camera',
+      description: 'Full-frame mirrorless',
+      allowedGroupIds: [group.id],
+    });
+    await unitRepo.create(seed.a.orgId, {
+      assetId: restricted._id,
+      tag: 'a7-1',
+      status: UNIT_STATUS.AVAILABLE,
+    });
+    modelRecommends(restricted._id);
+
+    const result = await getAlternatives(
+      seed.a.orgId,
+      String(seed.a.member._id),
+      String(stuckOn._id),
+    );
+
+    // Filtered before the model sees it, not after it answers: the model can only ever rank assets
+    // the caller is already allowed to have. Recommending one they cannot request would hand them a
+    // second dead end, which is the thing this story exists to remove.
+    expect(assetIdsSentToModel()).not.toContain(String(restricted._id));
+    expect(result.alternatives).toEqual([]);
+  });
+
+  it('does recommend a restricted asset the caller IS eligible for', async () => {
+    // The other half of the rule, so the filter cannot pass by excluding everything restricted.
+    const { group } = await groupService.createGroup(
+      seed.a.orgId,
+      { userId: String(seed.a.admin._id), role: 'ORG_ADMIN' },
+      { name: 'Certified Drone Pilots' },
+    );
+    await groupService.addGroupMember(
+      seed.a.orgId,
+      { userId: String(seed.a.admin._id), role: 'ORG_ADMIN' },
+      group.id,
+      String(seed.a.member._id),
+    );
+    const restricted = await assetRepo.create(seed.a.orgId, {
+      name: 'Sony A7 IV',
+      category: 'camera',
+      description: 'Full-frame mirrorless',
+      allowedGroupIds: [group.id],
+    });
+    await unitRepo.create(seed.a.orgId, {
+      assetId: restricted._id,
+      tag: 'a7-1',
+      status: UNIT_STATUS.AVAILABLE,
+    });
+    modelRecommends(restricted._id);
+
+    const result = await getAlternatives(
+      seed.a.orgId,
+      String(seed.a.member._id),
+      String(stuckOn._id),
+    );
+
+    expect(assetIdsSentToModel()).toContain(String(restricted._id));
+    expect(result.alternatives.map((a) => a.assetId)).toEqual([String(restricted._id)]);
   });
 });
 
