@@ -170,6 +170,19 @@ defineRoute(
 defineRoute(
   assetsRouter,
   {
+    method: 'GET',
+    path: '/:id/alternatives',
+    // `assets:read`, the same as reading the asset itself: a recommendation is made of catalogue
+    // entries the caller may already browse, and the service narrows them to the ones this member
+    // could actually request (SCRUM-151 AT-2).
+    permission: PERMISSIONS.ASSETS_READ,
+    schemas: { params: idParams },
+  },
+  assets.alternatives,
+);
+defineRoute(
+  assetsRouter,
+  {
     method: 'PATCH',
     path: '/:id',
     permission: PERMISSIONS.ASSETS_WRITE,

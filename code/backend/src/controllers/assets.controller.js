@@ -12,7 +12,7 @@
  * restricted asset (SCRUM-150).
  */
 import * as assetService from '../services/asset.service.js';
-import { searchAssets } from '../services/ai/assetSearch.service.js';
+import { getAlternatives, searchAssets } from '../services/ai/assetSearch.service.js';
 
 /**
  * `GET /api/assets` — list the catalogue. Query filters are already validated and coerced.
@@ -41,6 +41,19 @@ export async function search(req, res) {
  */
 export async function get(req, res) {
   res.status(200).json(await assetService.get(req.orgId, req.params.id, req.auth));
+}
+
+/**
+ * `GET /api/assets/:id/alternatives` — comparable items available right now (SCRUM-151).
+ *
+ * The caller's own id is passed because the answer is specific to them: a restricted item they are
+ * not eligible for is not an alternative, it is a second dead end (AT-2). Like the asset read, it
+ * takes the actor from the verified token and never from the URL or the body.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function alternatives(req, res) {
+  res.status(200).json(await getAlternatives(req.orgId, req.auth.userId, req.params.id));
 }
 
 /**

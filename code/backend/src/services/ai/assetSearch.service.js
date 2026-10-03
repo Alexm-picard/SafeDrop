@@ -19,7 +19,7 @@ import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
 import { UNIT_STATUS } from '../../utils/constants.js';
-import { ServiceUnavailableError } from '../../utils/errors.js';
+import { NotFoundError, ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { restrictionsOf } from '../asset.service.js';
 import { filterEligible } from '../group.service.js';
@@ -138,7 +138,14 @@ export async function searchAssets(orgId, query) {
  * @returns {Promise<{ alternatives: object[], aiAssisted: boolean }>}
  */
 export async function getAlternatives(orgId, userId, assetId) {
+  // Resolved first, and before the availability check below: that check would otherwise answer for a
+  // missing asset, since an asset that does not exist has no units either — "nothing to suggest" with
+  // a 200, for something that is not there. `findById` folds in `orgId`, so another organisation's id
+  // and one that never existed are indistinguishable, and both answer 404 rather than 403 (SR-2).
   const asset = await assetRepo.findById(orgId, assetId);
+  if (!asset) {
+    throw new NotFoundError('Asset not found');
+  }
 
   // **The model is not called unless the member is actually stuck (AT-4).** One AVAILABLE unit means
   // they can borrow this one, and an asset with no units at all is not a dead end either — nobody has
