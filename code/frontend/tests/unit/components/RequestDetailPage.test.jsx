@@ -162,4 +162,212 @@ describe('RequestDetailPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe(`/requests/${pending.id}`));
   });
+
+  it('SCRUM-148: an auto-approved request says no person decided it', async () => {
+    const auto = { ...approved, decidedBy: null, autoApproved: true };
+    server.use(
+      http.get(`*/api/requests/${approved.id}`, () =>
+        HttpResponse.json({
+          request: auto,
+          asset: null,
+          unit: null,
+          requester: { id: memberUser.id, name: memberUser.name, email: memberUser.email },
+          decidedBy: null,
+          timeline: [
+            { at: '2026-09-18T00:00:00.000Z', event: 'SUBMITTED' },
+            { at: '2026-09-18T00:00:00.000Z', event: 'AUTO_APPROVED' },
+          ],
+        }),
+      ),
+    );
+    await openRequest(approved, memberUser);
+
+    expect(screen.getByLabelText('Request details')).toHaveTextContent(/approved automatically/i);
+    expect(screen.getByRole('list', { name: 'Request history' })).toHaveTextContent(
+      'Auto approved',
+    );
+  });
+});
+
+/**
+ * Coverage for the parts of the page the tests above do not reach: every action actually being sent
+ * (not just offered), the return condition travelling with the return, the in-flight label, the
+ * optional detail rows, and the two fallbacks (empty history, non-404 failure).
+ */
+describe('RequestDetailPage — actions and fallbacks', () => {
+  const checkedOut = checkoutRequests.find((r) => r.state === 'CHECKED_OUT');
+
+  /**
+   * Serve one request's detail payload, merging `overrides` over a minimal valid response.
+   * @param {object} request
+   * @param {object} [overrides]
+   */
+  const serveDetail = (request, overrides = {}) =>
+    server.use(
+      http.get(`*/api/requests/${request.id}`, () =>
+        HttpResponse.json({
+          request,
+          asset: null,
+          unit: null,
+          requester: { id: memberUser.id, name: memberUser.name, email: memberUser.email },
+          decidedBy: null,
+          timeline: [{ at: '2026-09-18T00:00:00.000Z', event: 'SUBMITTED' }],
+          ...overrides,
+        }),
+      ),
+    );
+
+  /**
+   * Record which action endpoint was called and with what body.
+   * @param {string} action the path segment after the request id
+   * @returns {{ calls: Array<{ id: string, body: unknown }> }}
+   */
+  const captureAction = (action) => {
+    const record = { calls: [] };
+    server.use(
+      http.post(`*/api/requests/:id/${action}`, async ({ params, request }) => {
+        record.calls.push({ id: params.id, body: await request.json().catch(() => null) });
+        return HttpResponse.json({ id: params.id });
+      }),
+    );
+    return record;
+  };
+
+  it('an approver can deny a pending request', async () => {
+    const user = userEvent.setup();
+    const deny = captureAction('deny');
+    await openRequest(pending, approverUser);
+
+    await user.click(screen.getByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => expect(deny.calls).toHaveLength(1));
+    expect(deny.calls[0].id).toBe(pending.id);
+  });
+
+  it('the requester can cancel their own pending request', async () => {
+    const user = userEvent.setup();
+    const cancel = captureAction('cancel');
+    await openRequest(pending, memberUser);
+
+    await user.click(screen.getByRole('button', { name: 'Cancel request' }));
+
+    await waitFor(() => expect(cancel.calls).toHaveLength(1));
+    expect(cancel.calls[0].id).toBe(pending.id);
+  });
+
+  it('an approver can record the handoff of an approved request', async () => {
+    const user = userEvent.setup();
+    const checkout = captureAction('checkout');
+    await openRequest(approved, approverUser);
+
+    await user.click(screen.getByRole('button', { name: 'Record handoff' }));
+
+    await waitFor(() => expect(checkout.calls).toHaveLength(1));
+    expect(checkout.calls[0].id).toBe(approved.id);
+  });
+
+  it('a return sends the condition the approver picked, defaulting to Good', async () => {
+    const user = userEvent.setup();
+    const ret = captureAction('return');
+    await openRequest(checkedOut, approverUser);
+
+    const select = screen.getByLabelText(/returned condition/i);
+    expect(select).toHaveValue('GOOD');
+    await user.selectOptions(select, 'FAIR');
+    await user.click(screen.getByRole('button', { name: 'Record return' }));
+
+    await waitFor(() => expect(ret.calls).toHaveLength(1));
+    expect(ret.calls[0]).toEqual({ id: checkedOut.id, body: { condition: 'FAIR' } });
+  });
+
+  it('shows "Working…" and disables every action while one is in flight', async () => {
+    const user = userEvent.setup();
+    let release;
+    server.use(
+      http.post(
+        '*/api/requests/:id/approve',
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(HttpResponse.json({ id: pending.id }));
+          }),
+      ),
+    );
+    await openRequest(pending, approverUser);
+
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByRole('button', { name: 'Working…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Working…' })).toBeNull());
+  });
+
+  it('shows the due date, the note and the decision note when the request has them', async () => {
+    const withExtras = {
+      ...checkedOut,
+      note: 'For the field trip',
+      decisionNote: 'Bring it back charged',
+    };
+    serveDetail(withExtras, {
+      unit: { id: 'u1', tag: 'xps-002', serial: 'SN-123' },
+      decidedBy: { id: approverUser.id, name: approverUser.name, email: approverUser.email },
+    });
+    await openRequest(withExtras, memberUser);
+
+    const details = screen.getByLabelText('Request details');
+    expect(details).toHaveTextContent('Due back');
+    expect(details).toHaveTextContent('For the field trip');
+    expect(details).toHaveTextContent('Decision note');
+    expect(details).toHaveTextContent('Bring it back charged');
+    expect(details).toHaveTextContent('xps-002 · SN-123');
+    expect(details).toHaveTextContent(`Decided by${approverUser.name}`);
+  });
+
+  it('falls back to "Unknown" when the requester or unit cannot be resolved', async () => {
+    serveDetail(pending, { requester: null, unit: null });
+    await openRequest(pending, memberUser);
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Request' })).toBeVisible();
+    const details = screen.getByLabelText('Request details');
+    expect(details).toHaveTextContent('Requested byUnknown');
+    expect(details).toHaveTextContent('UnitUnknown');
+    expect(details).not.toHaveTextContent('Due back');
+  });
+
+  it('says nothing has happened yet when the history is empty', async () => {
+    serveDetail(pending, { timeline: [] });
+    await openRequest(pending, memberUser);
+
+    expect(screen.getByText(/nothing has happened to this request yet/i)).toBeVisible();
+    expect(screen.queryByRole('list', { name: 'Request history' })).toBeNull();
+  });
+
+  it('shows a retryable error for a failure that is not a 404', async () => {
+    const user = userEvent.setup();
+    let reads = 0;
+    server.use(
+      meHandler(memberUser),
+      http.get(`*/api/requests/${pending.id}`, () => {
+        reads += 1;
+        return reads === 1
+          ? errorResponse(500, 'INTERNAL', 'Something went wrong')
+          : HttpResponse.json({
+              request: pending,
+              asset: null,
+              unit: null,
+              requester: null,
+              decidedBy: null,
+              timeline: [],
+            });
+      }),
+    );
+    renderApp(`/requests/${pending.id}`, authenticatedState(memberUser));
+
+    expect(await screen.findByText(/that request could not be loaded/i)).toBeVisible();
+    // The generic failure, not the not-found panel.
+    expect(screen.queryByRole('heading', { name: /request not found/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /retry|try again/i }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Actions' })).toBeVisible();
+  });
 });

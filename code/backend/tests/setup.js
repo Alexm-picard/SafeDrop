@@ -29,6 +29,7 @@ import { up as upInitial } from '../migrations/20260916000000-initial-indexes.js
 import { up as upInviteIndex } from '../migrations/20260919000000-invite-token-index.js';
 import { up as upRemoveInviteIndex } from '../migrations/20260920000000-remove-invite-token-index.js';
 import { up as upResetTokenIndex } from '../migrations/20260920100000-password-reset-token-index.js';
+import { up as upApprovalSettings } from '../migrations/20261002000000-approval-settings.js';
 import { configureMongoose } from '../src/config/db.js';
 import { resetAuthRateLimiter } from '../src/middleware/rateLimit.js';
 
@@ -45,6 +46,7 @@ beforeAll(async () => {
   await upInviteIndex(mongoose.connection.db);
   await upRemoveInviteIndex(mongoose.connection.db);
   await upResetTokenIndex(mongoose.connection.db);
+  await upApprovalSettings(mongoose.connection.db); // data-only; a no-op on an empty database
 });
 
 afterEach(async () => {

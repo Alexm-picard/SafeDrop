@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents; write path added for SCRUM-134)
-// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134)
+// AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -124,11 +124,11 @@ export async function get(orgId, assetId) {
  * @returns {Promise<object>} the created asset
  */
 export async function create(orgId, actor, input = {}) {
-  const { name, category, description, imageUrl, requestId } = input;
+  const { name, category, description, imageUrl, approvalMode, requestId } = input;
   return withTransaction(async (session) => {
     const asset = await assetRepo.create(
       orgId,
-      { name, category, description, imageUrl },
+      { name, category, description, imageUrl, approvalMode },
       { session },
     );
     await recordAudit(

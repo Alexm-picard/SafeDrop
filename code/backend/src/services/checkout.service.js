@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back
+// AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -65,8 +65,9 @@ import { policyFor } from './policies/approvalPolicy.js';
  * OVERDUE       → RETURNED     unit AVAILABLE     ASSET_RETURNED
  * OVERDUE       → LOST         unit RETIRED       (Iteration 2)
  *
- * Reaching PENDING (submit()) is the one transition with no row here: it moves a unit from AVAILABLE
- * to REQUESTED, but that is a creation, not a move between two existing request states, so it has no
+ * Creating a request (submit()) is the one step with no row here: it moves a unit from AVAILABLE to
+ * REQUESTED (PENDING) — or, when the approval policy auto-approves (SCRUM-148), straight to HELD
+ * (APPROVED) — but that is a creation, not a move between two existing request states, so it has no
  * (from, to) pair to sit in this table. See submit()'s own doc comment. PENDING → DENIED and
  * PENDING → CANCELLED both release that reservation back to AVAILABLE — nothing was ever HELD, but
  * something was REQUESTED, and it must stop being so.
@@ -145,21 +146,34 @@ export function canTransition(from, to) {
 /**
  * Open a checkout request (`POST /api/requests`).
  *
- * The unit is moved AVAILABLE -> REQUESTED with a compare-and-set write, inside the same transaction
- * as the request insert: if two members submit for the same unit at the same moment, the read they
- * both do can agree it's AVAILABLE, but only one of their writes can actually flip it, because the
- * write itself re-checks the status at the database rather than trusting the earlier read. The loser
- * gets the same 409 a request against an already-unavailable unit gets — from its point of view, it
- * simply lost the race.
+ * The unit is reserved with a compare-and-set write, inside the same transaction as the request
+ * insert: if two members submit for the same unit at the same moment, the read they both do can agree
+ * it's AVAILABLE, but only one of their writes can actually flip it, because the write itself
+ * re-checks the status at the database rather than trusting the earlier read. The loser gets the same
+ * 409 a request against an already-unavailable unit gets — from its point of view, it simply lost the
+ * race.
  *
- * This does not, on its own, stop a *second* member from filing a request against a unit that is
- * still genuinely AVAILABLE while a first request sits undecided elsewhere — it only ensures a given
- * unit can never back two PENDING requests at once, which is exactly what "REQUESTED" now means.
+ * **Whether a human decides** is the organisation's approval policy's call (SCRUM-148), asked with
+ * the unit's asset (for its per-asset override) and the organisation (for its default):
+ *
+ * - Approval required — the request is PENDING and the unit moves AVAILABLE → REQUESTED, waiting in
+ *   the approver queue. This is the Iteration 1 path, unchanged.
+ * - Auto-approved — the request is created directly in APPROVED and the unit moves AVAILABLE → HELD,
+ *   exactly where an approver's decision would have left it. It does **not** go to CHECKED_OUT:
+ *   handing the item over is still a physical event someone records (`checkout()`, SCRUM-120). Two
+ *   audit events are written: REQUEST_SUBMITTED, then REQUEST_AUTO_APPROVED naming the policy, with
+ *   the requester as actor and `decidedBy` left null, so the log never shows an approval nobody made.
+ *
+ * The policy is consulted inside the transaction, against the settings as they stand at that moment.
+ * Changing a setting later has no effect on a request already created — it is not retroactive.
+ *
+ * A unit can still never back two open requests at once: whichever status the reservation writes,
+ * the compare-and-set only succeeds from AVAILABLE.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
  * @param {{ unitId: string, neededFrom: Date, neededTo: Date, note?: string, requestId?: string }} [input]
  *   validated `createRequestBody`, plus the HTTP request id for audit correlation
- * @returns {Promise<object>} the new PENDING request
+ * @returns {Promise<object>} the new request — PENDING, or APPROVED when auto-approved
  * @throws {NotFoundError} (404) no such unit in this organisation
  * @throws {ConflictError} (409) the unit is not AVAILABLE, including a lost race
  */
@@ -173,10 +187,18 @@ export async function submit(orgId, actor, input = {}) {
       throw new ConflictError('That unit is no longer available');
     }
 
+    // TODO(restricted-equipment story): an eligibility check belongs here, *before* the policy is
+    // asked — an auto-approving asset must not let an ineligible member skip the check.
+    // Sequential, not Promise.all: operations sharing one transaction session must not run in parallel.
+    const asset = await assetRepo.findById(orgId, unit.assetId, { session });
+    const org = await organizationRepo.findById(orgId, { session });
+    const policy = policyFor(org);
+    const autoApprove = !policy.requiresApproval({ request: input, asset, org });
+
     const reserved = await assetUnitRepo.updateStatusIfCurrent(
       orgId,
       input.unitId,
-      { from: U.AVAILABLE, to: U.REQUESTED },
+      { from: U.AVAILABLE, to: autoApprove ? U.HELD : U.REQUESTED },
       { session },
     );
     if (!reserved) {
@@ -193,7 +215,12 @@ export async function submit(orgId, actor, input = {}) {
         neededTo: input.neededTo,
         note: input.note ?? '',
       },
-      { session },
+      {
+        session,
+        approval: autoApprove
+          ? { state: S.APPROVED, decidedAt: new Date(), autoApproved: true }
+          : undefined,
+      },
     );
 
     await auditService.record(
@@ -209,6 +236,22 @@ export async function submit(orgId, actor, input = {}) {
       },
       { session },
     );
+
+    if (autoApprove) {
+      await auditService.record(
+        orgId,
+        {
+          actor,
+          action: AUDIT_ACTION.REQUEST_AUTO_APPROVED,
+          targetType: AUDIT_TARGET_TYPE.CheckoutRequest,
+          targetId: created._id,
+          before: { state: S.PENDING },
+          after: { state: S.APPROVED, policy: policy.name, decidedBy: null },
+          requestId: input.requestId,
+        },
+        { session },
+      );
+    }
 
     return created;
   });
@@ -317,10 +360,12 @@ function publicPerson(user) {
 function timelineOf(request) {
   const entries = [
     { at: request.createdAt, event: 'SUBMITTED' },
-    {
-      at: request.decidedAt,
-      event: request.state === S.DENIED ? 'DENIED' : 'APPROVED',
-    },
+    request.autoApproved
+      ? // SCRUM-148: say "approved automatically" rather than imply a person approved it. Anchored to
+        // createdAt, not decidedAt: decidedAt is stamped a moment *before* the insert sets createdAt,
+        // and would otherwise sort ahead of SUBMITTED. The sort is stable, so equal times keep this order.
+        { at: request.createdAt, event: 'AUTO_APPROVED' }
+      : { at: request.decidedAt, event: request.state === S.DENIED ? 'DENIED' : 'APPROVED' },
     { at: request.checkedOutAt, event: 'CHECKED_OUT' },
     { at: request.returnedAt, event: 'RETURNED' },
   ];

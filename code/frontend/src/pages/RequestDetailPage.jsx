@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks
+// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label
 // Human Contributions: pending team review
 // Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
 
@@ -169,6 +169,13 @@ export function RequestDetailPage() {
           <>
             <dt>Decided by</dt>
             <dd>{decidedBy.name}</dd>
+          </>
+        ) : null}
+        {/* SCRUM-148: no person decided this one, so say so instead of leaving the row out. */}
+        {request.autoApproved ? (
+          <>
+            <dt>Decided by</dt>
+            <dd>Approved automatically by your organization’s rules</dd>
           </>
         ) : null}
         {request.note ? (

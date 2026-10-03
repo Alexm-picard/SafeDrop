@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (skeleton generated from team design documents)
+// AI-Assisted Areas: /api/assets routes with permissions and schemas — controllers are Sprint 1 stubs; approvalMode field (SCRUM-148)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
+
 /**
  * Routes for `/api/assets`: the catalogue and its physical units.
  *
@@ -18,7 +25,7 @@
  */
 import { z } from 'zod';
 import * as assets from '../controllers/assets.controller.js';
-import { ASSET_CONDITION_LIST } from '../utils/constants.js';
+import { APPROVAL_MODE, APPROVAL_MODE_LIST, ASSET_CONDITION_LIST } from '../utils/constants.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { createRouter, defineRoute } from './define.js';
 import { emptyBody, idParams, objectId, pagination } from './schemas.js';
@@ -38,18 +45,22 @@ const assetFields = {
   category: z.string().trim().min(1).max(60),
   description: z.string().trim().max(2000),
   imageUrl: z.url().max(2048).nullable(),
+  // SCRUM-148: does a request for this asset need an approver? INHERIT uses the organisation default.
+  approvalMode: z.enum(APPROVAL_MODE_LIST),
 };
 
 /**
- * Body for creating an asset: name, category, and optional description and image URL.
+ * Body for creating an asset: name, category, and optional description, image URL and approval mode.
  *
- * The two optional fields carry defaults, so an asset created without them is stored with an empty
- * description and no image rather than with those keys missing.
+ * The optional fields carry defaults, so an asset created without them is stored with an empty
+ * description, no image and INHERIT (the organisation's approval default) rather than with those keys
+ * missing.
  */
 export const assetBody = z.object({
   ...assetFields,
   description: assetFields.description.default(''),
   imageUrl: assetFields.imageUrl.default(null),
+  approvalMode: assetFields.approvalMode.default(APPROVAL_MODE.INHERIT),
 });
 
 /**

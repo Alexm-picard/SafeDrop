@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
-// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors
+// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148)
 // Human Contributions: pending team review
 // Notes: Follows the form patterns in OrgSetupPage and MembersPage. Fields mirror the `assetBody`
 // Zod schema in backend routes/assets.routes.js. Verified by
@@ -41,7 +41,7 @@ import { LoadingState } from '../components/LoadingState';
 import { useAsset } from '../hooks/useAssets';
 import { errorMessage, isApiError } from '../services/api';
 import * as assetsApi from '../services/assets.api';
-import { ROUTES } from '../utils/constants';
+import { APPROVAL_MODE, ASSET_APPROVAL_OPTIONS, ROUTES } from '../utils/constants';
 import { fieldErrorsOf } from '../utils/formErrors';
 
 /** A blank asset, matching `assetBody`'s own defaults for the optional fields. */
@@ -50,6 +50,7 @@ const EMPTY_FORM = Object.freeze({
   category: '',
   description: '',
   imageUrl: '',
+  approvalMode: APPROVAL_MODE.INHERIT,
 });
 
 /**
@@ -58,7 +59,8 @@ const EMPTY_FORM = Object.freeze({
  * `null` becomes `''` because a controlled input cannot hold `null` without React warning that it
  * has switched from uncontrolled to controlled; `toPayload` reverses this on the way back out.
  * @param {object} asset
- * @returns {{ name: string, category: string, description: string, imageUrl: string }}
+ * An asset from before SCRUM-148 has no `approvalMode`; it behaves as INHERIT, so the form shows that.
+ * @returns {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string }}
  */
 function toValues(asset) {
   return {
@@ -66,6 +68,7 @@ function toValues(asset) {
     category: asset.category ?? '',
     description: asset.description ?? '',
     imageUrl: asset.imageUrl ?? '',
+    approvalMode: asset.approvalMode ?? APPROVAL_MODE.INHERIT,
   };
 }
 
@@ -74,8 +77,8 @@ function toValues(asset) {
  *
  * Trimming here rather than on each keystroke lets an admin type a space mid-value; the schema trims
  * too, so this only keeps the request honest about what will be stored.
- * @param {{ name: string, category: string, description: string, imageUrl: string }} values
- * @returns {{ name: string, category: string, description: string, imageUrl: string|null }}
+ * @param {{ name: string, category: string, description: string, imageUrl: string, approvalMode: string }} values
+ * @returns {{ name: string, category: string, description: string, imageUrl: string|null, approvalMode: string }}
  */
 function toPayload(values) {
   const imageUrl = values.imageUrl.trim();
@@ -84,11 +87,12 @@ function toPayload(values) {
     category: values.category.trim(),
     description: values.description.trim(),
     imageUrl: imageUrl === '' ? null : imageUrl,
+    approvalMode: values.approvalMode,
   };
 }
 
 /**
- * The four asset fields, their submit handling and their errors.
+ * The asset fields, their submit handling and their errors.
  *
  * Seeded from `initialValues`, which is why the page mounts it only once those exist. `save` is
  * injected rather than chosen here so this component does not need to know whether it is creating or
@@ -193,6 +197,27 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
             value={values.imageUrl}
             onChange={set('imageUrl')}
           />
+        )}
+      </FormField>
+      <FormField
+        id="asset-approvalMode"
+        label="Checkout approval"
+        error={fieldErrors.approvalMode}
+        hint="Whether a request for this asset waits for an approver. Approved items are still handed over in person."
+      >
+        {(props) => (
+          <select
+            {...props}
+            name="approvalMode"
+            value={values.approvalMode}
+            onChange={set('approvalMode')}
+          >
+            {ASSET_APPROVAL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         )}
       </FormField>
       <div className="actions">

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: my-requests page wired to the real GET /api/requests endpoint (SCRUM-119)
+// AI-Assisted Areas: my-requests page wired to the real GET /api/requests endpoint (SCRUM-119); "(automatic)" marker for auto-approved requests (SCRUM-148)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -49,7 +49,14 @@ export function MyRequestsPage() {
               header: 'State',
               // The state doubles as the way in to the detail screen (SCRUM-123), so the row has a
               // link without a column of bare "View" links.
-              render: (r) => <Link to={ROUTES.request(r.id)}>{humanize(r.state)}</Link>,
+              // SCRUM-148: an auto-approved request reads "Approved (automatic)" so the member does not
+              // look for an approver who never existed.
+              render: (r) => (
+                <Link to={ROUTES.request(r.id)}>
+                  {humanize(r.state)}
+                  {r.autoApproved && r.state === 'APPROVED' ? ' (automatic)' : ''}
+                </Link>
+              ),
             },
             { key: 'from', header: 'Needed from', render: (r) => formatDate(r.neededFrom) },
             { key: 'to', header: 'Needed until', render: (r) => formatDate(r.neededTo) },

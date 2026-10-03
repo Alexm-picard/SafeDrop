@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members
+// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members; /admin/settings (SCRUM-148)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket.
 
@@ -36,6 +36,7 @@ import { LoginPage } from './pages/LoginPage';
 import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { OrgSettingsPage } from './pages/OrgSettingsPage';
 import { OrgSetupPage } from './pages/OrgSetupPage';
 import { RequestDetailPage } from './pages/RequestDetailPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
@@ -78,6 +79,8 @@ export const routes = [
               { path: 'admin', element: <AdminDashboardPage /> },
               { path: 'admin/users', element: <MembersPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
+              // SCRUM-148: organisation-wide settings (the approval default), `org:settings`.
+              { path: 'admin/settings', element: <OrgSettingsPage /> },
               // Asset writing is ORG_ADMIN-only (`assets:write`), so both forms sit inside this
               // guard. Edit keeps the asset's own URL prefix so the page it edits is obvious.
               { path: 'admin/assets/new', element: <AssetFormPage /> },

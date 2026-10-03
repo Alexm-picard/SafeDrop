@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses
+// AI-Assisted Areas: asset detail page wired to useAsset, showing its units and their statuses; SCRUM-148 approval row and auto-approved notice
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -44,7 +44,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
 import { errorMessage } from '../services/api';
 import * as assetsApi from '../services/assets.api';
-import { ROLES, ROUTES, UNIT_STATUS } from '../utils/constants';
+import { assetApprovalLabel, ROLES, ROUTES, UNIT_STATUS } from '../utils/constants';
 import { formatDate, humanize } from '../utils/format';
 /**
  * Render one asset's details, keyed by the `:id` route parameter.
@@ -151,7 +151,13 @@ export function AssetDetailPage() {
     (created) => {
       setRequestingUnitId(null);
       navigate(ROUTES.request(created.id), {
-        state: { notice: 'Request submitted. An approver will review it.' },
+        state: {
+          // SCRUM-148: an auto-approved request skips the queue but not the handoff.
+          notice:
+            created.state === 'APPROVED'
+              ? 'Request approved automatically. Collect the item in person; it is checked out at handoff.'
+              : 'Request submitted. An approver will review it.',
+        },
       });
     },
     [navigate],
@@ -202,6 +208,13 @@ export function AssetDetailPage() {
           <dl>
             <dt>Category</dt>
             <dd>{data.category}</dd>
+            {/* SCRUM-148: admins see the override they set; members learn the outcome on submit. */}
+            {isAdmin ? (
+              <>
+                <dt>Checkout approval</dt>
+                <dd>{assetApprovalLabel(data.approvalMode)}</dd>
+              </>
+            ) : null}
             {data.description ? (
               <>
                 <dt>Description</dt>

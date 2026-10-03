@@ -1,14 +1,15 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: organisation bootstrap handler (SCRUM-100)
+// AI-Assisted Areas: organisation bootstrap handler (SCRUM-100); approval settings handlers (SCRUM-148)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
  * HTTP layer for `/api/organizations`.
  *
- * One handler, for the public bootstrap route that creates a tenant and its first administrator.
+ * The public bootstrap route that creates a tenant and its first administrator, and the caller's own
+ * organisation's approval settings (SCRUM-148).
  */
 import * as organizationService from '../services/organization.service.js';
 import { setSessionCookies } from './auth.controller.js';
@@ -31,4 +32,29 @@ export async function create(req, res) {
   });
   setSessionCookies(res, tokens);
   res.status(201).json({ organization, user });
+}
+
+/**
+ * `GET /api/organizations/me/approval-settings` — the caller's organisation's approval default
+ * (SCRUM-148). The organisation always comes from the session (`req.orgId`), never the URL.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function getApprovalSettings(req, res) {
+  res.status(200).json(await organizationService.getApprovalSettings(req.orgId));
+}
+
+/**
+ * `PATCH /api/organizations/me/approval-settings` — change the approval default (SCRUM-148).
+ *
+ * Answers 200 with the settings as saved. The request id is passed down so the ORG_SETTINGS_UPDATED
+ * audit event can be correlated with this request's log lines.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function updateApprovalSettings(req, res) {
+  const settings = await organizationService.updateApprovalSettings(req.orgId, req.auth, req.body, {
+    requestId: req.id,
+  });
+  res.status(200).json(settings);
 }

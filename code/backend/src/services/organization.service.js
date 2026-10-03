@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; member lifecycle implemented from the ticket)
-// AI-Assisted Areas: organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-100); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-117 / -invite / -role)
+// AI-Assisted Areas: SCRUM-148 approval settings (read, update with ORG_SETTINGS_UPDATED audit); organisation bootstrap (org + first ORG_ADMIN + ORG_CREATED audit in one transaction, SCRUM-100); member lifecycle: list, invite (admin-set initial password), change role (SCRUM-117 / -invite / -role)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog, then extended for the member-lifecycle ticket. Verified by tests/integration/routes/users.test.js and tests/unit/services/userManagement.test.js.
 
@@ -14,14 +14,17 @@
  * grows beyond its founding admin. All three act on the *caller's own* organisation: the tenant is
  * passed in from the verified token and never read from the request (SR-2).
  *
+ * Organisation-wide settings live here too: `getApprovalSettings` / `updateApprovalSettings` read and
+ * change whether checkout requests need an approver by default (SCRUM-148).
+ *
  * Exports: `createOrganization`, `listUsers`, `inviteUser`, `changeUserRole`, `setUserPassword`,
- * and a re-export of `slugify`.
+ * `getApprovalSettings`, `updateApprovalSettings`, and a re-export of `slugify`.
  */
 import { withTransaction } from '../config/db.js';
 import * as orgRepo from '../repositories/organization.repository.js';
 import * as refreshRepo from '../repositories/refreshToken.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
-import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../utils/constants.js';
+import { APPROVAL_MODE, AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../utils/constants.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { PERMISSIONS, ROLE_LIST, ROLES, roleHasPermission } from '../utils/permissions.js';
 import { slugify } from '../utils/slug.js';
@@ -406,5 +409,91 @@ export async function setUserPassword(orgId, actor, userId, { password }, { requ
       { session },
     );
     return { user: publicUser(updated) };
+  });
+}
+
+// ---- Organisation settings (SCRUM-148) -----------------------------------------------------------
+
+/**
+ * The approval settings as the API presents them.
+ *
+ * A document from before the SCRUM-148 migration has no `approvalSettings`; it reads as REQUIRED, the
+ * behaviour it actually has, rather than as a missing value the frontend would have to guess about.
+ * @param {object} org
+ * @returns {{ defaultMode: 'REQUIRED'|'AUTO' }}
+ */
+function approvalSettingsOf(org) {
+  return { defaultMode: org?.approvalSettings?.defaultMode ?? APPROVAL_MODE.REQUIRED };
+}
+
+/**
+ * Read the caller's organisation's approval settings
+ * (`GET /api/organizations/me/approval-settings`, SCRUM-148).
+ * @param {string} orgId the caller's organisation, from the token
+ * @returns {Promise<{ defaultMode: 'REQUIRED'|'AUTO' }>}
+ * @throws {NotFoundError} (404) when the organisation no longer exists
+ */
+export async function getApprovalSettings(orgId) {
+  const org = await orgRepo.findById(orgId);
+  if (!org) {
+    throw new NotFoundError('Organisation not found');
+  }
+  return approvalSettingsOf(org);
+}
+
+/**
+ * Change whether checkout requests need an approver by default
+ * (`PATCH /api/organizations/me/approval-settings`, SCRUM-148).
+ *
+ * In one transaction: re-read the caller's role, read the current value, write the new one and record
+ * ORG_SETTINGS_UPDATED with both (SR-9). Re-reading the role matters for the same reason it does for
+ * member management — a just-demoted admin's token still says ORG_ADMIN until it expires, and turning
+ * approvals off is exactly the kind of change that should not outlive a demotion.
+ *
+ * Saving the value the organisation already has is not a change: it answers 200 and records nothing,
+ * so the audit log only ever shows real rule changes.
+ *
+ * **Not retroactive.** Only `submit()` consults this setting, at the moment a request is created, so
+ * requests already PENDING stay PENDING and wait for an approver as before.
+ * @param {string} orgId the caller's organisation, from the token
+ * @param {{ userId: string }} actor the verified caller (`req.auth`)
+ * @param {{ defaultMode: 'REQUIRED'|'AUTO' }} input validated by `approvalSettingsBody`
+ * @param {{ requestId?: string }} [context]
+ * @returns {Promise<{ defaultMode: 'REQUIRED'|'AUTO' }>} the settings as saved
+ * @throws {ForbiddenError} (403) when the caller no longer holds `org:settings`
+ * @throws {NotFoundError} (404) when the organisation no longer exists
+ */
+export async function updateApprovalSettings(orgId, actor, { defaultMode }, { requestId } = {}) {
+  return withTransaction(async (session) => {
+    const actorRole = await userRepo.findRole(orgId, actor.userId, { session });
+    if (!actorRole || !roleHasPermission(actorRole, PERMISSIONS.ORG_SETTINGS)) {
+      throw new ForbiddenError();
+    }
+
+    const org = await orgRepo.findById(orgId, { session });
+    if (!org) {
+      throw new NotFoundError('Organisation not found');
+    }
+    const before = approvalSettingsOf(org);
+    if (before.defaultMode === defaultMode) {
+      return before;
+    }
+
+    const updated = await orgRepo.setApprovalDefault(orgId, defaultMode, { session });
+    const after = approvalSettingsOf(updated);
+    await recordAudit(
+      orgId,
+      {
+        actor: { userId: actor.userId, role: actorRole },
+        action: AUDIT_ACTION.ORG_SETTINGS_UPDATED,
+        targetType: AUDIT_TARGET_TYPE.Organization,
+        targetId: orgId,
+        before: { approvalSettings: before },
+        after: { approvalSettings: after },
+        requestId,
+      },
+      { session },
+    );
+    return after;
   });
 }
