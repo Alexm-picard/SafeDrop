@@ -38,6 +38,13 @@ const answerSchema = z.object({
 const MAX_CANDIDATES = 100;
 
 /**
+ * The most results a plain search returns (SCRUM-146). Results are ranked by name, so a member who
+ * does not see what they want refines the query rather than paging; the cap bounds the response size
+ * and what Mongo loads for a one-letter query.
+ */
+const PLAIN_SEARCH_LIMIT = 50;
+
+/**
  * Search the caller's catalogue.
  * @param {string} orgId tenant id, from the verified token
  * @param {string} query what the member typed
@@ -82,11 +89,13 @@ export async function searchAssets(orgId, query) {
  * The assets to send to the model: plain-search matches first, then the catalogue in name order,
  * up to `MAX_CANDIDATES`. Without the matches going first, an org with more assets than the cap
  * would never show the model anything past the first hundred names, however well it matched.
- * Keyed by id so an asset found both ways is sent once and does not take two slots.
+ * Keyed by id so an asset found both ways is sent once and does not take two slots. The matches are
+ * fetched up to the candidate cap, not the plain-search cap: they fill candidate slots, and asking for
+ * more than the cap would only load documents the slice below throws away.
  */
 async function pickCandidates(orgId, query) {
   const [matched, { items: page }] = await Promise.all([
-    assetRepo.search(orgId, query),
+    assetRepo.search(orgId, query, { limit: MAX_CANDIDATES }),
     assetRepo.list(orgId, { limit: MAX_CANDIDATES }),
   ]);
   const byId = new Map();
@@ -101,7 +110,7 @@ async function pickCandidates(orgId, query) {
 
 /** The catalogue fallback: a case-insensitive match on name, description and category. */
 async function plainSearch(orgId, query) {
-  const assets = await assetRepo.search(orgId, query);
+  const assets = await assetRepo.search(orgId, query, { limit: PLAIN_SEARCH_LIMIT });
   return {
     matches: assets.map((asset) => ({ assetId: String(asset._id), ...describe(asset) })),
     clarification: null,

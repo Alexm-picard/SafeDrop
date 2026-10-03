@@ -71,11 +71,15 @@ export async function list(orgId, { includeRetired = false, category, page = 1, 
  * The plain catalogue search behind SCRUM-103: what a member gets when AI is off, and the fallback
  * when the model's answer cannot be used. Retired assets are left out, the same rule `list()`
  * applies by default (SCRUM-145): a soft-deleted asset cannot be borrowed, so it is not a result.
+ *
+ * Capped at `limit`, applied after the sort so the cut is always the first names rather than whatever
+ * Mongo returned first. Without it a one-letter query loads and returns the whole catalogue (SCRUM-146).
  * @param {string} orgId
  * @param {string} text what the member typed
- * @returns {Promise<import('mongoose').Document[]>} sorted by name
+ * @param {{ limit?: number }} [options]
+ * @returns {Promise<import('mongoose').Document[]>} sorted by name, at most `limit` long
  */
-export async function search(orgId, text) {
+export async function search(orgId, text, { limit = 50 } = {}) {
   // Escaped so the text is matched literally: `.*` must not match everything, and a pattern such as
   // `(a+)+$` must never reach the database as a backtracking regex (ReDoS).
   const pattern = new RegExp(escapeRegExp(text), 'i');
@@ -83,7 +87,9 @@ export async function search(orgId, text) {
     orgId,
     retiredAt: null,
     $or: [{ name: pattern }, { description: pattern }, { category: pattern }],
-  }).sort({ name: 1 });
+  })
+    .sort({ name: 1 })
+    .limit(limit);
 }
 
 /**
