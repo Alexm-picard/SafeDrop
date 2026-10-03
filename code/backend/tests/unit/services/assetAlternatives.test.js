@@ -129,3 +129,40 @@ describe('SCRUM-151 AT-1: alternatives when nothing is available', () => {
     });
   });
 });
+
+describe('SCRUM-151 AT-4: no recommendations when the item is available', () => {
+  beforeEach(() => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    // A usable reply, so the only thing that can fail below is the spy assertion. Without it the
+    // service would crash on an empty mock and the red would be ambiguous about its own cause.
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+  });
+
+  it('asks the model nothing when the asset still has an AVAILABLE unit', async () => {
+    // Partly out is not a dead end: the member can borrow this one, so there is nothing to suggest
+    // and no reason to spend a model call — the cost of this feature has to scale with the problem
+    // it solves, not with page views.
+    const r6 = await assetWithUnits(ORG, { name: 'Canon EOS R6', category: 'camera' }, [
+      UNIT_STATUS.OUT,
+      UNIT_STATUS.AVAILABLE,
+    ]);
+    await assetWithUnits(ORG, { name: 'Sony A7 IV', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+
+    const result = await getAlternatives(ORG, MEMBER, String(r6._id));
+
+    expect(foundry.foundryRequest).not.toHaveBeenCalled();
+    expect(result).toEqual({ alternatives: [], aiAssisted: false });
+  });
+
+  it('asks the model nothing when the asset has no units at all', async () => {
+    // Not the same situation as "all out", but the same answer: an asset nobody has stocked yet is
+    // not a borrower hitting a dead end, and recommending substitutes for it would be noise.
+    const empty = await assetWithUnits(ORG, { name: 'Canon EOS R6', category: 'camera' }, []);
+    await assetWithUnits(ORG, { name: 'Sony A7 IV', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+
+    const result = await getAlternatives(ORG, MEMBER, String(empty._id));
+
+    expect(foundry.foundryRequest).not.toHaveBeenCalled();
+    expect(result).toEqual({ alternatives: [], aiAssisted: false });
+  });
+});
