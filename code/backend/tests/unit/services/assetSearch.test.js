@@ -15,6 +15,14 @@ vi.mock('../../../src/services/ai/foundry.client.js', () => ({
   promptFingerprint: vi.fn(() => 'fingerprint'),
 }));
 
+// The real repository, with `search` wrapped in a spy that still calls through. How many documents the
+// AI path asks Mongo for is invisible in the result — the service trims to the cap either way — so the
+// limit it passes is the only place a bounded query shows (SCRUM-146).
+vi.mock('../../../src/repositories/asset.repository.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, search: vi.fn(actual.search) };
+});
+
 // Capture what the logger writes, at `debug`, so a "log the bad reply just to debug it" line would be
 // caught rather than silently dropped by the suite's `fatal` level. Same approach as
 // foundryClient.test.js.
@@ -102,6 +110,22 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
 
     // Retirement is a soft delete: the catalogue list already hides it, and search must agree.
     expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+  });
+
+  it('SCRUM-146: returns at most 50 results, the first 50 by name', async () => {
+    await Promise.all(
+      Array.from({ length: 51 }, (_, i) =>
+        assetRepo.create(ORG, { name: `Asset ${String(i).padStart(3, '0')}`, category: 'Misc' }),
+      ),
+    );
+
+    // A one-letter query matches the whole catalogue; without a cap it all goes to the browser.
+    const result = await searchAssets(ORG, 'a');
+
+    const names = result.matches.map((m) => m.name);
+    expect(names).toHaveLength(50);
+    // Capped after sorting, so the cut is predictable rather than whatever order Mongo returned.
+    expect(names).not.toContain('Asset 050');
   });
 });
 
@@ -221,6 +245,15 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     const sentIds = JSON.parse(body.input).assets.map((asset) => asset.id);
     expect(new Set(sentIds).size).toBe(sentIds.length);
     expect(sentIds).toHaveLength(100);
+  });
+
+  it('SCRUM-146: bounds the plain-search query to the candidate cap', async () => {
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+
+    await searchAssets(ORG, 'anything');
+
+    // Not the 50 a plain search shows: these matches fill candidate slots, and there are 100 of those.
+    expect(assetRepo.search).toHaveBeenCalledWith(ORG, 'anything', { limit: 100 });
   });
 
   it('SCRUM-145: never sends a retired asset to the model as a candidate', async () => {
