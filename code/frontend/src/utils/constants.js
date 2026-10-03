@@ -50,6 +50,7 @@ export const ROUTES = Object.freeze({
   approvals: '/admin/approvals',
   users: '/admin/users',
   auditLog: '/admin/audit',
+  settings: '/admin/settings',
 });
 
 /**
@@ -86,7 +87,8 @@ export function landingFor(role) {
  *
  * These drive the filter dropdown, and the route's Zod schema rejects anything outside the set with a
  * 400 — so a value that drifts from the backend's list becomes a failed request rather than an empty
- * table. Kept in the same order as the backend for reviewability.
+ * table. Kept in the same order as the backend for reviewability. (SCRUM-148 also caught it up with
+ * USER_PASSWORD_RESET and the two maintenance actions, which had been added on the backend only.)
  */
 export const AUDIT_ACTIONS = Object.freeze([
   'REQUEST_SUBMITTED',
@@ -100,8 +102,60 @@ export const AUDIT_ACTIONS = Object.freeze([
   'ASSET_RETIRED',
   'USER_ROLE_CHANGED',
   'USER_INVITED',
+  'USER_PASSWORD_RESET',
   'ORG_CREATED',
+  'UNIT_MAINTENANCE_STARTED',
+  'UNIT_MAINTENANCE_ENDED',
+  // SCRUM-148: a request approved by the organisation's rule rather than a person, and a change to
+  // that rule.
+  'REQUEST_AUTO_APPROVED',
+  'ORG_SETTINGS_UPDATED',
 ]);
+
+/**
+ * Whether a checkout request needs an approver (SCRUM-148), mirroring the backend's `APPROVAL_MODE`.
+ *
+ * Each entry pairs the API value with the words an admin reads. An organisation chooses between
+ * REQUIRED and AUTO; an asset can also INHERIT the organisation's choice, which is every asset's
+ * starting point.
+ */
+export const APPROVAL_MODE = Object.freeze({
+  INHERIT: 'INHERIT',
+  REQUIRED: 'REQUIRED',
+  AUTO: 'AUTO',
+});
+
+/** The organisation-wide choices, in the order the settings page offers them. */
+export const ORG_APPROVAL_OPTIONS = Object.freeze([
+  Object.freeze({
+    value: APPROVAL_MODE.REQUIRED,
+    label: 'Require an approver',
+    hint: 'Every request waits in the approval queue until an approver decides.',
+  }),
+  Object.freeze({
+    value: APPROVAL_MODE.AUTO,
+    label: 'Approve automatically',
+    hint: 'Requests are approved as soon as they are submitted. The item is still handed over in person.',
+  }),
+]);
+
+/** The per-asset choices, in the order the asset form offers them. */
+export const ASSET_APPROVAL_OPTIONS = Object.freeze([
+  Object.freeze({ value: APPROVAL_MODE.INHERIT, label: 'Use the organization default' }),
+  Object.freeze({ value: APPROVAL_MODE.REQUIRED, label: 'Always require an approver' }),
+  Object.freeze({ value: APPROVAL_MODE.AUTO, label: 'Always approve automatically' }),
+]);
+
+/**
+ * The label for an asset's approval mode, for read-only display.
+ * @param {string|undefined} mode
+ * @returns {string}
+ */
+export function assetApprovalLabel(mode) {
+  return (
+    ASSET_APPROVAL_OPTIONS.find((option) => option.value === mode) ?? ASSET_APPROVAL_OPTIONS[0]
+  ).label;
+}
 /**
  * The target types an audit event can point at, mirroring the backend's `AUDIT_TARGET_TYPE_LIST`.
  */

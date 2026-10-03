@@ -18,6 +18,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  configurableApproval,
   getPolicy,
   policyFor,
   registerPolicy,
@@ -27,9 +28,10 @@ import {
 const request = { requesterId: 'user-1' };
 
 describe('requireDistinctApprover (Iteration 1 policy)', () => {
-  it('is the policy for every organisation in Iteration 1 and every request needs approval', () => {
-    expect(policyFor({ id: 'any' })).toBe(requireDistinctApprover);
-    expect(requireDistinctApprover.requiresApproval(request)).toBe(true);
+  // SCRUM-148 replaced this policy as the one `policyFor` answers (see the block below); the policy
+  // itself is unchanged and still requires approval for everything.
+  it('requires approval for every request', () => {
+    expect(requireDistinctApprover.requiresApproval({ request })).toBe(true);
   });
 
   it('the requester cannot approve their own request, even as ORG_ADMIN', () => {
@@ -78,5 +80,64 @@ describe('requireDistinctApprover (Iteration 1 policy)', () => {
     expect(getPolicy('auto-approve-members')).toBe(custom);
     expect(getPolicy('nope')).toBeNull();
     expect(() => registerPolicy({ name: 'broken' })).toThrow(TypeError);
+  });
+});
+
+/**
+ * SCRUM-148: configurable approval.
+ *
+ * Resolution order is asset override → organisation default → REQUIRED. The last step is the safety
+ * net: a document from before the migration, or a value nobody recognises, must fail closed — an
+ * unknown mode skipping approval would be a silent privilege escalation for every member.
+ */
+describe('configurableApproval (SCRUM-148)', () => {
+  const org = (defaultMode) => ({ approvalSettings: { defaultMode } });
+  const asset = (approvalMode) => ({ approvalMode });
+  const needsApproval = (context) => configurableApproval.requiresApproval({ request, ...context });
+
+  it('is the policy every organisation gets, and is registered by name', () => {
+    expect(policyFor(org('REQUIRED'))).toBe(configurableApproval);
+    expect(policyFor(org('AUTO'))).toBe(configurableApproval);
+    expect(getPolicy('configurable-approval')).toBe(configurableApproval);
+  });
+
+  // The whole rule as a table: [org default, asset mode, needs approval?]. AT-1 and AT-2 are the two
+  // override rows; the INHERIT rows are what every asset does after the migration.
+  it.each([
+    ['REQUIRED', 'INHERIT', true],
+    ['AUTO', 'INHERIT', false],
+    ['REQUIRED', 'AUTO', false], // AT-1: cheap item skips the queue
+    ['AUTO', 'REQUIRED', true], // AT-2: expensive item still gets a human
+    ['REQUIRED', 'REQUIRED', true],
+    ['AUTO', 'AUTO', false],
+  ])('org default %s, asset %s → requires approval: %s', (defaultMode, approvalMode, expected) => {
+    expect(needsApproval({ org: org(defaultMode), asset: asset(approvalMode) })).toBe(expected);
+  });
+
+  it('fails closed: missing settings, a missing asset mode or an unknown value require approval', () => {
+    expect(needsApproval({ org: {}, asset: {} })).toBe(true);
+    expect(needsApproval({})).toBe(true);
+    expect(needsApproval({ org: org('AUTO'), asset: asset('SOMETIMES') })).toBe(true);
+    expect(needsApproval({ org: org('SOMETIMES'), asset: asset('INHERIT') })).toBe(true);
+    // INHERIT is an asset value; an organisation "inheriting" has nowhere to inherit from.
+    expect(needsApproval({ org: org('INHERIT'), asset: asset('INHERIT') })).toBe(true);
+  });
+
+  it('does not let prototype names stand in for a mode', () => {
+    expect(needsApproval({ org: org('AUTO'), asset: asset('constructor') })).toBe(true);
+    expect(needsApproval({ org: org('__proto__'), asset: asset('INHERIT') })).toBe(true);
+  });
+
+  // AT-2's second half: configurability changes *whether* a human decides, never *who*.
+  it('keeps separation of duties: the requester cannot decide, even as ORG_ADMIN', () => {
+    expect(
+      configurableApproval.canDecide(request, { userId: 'user-1', role: 'ORG_ADMIN' }).allowed,
+    ).toBe(false);
+    expect(
+      configurableApproval.canDecide(request, { userId: 'user-2', role: 'MEMBER' }).allowed,
+    ).toBe(false);
+    expect(configurableApproval.canDecide(request, { userId: 'user-2', role: 'APPROVER' })).toEqual(
+      { allowed: true },
+    );
   });
 });

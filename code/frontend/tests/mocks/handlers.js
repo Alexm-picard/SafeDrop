@@ -533,6 +533,14 @@ export const handlers = [
       { status: 201 },
     );
   }),
+  // SCRUM-148: the organisation's approval default. REQUIRED is what every organisation starts with.
+  http.get('*/api/organizations/me/approval-settings', () =>
+    HttpResponse.json({ defaultMode: 'REQUIRED' }),
+  ),
+  http.patch('*/api/organizations/me/approval-settings', async ({ request }) => {
+    const { defaultMode } = await request.json();
+    return HttpResponse.json({ defaultMode });
+  }),
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
