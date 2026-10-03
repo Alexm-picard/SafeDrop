@@ -194,8 +194,14 @@ export async function getAlternatives(orgId, userId, assetId) {
   // and anything else is dropped rather than looked up.
   const byId = new Map(candidates.map((candidate) => [String(candidate._id), candidate]));
   return {
+    // Capped like the fallback, and for the member's sake rather than the model's: the output
+    // contract allows ten, so without this the section would hold ten options with Foundry up and
+    // five with it down. Sliced after the whitelist filter, so dropping a hallucinated id promotes
+    // the next real match instead of leaving a gap, and the model's own order is kept — its best
+    // five, not an arbitrary five.
     alternatives: answer.matches
       .filter(({ assetId: id }) => byId.has(id))
+      .slice(0, MAX_ALTERNATIVES)
       .map(({ assetId: id, reason }) => ({ assetId: id, ...describe(byId.get(id)), reason })),
     aiAssisted: true,
   };
