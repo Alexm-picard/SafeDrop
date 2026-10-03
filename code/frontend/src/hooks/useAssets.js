@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: asset list / detail resource hooks (SCRUM-115)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * Data hooks for the asset catalogue.
  *
@@ -28,6 +21,26 @@ export function useAssets(params = {}) {
   const fetcher = useCallback(
     (signal) => assetsApi.list({ page, limit, category, includeRetired }, signal),
     [page, limit, category, includeRetired],
+  );
+  return useApiResource(fetcher);
+}
+/**
+ * Search the catalogue for `q` (SCRUM-201). Pass the debounced, trimmed text.
+ *
+ * An empty `q` makes no request and resolves to `null`, because the API refuses a blank query.
+ *
+ * Each result carries the `q` it answers. `useApiResource` keeps the previous `success` data while a
+ * new fetch is in flight rather than going back to `loading`, so without the tag a page could not tell
+ * fresh results from ones answering an older query. Stale *responses* need no handling here: changing
+ * `q` changes the fetcher, and `useApiResource` aborts and ignores the old request.
+ * @param {string} q
+ * @returns {{ status: string, data: ({ q: string, matches: object[], clarification: string|null, aiAssisted: boolean }|null), error: unknown, reload: () => void }}
+ */
+export function useAssetSearch(q) {
+  const fetcher = useCallback(
+    (signal) =>
+      q ? assetsApi.search(q, signal).then((result) => ({ ...result, q })) : Promise.resolve(null),
+    [q],
   );
   return useApiResource(fetcher);
 }
