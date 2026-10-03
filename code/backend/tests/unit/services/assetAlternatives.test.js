@@ -65,6 +65,7 @@ const { getAlternatives } = await import('../../../src/services/ai/assetSearch.s
 const groupService = await import('../../../src/services/group.service.js');
 const { UNIT_STATUS } = await import('../../../src/utils/constants.js');
 const { seedTwoOrgs } = await import('../../helpers/seedTwoOrgs.js');
+const { ServiceUnavailableError } = await import('../../../src/utils/errors.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
 const MEMBER = '6aab2a45c6e457e01ac0968c';
@@ -294,6 +295,144 @@ describe('SCRUM-151 AT-2: recommendations respect every boundary', () => {
 
     expect(assetIdsSentToModel()).toContain(String(restricted._id));
     expect(result.alternatives.map((a) => a.assetId)).toEqual([String(restricted._id)]);
+  });
+});
+
+/**
+ * AT-3, the fallback. Three different upstream failures, one behaviour: the section still renders.
+ *
+ * **Deviation from AT-3 as written, agreed with the Requirements lead.** The criterion says "up to
+ * five available assets from the same category". The fallback here instead uses the *same* candidate
+ * set as the AI path — the whole catalogue, narrowed by the AT-2 filters — capped at five. The reason
+ * is that Foundry can be up for one request and down for the next, and a fallback scoped more narrowly
+ * than the AI path would make the section's contents visibly change kind rather than just lose their
+ * ranking. The ticket and the Iteration 2 STD need updating to match.
+ *
+ * Fallback entries carry `reason: null`. Without the model there is no explanation to show, and
+ * writing a plausible-sounding one in the service would put words in the model's mouth.
+ */
+describe('SCRUM-151 AT-3: graceful fallback without AI', () => {
+  let seed;
+  let stuckOn;
+  let onTheShelf;
+
+  beforeEach(async () => {
+    seed = await seedTwoOrgs();
+    stuckOn = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Canon EOS R6', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT, UNIT_STATUS.HELD],
+    );
+    onTheShelf = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Sony A7 IV', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+  });
+
+  const alternativesFor = () =>
+    getAlternatives(seed.a.orgId, String(seed.a.member._id), String(stuckOn._id));
+
+  it('falls back when Foundry is switched off, without calling it', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(false);
+
+    const result = await alternativesFor();
+
+    expect(foundry.foundryRequest).not.toHaveBeenCalled();
+    expect(result.aiAssisted).toBe(false);
+    expect(result.alternatives.map((a) => a.assetId)).toContain(String(onTheShelf._id));
+    // No model, so no explanation — rather than prose invented here and attributed to one.
+    expect(result.alternatives.every((a) => a.reason === null)).toBe(true);
+  });
+
+  it('falls back when the call to Foundry fails', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    // The transport turns every upstream failure — timeout, 500, bad key — into this one class.
+    foundry.foundryRequest.mockRejectedValue(new ServiceUnavailableError('Foundry unavailable'));
+
+    const result = await alternativesFor();
+
+    expect(result.aiAssisted).toBe(false);
+    expect(result.alternatives.map((a) => a.assetId)).toContain(String(onTheShelf._id));
+  });
+
+  it('falls back when the model’s output does not fit the contract', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    foundry.foundryRequest.mockResolvedValue(foundryReply('Sorry, I could not find anything.'));
+
+    const result = await alternativesFor();
+
+    expect(result.aiAssisted).toBe(false);
+    expect(result.alternatives.map((a) => a.assetId)).toContain(String(onTheShelf._id));
+  });
+
+  it('never leaks upstream detail, and never logs the prompt or the reply', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    foundry.foundryRequest.mockRejectedValue(
+      new ServiceUnavailableError('Foundry said: prompt was "Canon EOS R6 camera"'),
+    );
+
+    const result = await alternativesFor();
+
+    // The member sees alternatives, not an outage. Nothing from upstream reaches them.
+    expect(JSON.stringify(result)).not.toMatch(/Foundry|prompt/i);
+    // And nothing at any level, debug included, carries the prompt or the catalogue text.
+    expect(logLines.join('\n')).not.toMatch(/Canon EOS R6/);
+  });
+
+  it('applies the AT-2 filters on the fallback path too', async () => {
+    // The easy bug: the fallback skips the pipeline and so skips its filters, quietly recommending an
+    // unavailable or ineligible asset exactly when the AI is down.
+    foundry.isFoundryEnabled.mockReturnValue(false);
+    const alsoOut = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Nikon Z6', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT],
+    );
+    const theirs = await assetWithUnits(
+      seed.b.orgId,
+      { name: 'Fujifilm X-T5', category: 'camera', description: 'Mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+    const { group } = await groupService.createGroup(
+      seed.a.orgId,
+      { userId: String(seed.a.admin._id), role: 'ORG_ADMIN' },
+      { name: 'Certified Drone Pilots' },
+    );
+    const restricted = await assetRepo.create(seed.a.orgId, {
+      name: 'Hasselblad X2D',
+      category: 'camera',
+      allowedGroupIds: [group.id],
+    });
+    await unitRepo.create(seed.a.orgId, {
+      assetId: restricted._id,
+      tag: 'x2d-1',
+      status: UNIT_STATUS.AVAILABLE,
+    });
+
+    const ids = (await alternativesFor()).alternatives.map((a) => a.assetId);
+
+    expect(ids).toContain(String(onTheShelf._id));
+    expect(ids).not.toContain(String(alsoOut._id));
+    expect(ids).not.toContain(String(theirs._id));
+    expect(ids).not.toContain(String(restricted._id));
+    expect(ids).not.toContain(String(stuckOn._id));
+  });
+
+  it('returns at most five', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(false);
+    for (let i = 0; i < 6; i += 1) {
+      await assetWithUnits(
+        seed.a.orgId,
+        { name: `Spare camera ${i}`, category: 'camera', description: 'Full-frame mirrorless' },
+        [UNIT_STATUS.AVAILABLE],
+      );
+    }
+
+    const result = await alternativesFor();
+
+    // A dead-end page needs a handful of options, not a second catalogue.
+    expect(result.alternatives).toHaveLength(5);
   });
 });
 
