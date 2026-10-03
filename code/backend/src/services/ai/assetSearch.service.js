@@ -112,6 +112,60 @@ export async function searchAssets(orgId, query) {
 }
 
 /**
+ * Comparable items a member could borrow instead (SCRUM-151).
+ *
+ * The dead end this removes: an asset whose every unit is out shows "0 available", and the member
+ * emails somebody instead of borrowing the equivalent item on the next shelf.
+ *
+ * **The asset itself is the query.** Its name, category and description describe what the member
+ * wanted, so they go to the model in place of typed words and the SCRUM-103 candidate-and-ranking
+ * pipeline is reused unchanged — one prompt contract, one place where model output is validated.
+ *
+ * Only AT-1 is implemented so far: the candidate filtering (AT-2), the fallback (AT-3) and the
+ * early return for an asset that is still available (AT-4) arrive with the tests that demand them.
+ * @param {string} orgId tenant id, from the verified token
+ * @param {string} userId the caller, who must be eligible for anything recommended (AT-2)
+ * @param {string} assetId the asset the member is looking at
+ * @returns {Promise<{ alternatives: object[], aiAssisted: boolean }>}
+ */
+export async function getAlternatives(orgId, userId, assetId) {
+  const asset = await assetRepo.findById(orgId, assetId);
+  const candidates = (await pickCandidates(orgId, queryFor(asset))).filter(
+    (candidate) => String(candidate._id) !== String(assetId),
+  );
+  const units = await unitRepo.listByAssets(
+    orgId,
+    candidates.map((candidate) => candidate._id),
+  );
+  const input = JSON.stringify({
+    query: queryFor(asset),
+    assets: toPromptAssets(candidates, units),
+  });
+  const response = await foundryRequest(orgId, { input }, { prompt: input });
+  const answer = readAnswer(response);
+
+  // Same rule as search: the candidates sent are the only ids the model may return (prompt rule 1),
+  // and anything else is dropped rather than looked up.
+  const byId = new Map(candidates.map((candidate) => [String(candidate._id), candidate]));
+  return {
+    alternatives: answer.matches
+      .filter(({ assetId: id }) => byId.has(id))
+      .map(({ assetId: id, reason }) => ({ assetId: id, ...describe(byId.get(id)), reason })),
+    aiAssisted: true,
+  };
+}
+
+/**
+ * The asset's own words, standing in for the ones a member would have typed.
+ *
+ * Built by naming fields rather than serialising the document, so a field added to the model later —
+ * or one that exists today, such as `imageUrl` — never reaches the model without a change here.
+ */
+function queryFor(asset) {
+  return [asset.name, asset.category, asset.description].filter(Boolean).join(' ');
+}
+
+/**
  * The assets to send to the model: plain-search matches first, then the catalogue in name order,
  * up to `MAX_CANDIDATES`. Without the matches going first, an org with more assets than the cap
  * would never show the model anything past the first hundred names, however well it matched.
