@@ -17,8 +17,11 @@
  * `assets:read`. What it returns is the audit trail, filtered to one asset, so it is governed by who
  * may read the trail — not by who may see the asset in the catalogue (SCRUM-29).
  *
- * Exports: `assetsRouter`, and the `assetBody` / `assetPatch` / `listQuery` / `unitBody` schemas for
- * reuse in tests.
+ * `GET /search` is registered before `GET /:id`. Express matches in registration order, so the other
+ * way round "search" would be taken as an asset id and refused as a malformed one (SCRUM-200).
+ *
+ * Exports: `assetsRouter`, and the `assetBody` / `assetPatch` / `listQuery` / `searchQuery` /
+ * `unitBody` schemas for reuse in tests.
  */
 import { z } from 'zod';
 import * as assets from '../controllers/assets.controller.js';
@@ -88,6 +91,15 @@ export const listQuery = pagination.extend({
 });
 
 /**
+ * Query for searching the catalogue (SCRUM-200): `q`, what the member typed.
+ *
+ * Trimmed before the length checks, so whitespace alone is a 400 rather than a search for nothing.
+ * The 200-character cap bounds what can reach the model's prompt and the search pattern; a real
+ * description of what someone needs fits well inside it.
+ */
+export const searchQuery = z.object({ q: z.string().trim().min(1).max(200) });
+
+/**
  * Body for adding a physical unit to an asset: its tag, optional serial number and condition.
  *
  * The tag is the identifier on the item's sticker and is unique per organisation. Condition defaults
@@ -121,6 +133,16 @@ defineRoute(
   assetsRouter,
   { method: 'POST', path: '/', permission: PERMISSIONS.ASSETS_WRITE, schemas: { body: assetBody } },
   assets.create,
+);
+defineRoute(
+  assetsRouter,
+  {
+    method: 'GET',
+    path: '/search',
+    permission: PERMISSIONS.ASSETS_READ,
+    schemas: { query: searchQuery },
+  },
+  assets.search,
 );
 defineRoute(
   assetsRouter,
