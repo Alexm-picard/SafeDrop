@@ -11,7 +11,7 @@
  *
  * Exports: the fixtures (`org`, `adminUser`, `approverUser`, `memberUser`, `summary`,
  * `activityDays`, `members`), the builders (`errorResponse`, `notImplemented`, `meHandler`,
- * `membersPage`, `assetHistoryPage`, `daysFromNow`) and the default `handlers` array.
+ * `membersPage`, `assetHistoryPage`, `plainSearch`, `daysFromNow`) and the default `handlers` array.
  */
 import { http, HttpResponse } from 'msw';
 export const org = {
@@ -164,6 +164,22 @@ export function assetsPage(search) {
   const limit = Number(search.get('limit') ?? 25);
   const start = (page - 1) * limit;
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+}
+/**
+ * Answer `GET /api/assets/search` the way the real API does with AI off (SCRUM-200): a
+ * case-insensitive match on name, description and category over the non-retired assets, sorted by
+ * name, with no reasons and no clarification.
+ * @param {URLSearchParams} search
+ * @returns {{ matches: object[], clarification: null, aiAssisted: false }}
+ */
+export function plainSearch(search) {
+  const q = (search.get('q') ?? '').toLowerCase();
+  const matches = assets
+    .filter((a) => !a.retiredAt)
+    .filter((a) => [a.name, a.description, a.category].some((f) => f.toLowerCase().includes(q)))
+    .sort((x, y) => x.name.localeCompare(y.name))
+    .map(({ id, name, category, description }) => ({ assetId: id, name, category, description }));
+  return { matches, clarification: null, aiAssisted: false };
 }
 /**
  * 30 audit events, newest first — enough to page at the UI's 25 per page.
@@ -544,6 +560,10 @@ export const handlers = [
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
+  ),
+  // Before `:id`, as on the server: otherwise "search" would be read as an asset id.
+  http.get('*/api/assets/search', ({ request }) =>
+    HttpResponse.json(plainSearch(new URL(request.url).searchParams)),
   ),
   http.get('*/api/assets/:id/history', ({ request }) =>
     HttpResponse.json(assetHistoryPage(new URL(request.url).searchParams)),

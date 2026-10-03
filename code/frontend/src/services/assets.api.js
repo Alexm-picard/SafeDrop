@@ -1,10 +1,3 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: typed calls for /api/assets/* (list/get implemented by SCRUM-115; write endpoints remain 501 stubs)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
  * Asset catalogue endpoints.
  *
@@ -38,6 +31,14 @@ function query(params) {
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export const list = (params = {}, signal) => apiRequest(`/api/assets${query(params)}`, { signal });
+/**
+ * Search the catalogue in plain words (SCRUM-200). AI-ranked when the backend has AI on, otherwise
+ * a plain match — the response says which, and the caller renders both the same way.
+ * @param {string} q what the member typed, already trimmed and non-empty
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ matches: Array<{ assetId: string, name: string, category: string, description: string, reason?: string }>, clarification: string|null, aiAssisted: boolean }>}
+ */
+export const search = (q, signal) => apiRequest(`/api/assets/search${query({ q })}`, { signal });
 /**
  * Read one asset with its units.
  * @param {string} id
