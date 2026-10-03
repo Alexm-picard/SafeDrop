@@ -133,6 +133,47 @@ describe('SCRUM-151 AT-1: alternatives when nothing is available', () => {
   });
 });
 
+describe('SCRUM-151: at most five alternatives, whichever path answered', () => {
+  beforeEach(() => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+  });
+
+  it('caps the model’s ranking at five, though its own contract allows ten', async () => {
+    // Without this the section's length depends on whether Foundry is up: ten with AI, five from the
+    // fallback, for the same member on the same page. The cap belongs to the feature, not to one path.
+    const stuck = await assetWithUnits(
+      ORG,
+      { name: 'Canon EOS R6', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT],
+    );
+    const spares = [];
+    for (let i = 0; i < 8; i += 1) {
+      spares.push(
+        await assetWithUnits(
+          ORG,
+          { name: `Spare camera ${i}`, category: 'camera', description: 'Full-frame mirrorless' },
+          [UNIT_STATUS.AVAILABLE],
+        ),
+      );
+    }
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({
+        matches: spares.map((spare) => ({ assetId: String(spare._id), reason: 'Comparable item' })),
+        clarification: null,
+      }),
+    );
+
+    const result = await getAlternatives(ORG, MEMBER, String(stuck._id));
+
+    expect(result.aiAssisted).toBe(true);
+    expect(result.alternatives).toHaveLength(5);
+    // The model's own order survives the cap: its best five, not an arbitrary five.
+    expect(result.alternatives.map((a) => a.assetId)).toEqual(
+      spares.slice(0, 5).map((spare) => String(spare._id)),
+    );
+  });
+});
+
 describe('SCRUM-151 AT-2: recommendations respect every boundary', () => {
   let seed;
   /** Org A's fully-out camera: the asset a member is looking at when they hit the dead end. */
