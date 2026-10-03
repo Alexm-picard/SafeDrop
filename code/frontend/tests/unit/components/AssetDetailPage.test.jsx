@@ -23,6 +23,7 @@ import {
   errorResponse,
   groups,
   memberUser,
+  similarItems,
 } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
@@ -503,5 +504,52 @@ describe('AssetDetailPage — restricted equipment (SCRUM-150)', () => {
 
     await screen.findByRole('heading', { level: 1, name: assets[0].name });
     expect(screen.queryByText('Restricted')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * SCRUM-151 subtask SCRUM-186: the page decides whether a member is at a dead end.
+ *
+ * The section itself is tested in SimilarItems.test.jsx. What belongs here is the condition, because
+ * the page is the only thing that already knows the asset's units and can answer it without a second
+ * request.
+ */
+describe('AssetDetailPage — similar items available now (SCRUM-151)', () => {
+  const sectionName = 'Similar items available now';
+
+  it('offers alternatives when no unit is available, and asks only then', async () => {
+    // assets[1] is the Canon EOS R6 with a single HELD unit: the story's own dead end.
+    let asked = 0;
+    server.use(
+      http.get('*/api/assets/:id/alternatives', () => {
+        asked += 1;
+        return HttpResponse.json(similarItems);
+      }),
+    );
+
+    renderDetail(assets[1].id, { user: memberUser });
+
+    const section = await screen.findByRole('region', { name: sectionName });
+    expect(within(section).getByText(similarItems.alternatives[0].name)).toBeInTheDocument();
+    expect(asked).toBe(1);
+  });
+
+  it('offers nothing, and asks nothing, while a unit is still available', async () => {
+    // assets[0] has an AVAILABLE unit, so the member is not stuck. Asserting the *request* count is
+    // the point: the backend would answer an empty list either way, and a section that merely
+    // rendered nothing would still have cost a round trip on every asset page view (AT-4).
+    let asked = 0;
+    server.use(
+      http.get('*/api/assets/:id/alternatives', () => {
+        asked += 1;
+        return HttpResponse.json(similarItems);
+      }),
+    );
+
+    renderDetail(assets[0].id, { user: memberUser });
+
+    await screen.findByRole('table', { name: 'Units' });
+    expect(screen.queryByRole('region', { name: sectionName })).not.toBeInTheDocument();
+    expect(asked).toBe(0);
   });
 });
