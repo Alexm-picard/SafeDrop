@@ -25,6 +25,8 @@ export const ROLE_LABELS = Object.freeze({
   APPROVER: 'Approver',
   ORG_ADMIN: 'Organization admin',
 });
+/** The roles an admin can invite as or change to, least privileged first. */
+export const ROLE_OPTIONS = Object.freeze(Object.values(ROLES));
 /**
  * Every route the SPA serves, as paths or path builders.
  *
