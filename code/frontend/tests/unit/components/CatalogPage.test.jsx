@@ -1,23 +1,20 @@
-// AI-USAGE SUMMARY
-// Tools: Claude Code
-// Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states
-// Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
-// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
-
 /**
- * Tests for the catalogue page (SCRUM-115).
+ * Tests for the catalogue page (SCRUM-115) and its search bar (SCRUM-201).
  *
  * Walks the states every list screen has: loading, the assets from the API rendered as links to
  * their detail page, an explicit empty state (not just an absent table), and ErrorState with a
  * working retry.
+ *
+ * The search tests run on real timers: the debounce is a few hundred milliseconds, well inside
+ * Testing Library's default wait, and real timers keep MSW and user-event behaving as they do in a
+ * browser.
  */
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { CatalogPage } from '../../../src/pages/CatalogPage';
-import { adminUser, assets, errorResponse } from '../../mocks/handlers';
+import { adminUser, assets, errorResponse, memberUser, plainSearch } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 describe('CatalogPage', () => {
@@ -68,5 +65,189 @@ describe('CatalogPage', () => {
     });
     expect(screen.getByText('You do not have access to that page.')).toBeInTheDocument();
     await screen.findByRole('table', { name: 'Assets' });
+  });
+});
+
+describe('CatalogPage search (SCRUM-201)', () => {
+  /**
+   * Replace the search handler with one that records each request's `q` and answers with `respond`
+   * (by default, the API's plain search over the fixture assets).
+   */
+  function recordSearches(
+    respond = ({ request }) => HttpResponse.json(plainSearch(new URL(request.url).searchParams)),
+  ) {
+    const queries = [];
+    server.use(
+      http.get('*/api/assets/search', (info) => {
+        queries.push(new URL(info.request.url).searchParams.get('q'));
+        return respond(info);
+      }),
+    );
+    return queries;
+  }
+
+  /** Render the page as a member and wait for the catalogue, so its loading state is out of the way. */
+  async function renderCatalog() {
+    const user = userEvent.setup();
+    renderWithAuth(<CatalogPage />, { user: memberUser });
+    await screen.findByRole('table', { name: 'Assets' });
+    return { user, box: screen.getByRole('searchbox', { name: 'Search the catalog' }) };
+  }
+
+  it('sends one request for a burst of typing, and shows the matches in place of the catalogue', async () => {
+    const queries = recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toHaveAttribute(
+      'href',
+      `/assets/${assets[1].id}`,
+    );
+    expect(within(results).queryByText('Dell XPS 15')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Assets' })).not.toBeInTheDocument();
+    // Debounced: five keystrokes, one request, carrying the whole word.
+    expect(queries).toEqual(['canon']);
+  });
+
+  it('shows a searching state while the request is in flight', async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    recordSearches(async ({ request }) => {
+      await gate;
+      return HttpResponse.json(plainSearch(new URL(request.url).searchParams));
+    });
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/searching/i);
+    release();
+    await screen.findByRole('table', { name: 'Search results' });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it("shows the model's reason for each match, and its clarification, when AI-assisted", async () => {
+    recordSearches(() =>
+      HttpResponse.json({
+        matches: [
+          {
+            assetId: assets[1].id,
+            name: 'Canon EOS R6',
+            category: 'camera',
+            description: '',
+            reason: 'Full-frame camera that records video.',
+          },
+        ],
+        clarification: 'Do you need video, or stills only?',
+        aiAssisted: true,
+      }),
+    );
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'something to film a talk');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    expect(within(results).getByRole('columnheader', { name: 'Why it matches' })).toBeVisible();
+    expect(within(results).getByText('Full-frame camera that records video.')).toBeVisible();
+    expect(screen.getByText('Do you need video, or stills only?')).toBeVisible();
+  });
+
+  it('shows plain-search results with no reason column and no error (SCRUM-103 AT2)', async () => {
+    recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'camera');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
+    expect(within(results).queryByRole('columnheader', { name: 'Why it matches' })).toBeNull();
+    // A fallback is invisible to the member: same results list, no alert.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('says so when nothing matches', async () => {
+    recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'tripod');
+
+    expect(await screen.findByText('No assets match “tripod”.')).toBeVisible();
+  });
+
+  it('ignores a slow answer to an older query once a newer one has been sent', async () => {
+    const queries = recordSearches(async ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      if (params.get('q') === 'dell') {
+        await delay(600);
+      }
+      return HttpResponse.json(plainSearch(params));
+    });
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'dell');
+    await waitFor(() => expect(queries).toEqual(['dell']));
+    await user.clear(box);
+    await user.type(box, 'canon');
+
+    const results = await screen.findByRole('table', { name: 'Search results' });
+    expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
+    // Give the slow "dell" answer time to land; it must not replace the newer results.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(screen.queryByText('Dell XPS 15')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
+  });
+
+  it('returns to the catalogue when the search is cleared', async () => {
+    recordSearches();
+    const { user, box } = await renderCatalog();
+    await user.type(box, 'canon');
+    await screen.findByRole('table', { name: 'Search results' });
+
+    await user.clear(box);
+
+    expect(await screen.findByRole('table', { name: 'Assets' })).toBeVisible();
+    expect(screen.queryByRole('table', { name: 'Search results' })).not.toBeInTheDocument();
+  });
+
+  it('sends nothing for whitespace, which the API would refuse', async () => {
+    const queries = recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, '   ');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(queries).toEqual([]);
+    expect(screen.getByRole('table', { name: 'Assets' })).toBeVisible();
+  });
+
+  it('caps input at the 200 characters the API accepts', async () => {
+    await renderCatalog();
+    expect(screen.getByRole('searchbox', { name: 'Search the catalog' })).toHaveAttribute(
+      'maxlength',
+      '200',
+    );
+  });
+
+  it('renders ErrorState when the search fails and retries on demand', async () => {
+    let calls = 0;
+    recordSearches(({ request }) => {
+      calls += 1;
+      return calls === 1
+        ? errorResponse(500, 'INTERNAL_ERROR', 'Something went wrong')
+        : HttpResponse.json(plainSearch(new URL(request.url).searchParams));
+    });
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not search the catalog');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('table', { name: 'Search results' })).toBeVisible();
+    expect(calls).toBe(2);
   });
 });
