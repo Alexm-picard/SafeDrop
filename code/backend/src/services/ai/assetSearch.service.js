@@ -22,6 +22,7 @@ import { UNIT_STATUS } from '../../utils/constants.js';
 import { ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { restrictionsOf } from '../asset.service.js';
+import { filterEligible } from '../group.service.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
 
 const log = logger.child({ component: 'asset-search' });
@@ -142,12 +143,29 @@ export async function getAlternatives(orgId, userId, assetId) {
     return { alternatives: [], aiAssisted: false };
   }
 
-  const candidates = (await pickCandidates(orgId, queryFor(asset))).filter(
+  const possible = (await pickCandidates(orgId, queryFor(asset))).filter(
     (candidate) => String(candidate._id) !== String(assetId),
   );
-  const candidateUnits = await unitRepo.listByAssets(
+  const possibleUnits = await unitRepo.listByAssets(
     orgId,
-    candidates.map((candidate) => candidate._id),
+    possible.map((candidate) => candidate._id),
+  );
+
+  // **Narrowed here, before the model sees anything (AT-2).** Tenant scoping and the retired rule
+  // come free — every repository call folds in `orgId`, and `search`/`list` exclude retired assets
+  // (SCRUM-145). What this adds is the two rules specific to a *recommendation*: it must be borrowable
+  // right now, and by this caller. Doing it after the model answered would mean the prompt had
+  // carried assets the member may not have, and a filter can only be trusted if the model never had
+  // the option.
+  const unitsByAsset = Map.groupBy(possibleUnits, (unit) => String(unit.assetId));
+  const borrowable = possible.filter((candidate) =>
+    (unitsByAsset.get(String(candidate._id)) ?? []).some(
+      (unit) => unit.status === UNIT_STATUS.AVAILABLE,
+    ),
+  );
+  const candidates = await filterEligible(orgId, userId, borrowable);
+  const candidateUnits = possibleUnits.filter((unit) =>
+    candidates.some((candidate) => String(candidate._id) === String(unit.assetId)),
   );
   const input = JSON.stringify({
     query: queryFor(asset),

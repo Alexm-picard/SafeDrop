@@ -432,6 +432,45 @@ export async function isActiveMember(orgId, groupId, userId, { session } = {}) {
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<boolean>}
  */
+/**
+ * Which of these assets may `userId` request? (SCRUM-151)
+ *
+ * The many-assets form of `isEligible`, and it lives here rather than in the caller so the
+ * restricted-equipment rule still has one home: the two must agree, and the way to guarantee that is
+ * for them to be read side by side. The rule is identical — an asset with no `allowedGroupIds` is open
+ * to everyone, otherwise the user must be an active member of any one of its groups, roles grant
+ * nothing, and it fails closed when every listed group has been deleted.
+ *
+ * What differs is the cost. `isEligible` asks the database once per asset, which is a query per
+ * candidate when filtering a list; this asks once for the user's group memberships and once for the
+ * user, then intersects in memory. Two queries whether there is one candidate or a hundred.
+ * @param {string} orgId the organisation the assets, their groups and the user all belong to
+ * @param {string} userId
+ * @param {{ allowedGroupIds?: unknown[] }[]} assets documents or plain objects carrying the field
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<object[]>} the subset `userId` may request, in the order given
+ */
+export async function filterEligible(orgId, userId, assets, { session } = {}) {
+  const restricted = assets.filter((asset) => (asset.allowedGroupIds ?? []).length > 0);
+  if (restricted.length === 0) {
+    return assets;
+  }
+
+  // Sequential, not Promise.all: operations sharing one transaction session must not run in parallel.
+  const memberOf = new Set(await groupRepo.listIdsForMember(orgId, userId, { session }));
+  const user = await userRepo.findById(orgId, userId, { session });
+  // A deactivated or missing account is eligible for nothing restricted, the same as in isEligible.
+  const active = Boolean(user) && !user.deactivatedAt;
+
+  return assets.filter((asset) => {
+    const groupIds = (asset.allowedGroupIds ?? []).map(String);
+    if (groupIds.length === 0) {
+      return true;
+    }
+    return active && groupIds.some((groupId) => memberOf.has(groupId));
+  });
+}
+
 export async function isEligible(orgId, userId, asset, { session } = {}) {
   const groupIds = (asset.allowedGroupIds ?? []).map(String);
   if (groupIds.length === 0) {
