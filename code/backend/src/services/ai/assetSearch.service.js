@@ -18,6 +18,7 @@
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
+import { UNIT_STATUS } from '../../utils/constants.js';
 import { ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { restrictionsOf } from '../asset.service.js';
@@ -130,16 +131,27 @@ export async function searchAssets(orgId, query) {
  */
 export async function getAlternatives(orgId, userId, assetId) {
   const asset = await assetRepo.findById(orgId, assetId);
+
+  // **The model is not called unless the member is actually stuck (AT-4).** One AVAILABLE unit means
+  // they can borrow this one, and an asset with no units at all is not a dead end either — nobody has
+  // stocked it yet. Both answer "nothing to suggest" without a request, so the cost of this feature
+  // scales with the problem it solves rather than with page views. One query answers both questions.
+  const units = await unitRepo.listByAsset(orgId, assetId);
+  const available = units.filter((unit) => unit.status === UNIT_STATUS.AVAILABLE).length;
+  if (units.length === 0 || available > 0) {
+    return { alternatives: [], aiAssisted: false };
+  }
+
   const candidates = (await pickCandidates(orgId, queryFor(asset))).filter(
     (candidate) => String(candidate._id) !== String(assetId),
   );
-  const units = await unitRepo.listByAssets(
+  const candidateUnits = await unitRepo.listByAssets(
     orgId,
     candidates.map((candidate) => candidate._id),
   );
   const input = JSON.stringify({
     query: queryFor(asset),
-    assets: toPromptAssets(candidates, units),
+    assets: toPromptAssets(candidates, candidateUnits),
   });
   const response = await foundryRequest(orgId, { input }, { prompt: input });
   const answer = readAnswer(response);
