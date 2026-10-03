@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
-// AI-Assisted Areas: AssetFormPage tests — create success and error path, edit prefill and PATCH, cancel
+// AI-Assisted Areas: AssetFormPage tests — create success and error path, edit prefill and PATCH, cancel; group picker (SCRUM-150, SCRUM-176)
 // Human Contributions: pending team review
 // Notes: Follows the patterns in MembersPage.test.jsx (MSW overrides, renderWithAuth). Must be
 // reviewed by the owning team member before merge.
@@ -18,12 +18,12 @@
  * API as `null` rather than `""` (the schema is `z.url().nullable()`, and `""` is not a URL), and
  * edit mode must prefill from the asset and PATCH rather than POST.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { AssetFormPage } from '../../../src/pages/AssetFormPage';
-import { adminUser, assets, errorResponse } from '../../mocks/handlers';
+import { adminUser, assets, errorResponse, groups } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 
@@ -213,5 +213,135 @@ describe('AssetFormPage — checkout approval (SCRUM-148)', () => {
 
     await waitFor(() => expect(patched).toBeDefined());
     expect(patched.approvalMode).toBe('AUTO');
+  });
+});
+
+/**
+ * The group picker (SCRUM-150, SCRUM-176): an admin restricts an asset to any of the organisation's
+ * groups. Ticking none leaves it open to everyone; ticking several means membership of any one is
+ * enough.
+ */
+describe('AssetFormPage — restricting to groups (SCRUM-150)', () => {
+  it('offers every group, none ticked, and sends an empty list when left alone', async () => {
+    let sent;
+    server.use(
+      http.post('*/api/assets', async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ id: 'new-id', ...sent }, { status: 201 });
+      }),
+    );
+    renderCreate();
+
+    const picker = await screen.findByRole('group', { name: /who can request this/i });
+    for (const group of groups) {
+      expect(within(picker).getByRole('checkbox', { name: group.name })).not.toBeChecked();
+    }
+    await userEvent.type(screen.getByLabelText('Name'), 'HDMI cable');
+    await userEvent.type(screen.getByLabelText('Category'), 'cable');
+    await userEvent.click(screen.getByRole('button', { name: 'Create asset' }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent.allowedGroupIds).toEqual([]);
+  });
+
+  it('sends every group the admin ticks', async () => {
+    let sent;
+    server.use(
+      http.post('*/api/assets', async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ id: 'new-id', ...sent }, { status: 201 });
+      }),
+    );
+    renderCreate();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Forklift');
+    await userEvent.type(screen.getByLabelText('Category'), 'machinery');
+    await userEvent.click(await screen.findByRole('checkbox', { name: groups[0].name }));
+    await userEvent.click(screen.getByRole('checkbox', { name: groups[1].name }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create asset' }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent.allowedGroupIds).toEqual([groups[0].id, groups[1].id]);
+  });
+
+  it('prefills the groups an asset is restricted to, and can clear them', async () => {
+    let patched;
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({ ...assets[0], allowedGroupIds: [groups[1].id], units: [] }),
+      ),
+      http.patch('*/api/assets/:id', async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json({ ...assets[0], ...patched });
+      }),
+    );
+    renderEdit();
+
+    const ticked = await screen.findByRole('checkbox', { name: groups[1].name });
+    expect(ticked).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: groups[0].name })).not.toBeChecked();
+    await userEvent.click(ticked);
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(patched).toBeDefined());
+    expect(patched.allowedGroupIds).toEqual([]);
+  });
+
+  it('shows the API’s refusal of a group under the picker', async () => {
+    server.use(
+      http.post('*/api/assets', () =>
+        errorResponse(400, 'VALIDATION_ERROR', 'Invalid request', [
+          {
+            location: 'body',
+            path: 'allowedGroupIds',
+            message: 'No such group in this organisation',
+          },
+        ]),
+      ),
+    );
+    renderCreate();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Drone');
+    await userEvent.type(screen.getByLabelText('Category'), 'drone');
+    await userEvent.click(await screen.findByRole('checkbox', { name: groups[0].name }));
+    await userEvent.click(screen.getByRole('button', { name: 'Create asset' }));
+
+    const picker = screen.getByRole('group', { name: /who can request this/i });
+    expect(
+      await within(picker).findByText('No such group in this organisation'),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when the organisation has no groups, and the asset stays open', async () => {
+    server.use(
+      http.get('*/api/groups', () =>
+        HttpResponse.json({ items: [], total: 0, page: 1, limit: 100 }),
+      ),
+    );
+    renderCreate();
+
+    expect(await screen.findByText(/no groups yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('keeps an asset’s existing restriction when the groups cannot be loaded', async () => {
+    let patched;
+    server.use(
+      http.get('*/api/groups', () => errorResponse(500, 'INTERNAL_ERROR', 'Something went wrong')),
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({ ...assets[0], allowedGroupIds: [groups[0].id], units: [] }),
+      ),
+      http.patch('*/api/assets/:id', async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json({ ...assets[0], ...patched });
+      }),
+    );
+    renderEdit();
+
+    expect(await screen.findByText(/could not load the groups/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(patched).toBeDefined());
+    expect(patched.allowedGroupIds).toEqual([groups[0].id]);
   });
 });

@@ -52,7 +52,16 @@ describe('Layout', () => {
     [approverUser, ['Catalog', 'My requests', 'Approvals']],
     [
       adminUser,
-      ['Catalog', 'My requests', 'Approvals', 'Dashboard', 'Users', 'Audit log', 'Settings'],
+      [
+        'Catalog',
+        'My requests',
+        'Approvals',
+        'Dashboard',
+        'Users',
+        'Groups',
+        'Audit log',
+        'Settings',
+      ],
     ],
   ])('shows navigation by role', (user, expected) => {
     renderLayout(user);

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: JSDoc typedefs mirroring the backend contracts (SDD §2.4, §6.5) for editor help in plain JavaScript; InviteUserInput
+// AI-Assisted Areas: JSDoc typedefs mirroring the backend contracts (SDD §2.4, §6.5) for editor help in plain JavaScript; InviteUserInput; Asset restriction fields and UserGroup (SCRUM-150)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 //
@@ -74,6 +74,21 @@
  * @property {string} description
  * @property {string | null} imageUrl
  * @property {string | null} retiredAt
+ * @property {string[]} allowedGroupIds groups whose active members may request it; empty = open to all (SCRUM-150)
+ * @property {{ id: string, name: string }[]} allowedGroups the same groups with names, for the Restricted badge
+ * @property {boolean} restricted `allowedGroupIds` is non-empty, even if every listed group was deleted (SCRUM-203)
+ * @property {boolean} [eligible] on `GET /api/assets/:id` only: whether the caller may request it
+ */
+
+/**
+ * @typedef {object} UserGroup
+ * @property {string} id
+ * @property {string} orgId
+ * @property {string} name
+ * @property {string} description
+ * @property {string[]} memberIds
+ * @property {number} memberCount
+ * @property {{ id: string, name: string, onlyGroup: boolean }[]} [restrictedAssets] on `GET /api/groups/:id` only (SCRUM-204)
  */
 
 /**

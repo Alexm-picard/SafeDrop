@@ -9,7 +9,7 @@
  * Each function also accepts an optional `{ session }` so a caller can run it inside a transaction
  * together with its audit event (OD-2).
  *
- * Exports: `create`, `findById`, `list`, `search`, `update`, `retire`.
+ * Exports: `create`, `findById`, `list`, `listRestrictedTo`, `search`, `update`, `retire`.
  */
 import { Asset } from '../models/Asset.js';
 
@@ -19,19 +19,19 @@ import { Asset } from '../models/Asset.js';
  * Uses the array form of `create()` because that is the only form that accepts a session, and the
  * single document is destructured back out.
  * @param {string} orgId tenant id, from the verified token
- * @param {{ name: string, category: string, description?: string, imageUrl?: string, requiredGroupId?: string|null }} data
+ * @param {{ name: string, category: string, description?: string, imageUrl?: string, allowedGroupIds?: string[] }} data
  * @param {{ session?: import('mongoose').ClientSession }} [options]
  * @returns {Promise<import('mongoose').Document>} the created asset
  */
 export async function create(
   orgId,
-  { name, category, description, imageUrl, approvalMode, requiredGroupId },
+  { name, category, description, imageUrl, approvalMode, allowedGroupIds },
   { session } = {},
 ) {
-  // An omitted approvalMode/requiredGroupId is undefined, which Mongoose replaces with the schema
-  // default (INHERIT / null respectively).
+  // An omitted approvalMode/allowedGroupIds is undefined, which Mongoose replaces with the schema
+  // default (INHERIT / [] respectively).
   const [doc] = await Asset.create(
-    [{ orgId, name, category, description, imageUrl, approvalMode, requiredGroupId }],
+    [{ orgId, name, category, description, imageUrl, approvalMode, allowedGroupIds }],
     { session },
   );
   return doc;
@@ -108,6 +108,24 @@ export async function search(orgId, text, { limit = 50 } = {}) {
  */
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The tenant's in-circulation assets that list `groupId` in their `allowedGroupIds` (SCRUM-204), by
+ * name, with just the fields the group's page needs. Retired assets are left out: nobody can request
+ * them whatever their restriction says. Matching an array field against one value needs no query
+ * operator, so `sanitizeFilter` leaves it alone.
+ * @param {string} orgId
+ * @param {string} groupId
+ * @returns {Promise<{ _id: import('mongoose').Types.ObjectId, name: string, allowedGroupIds: import('mongoose').Types.ObjectId[] }[]>}
+ */
+export async function listRestrictedTo(orgId, groupId) {
+  return Asset.find(
+    { orgId, retiredAt: null, allowedGroupIds: groupId },
+    { name: 1, allowedGroupIds: 1 },
+  )
+    .sort({ name: 1 })
+    .lean();
 }
 
 /**

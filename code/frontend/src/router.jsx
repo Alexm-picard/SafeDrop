@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members; /admin/settings (SCRUM-148)
+// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members; /admin/settings (SCRUM-148); /admin/groups and /admin/groups/:id (SCRUM-167)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket.
 
@@ -33,6 +33,8 @@ import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
+import { GroupDetailPage } from './pages/GroupDetailPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { MembersPage } from './pages/MembersPage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -78,6 +80,10 @@ export const routes = [
             children: [
               { path: 'admin', element: <AdminDashboardPage /> },
               { path: 'admin/users', element: <MembersPage /> },
+              // SCRUM-167: user groups, `groups:manage`. Under /admin beside Users, since a group is
+              // a set of members.
+              { path: 'admin/groups', element: <GroupsPage /> },
+              { path: 'admin/groups/:id', element: <GroupDetailPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
               // SCRUM-148: organisation-wide settings (the approval default), `org:settings`.
               { path: 'admin/settings', element: <OrgSettingsPage /> },

@@ -90,7 +90,8 @@ export const summary = {
 };
 /**
  * Three assets for the caller's org, matching what the real API serialises: an `id` rather than
- * `_id`, and `retiredAt` present (null unless a test overrides it).
+ * `_id`, and `retiredAt` present (null unless a test overrides it). None is restricted (SCRUM-150):
+ * `allowedGroupIds` and the resolved `allowedGroups` are empty unless a test overrides them.
  */
 export const assets = [
   {
@@ -101,6 +102,9 @@ export const assets = [
     description: 'Developer laptop, 16GB RAM',
     imageUrl: null,
     retiredAt: null,
+    allowedGroupIds: [],
+    allowedGroups: [],
+    restricted: false,
   },
   {
     id: '6aab2a45c6e457e01ac0971b',
@@ -110,8 +114,54 @@ export const assets = [
     description: '',
     imageUrl: null,
     retiredAt: null,
+    allowedGroupIds: [],
+    allowedGroups: [],
+    restricted: false,
   },
 ];
+/**
+ * The caller's org's user groups (SCRUM-149), as `GET /api/groups` serialises them. SCRUM-150
+ * restricts assets to these: the asset form offers them as a picker, and a restricted asset names
+ * them on its Restricted badge.
+ */
+export const groups = [
+  {
+    id: '6aab2a45c6e457e01ac09a01',
+    orgId: org.id,
+    name: 'Certified Drone Pilots',
+    description: 'Passed the drone safety course',
+    memberIds: [memberUser.id],
+    memberCount: 1,
+  },
+  {
+    id: '6aab2a45c6e457e01ac09a02',
+    orgId: org.id,
+    name: 'Heavy Machinery Certified',
+    description: '',
+    memberIds: [],
+    memberCount: 0,
+  },
+];
+
+/**
+ * A group as `GET /api/groups/:id` returns it: its fields plus `members`, each resolved through the
+ * same `publicUser()` shape `/api/users` uses (so `deactivatedAt` is present).
+ * @param {object} group one of `groups`
+ * @returns {object}
+ */
+export function groupWithMembers(group) {
+  const users = [adminUser, approverUser, memberUser];
+  return {
+    ...group,
+    members: group.memberIds
+      .map((id) => users.find((u) => u.id === id))
+      .filter(Boolean)
+      .map((u) => ({ ...u, deactivatedAt: null })),
+    // SCRUM-204: the equipment restricted to this group; none in the fixture unless a test says so.
+    restrictedAssets: [],
+  };
+}
+
 /** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */
 export const assetUnits = {
   [assets[0].id]: [
@@ -178,7 +228,15 @@ export function plainSearch(search) {
     .filter((a) => !a.retiredAt)
     .filter((a) => [a.name, a.description, a.category].some((f) => f.toLowerCase().includes(q)))
     .sort((x, y) => x.name.localeCompare(y.name))
-    .map(({ id, name, category, description }) => ({ assetId: id, name, category, description }));
+    // SCRUM-202: each match carries the asset's restriction fields, as the real search does.
+    .map(({ id, name, category, description, allowedGroups, restricted }) => ({
+      assetId: id,
+      name,
+      category,
+      description,
+      allowedGroups,
+      restricted,
+    }));
   return { matches, clarification: null, aiAssisted: false };
 }
 /**
@@ -573,7 +631,8 @@ export const handlers = [
     if (!asset) {
       return errorResponse(404, 'NOT_FOUND', 'Asset not found');
     }
-    return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [] });
+    // `eligible` is the caller's own answer (SCRUM-150); an unrestricted asset is open to everyone.
+    return HttpResponse.json({ ...asset, units: assetUnits[asset.id] ?? [], eligible: true });
   }),
   // The four asset write endpoints (SCRUM-122). These answer as the *finished* backend will, not as
   // it does today: the services behind them are still 501 stubs owned by SCRUM-134,
@@ -702,6 +761,53 @@ export const handlers = [
   http.post('*/api/requests/:id/return', ({ params }) => {
     const found = checkoutRequests.find((r) => r.id === params.id);
     return HttpResponse.json({ ...(found ?? {}), id: params.id, state: 'RETURNED' });
+  }),
+  // SCRUM-149's /api/groups, as the merged backend answers it (SCRUM-167 builds the screen). Add and
+  // remove return the group *without* resolved members, which is why the screen re-reads the group.
+  http.get('*/api/groups', () =>
+    HttpResponse.json({ items: groups, total: groups.length, page: 1, limit: 100 }),
+  ),
+  http.post('*/api/groups', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json(
+      {
+        group: {
+          id: '6aab2a45c6e457e01ac09a0f',
+          orgId: org.id,
+          description: '',
+          ...body,
+          memberIds: [],
+          memberCount: 0,
+        },
+      },
+      { status: 201 },
+    );
+  }),
+  http.get('*/api/groups/:id', ({ params }) => {
+    const group = groups.find((g) => g.id === params.id);
+    if (!group) {
+      return errorResponse(404, 'NOT_FOUND', 'Group not found');
+    }
+    return HttpResponse.json({ group: groupWithMembers(group) });
+  }),
+  http.patch('*/api/groups/:id', async ({ params, request }) => {
+    const group = groups.find((g) => g.id === params.id);
+    if (!group) {
+      return errorResponse(404, 'NOT_FOUND', 'Group not found');
+    }
+    return HttpResponse.json({ group: { ...group, ...(await request.json()) } });
+  }),
+  http.delete('*/api/groups/:id', () => new HttpResponse(null, { status: 204 })),
+  http.post('*/api/groups/:id/members', async ({ params, request }) => {
+    const group = groups.find((g) => g.id === params.id);
+    const { userId } = await request.json();
+    const memberIds = [...new Set([...group.memberIds, userId])];
+    return HttpResponse.json({ group: { ...group, memberIds, memberCount: memberIds.length } });
+  }),
+  http.delete('*/api/groups/:id/members/:userId', ({ params }) => {
+    const group = groups.find((g) => g.id === params.id);
+    const memberIds = group.memberIds.filter((id) => id !== params.userId);
+    return HttpResponse.json({ group: { ...group, memberIds, memberCount: memberIds.length } });
   }),
   http.get('*/api/users', ({ request }) =>
     HttpResponse.json(membersPage(new URL(request.url).searchParams)),

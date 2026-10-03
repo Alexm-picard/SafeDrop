@@ -9,12 +9,17 @@
  *
  * SCRUM-201: a search bar above the list. While it holds text, the matches replace the list; clearing
  * it brings the list straight back.
+ *
+ * SCRUM-150: a restricted asset stays in the list — and in search results (SCRUM-202) — with a
+ * Restricted badge naming its groups on hover, rather than being hidden, so a member learns what they
+ * would need instead of wondering where it went.
  */
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
+import { RestrictedBadge } from '../components/RestrictedBadge';
 import { useAssets, useAssetSearch } from '../hooks/useAssets';
 import { useAuth } from '../hooks/useAuth';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -96,7 +101,14 @@ export function CatalogPage() {
             {
               key: 'name',
               header: 'Name',
-              render: (a) => <Link to={ROUTES.asset(a.id)}>{a.name}</Link>,
+              // SCRUM-150: restricted assets stay listed, badged beside (not inside) the link so the
+              // link's name is still just the asset's.
+              render: (a) => (
+                <>
+                  <Link to={ROUTES.asset(a.id)}>{a.name}</Link>
+                  <RestrictedBadge allowedGroups={a.allowedGroups} restricted={a.restricted} />
+                </>
+              ),
             },
             { key: 'category', header: 'Category', render: (a) => a.category },
           ]}
@@ -132,7 +144,13 @@ function SearchResults({ q, status, data, error, reload }) {
     {
       key: 'name',
       header: 'Name',
-      render: (m) => <Link to={ROUTES.asset(m.assetId)}>{m.name}</Link>,
+      // SCRUM-202: the same Restricted badge as the list, beside the link.
+      render: (m) => (
+        <>
+          <Link to={ROUTES.asset(m.assetId)}>{m.name}</Link>
+          <RestrictedBadge allowedGroups={m.allowedGroups} restricted={m.restricted} />
+        </>
+      ),
     },
     { key: 'category', header: 'Category', render: (m) => m.category },
   ];

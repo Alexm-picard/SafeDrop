@@ -14,7 +14,14 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import App from '../../../src/App';
 import { render } from '@testing-library/react';
-import { adminUser, approverUser, assets, memberUser, meHandler } from '../../mocks/handlers';
+import {
+  adminUser,
+  approverUser,
+  assets,
+  groups,
+  memberUser,
+  meHandler,
+} from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { anonymousState, authenticatedState, renderApp } from '../../utils/render';
 describe('routes', () => {
@@ -31,6 +38,9 @@ describe('routes', () => {
     // Users has no ticket: the user-management screen is live (list, invite, change role), so it
     // renders real data rather than a placeholder. MembersPage.test.jsx covers it properly.
     ['/admin/users', 'Users', null],
+    // SCRUM-167: the Groups screen. GroupsPage.test.jsx and GroupDetailPage.test.jsx cover it.
+    ['/admin/groups', 'Groups', null],
+    [`/admin/groups/${groups[0].id}`, groups[0].name, null],
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
@@ -75,6 +85,15 @@ describe('routes', () => {
     const { router } = renderApp(route, authenticatedState(person));
     await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
     expect(await screen.findByRole('heading', { level: 1, name: 'Catalog' })).toBeInTheDocument();
+  });
+
+  // `groups:manage` is ORG_ADMIN-only; the API refuses the others regardless (SR-1).
+  it.each([
+    { role: 'MEMBER', person: memberUser },
+    { role: 'APPROVER', person: approverUser },
+  ])('a $role is bounced from /admin/groups to the catalog', async ({ person }) => {
+    const { router } = renderApp('/admin/groups', authenticatedState(person));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/catalog'));
   });
 
   it('a visitor with no session is sent to the login page from /admin/users', async () => {

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
-// AI-Assisted Areas: group CRUD, atomic membership changes, and the active-membership eligibility helper the restricted-equipment story will call (SCRUM-149)
+// AI-Assisted Areas: group CRUD, atomic membership changes, and the active-membership eligibility helper the restricted-equipment story will call (SCRUM-149); isEligible() over an asset's allowedGroupIds (SCRUM-150); restrictedAssets on getGroup (SCRUM-204)
 // Human Contributions: pending review
 // Notes: Written from the ticket's acceptance criteria (AT-1..AT-4) and design notes, including both answered open questions (groups-only scope; deactivated members excluded automatically at eligibility checks, not removed from the group). Must be reviewed and tested by the owning team member before merge.
 
@@ -28,9 +28,10 @@
  * in migrations/ is the real backstop against two concurrent creates racing to the same name.
  *
  * Exports: `createGroup`, `getGroup`, `listGroups`, `updateGroup`, `deleteGroup`, `addGroupMember`,
- * `removeGroupMember`, `isActiveMember`.
+ * `removeGroupMember`, `isActiveMember`, `isEligible`.
  */
 import { withTransaction } from '../config/db.js';
+import * as assetRepo from '../repositories/asset.repository.js';
 import * as groupRepo from '../repositories/group.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { AUDIT_ACTION, AUDIT_TARGET_TYPE } from '../utils/constants.js';
@@ -127,6 +128,10 @@ export async function createGroup(orgId, actor, { name, description = '' }, { re
  * managing the group, per the ticket's answer to its own second open question: deactivation is not
  * mirrored into the group's stored membership (nothing here removes or hides a deactivated member),
  * only enforced automatically where it matters, at the eligibility check (`isActiveMember`).
+ *
+ * **`restrictedAssets` (SCRUM-204)** names the in-circulation equipment restricted to this group, with
+ * `onlyGroup` set where it is the asset's only listed group — the assets deleting this group would
+ * leave requestable by nobody, which the page's delete confirmation names.
  * @param {string} orgId the caller's organisation, from the token
  * @param {string} groupId
  * @returns {Promise<{ group: object }>}
@@ -141,10 +146,16 @@ export async function getGroup(orgId, groupId) {
   // findByIds drops ids that no longer resolve to a user; order member rows the same way memberIds
   // lists them, rather than however the query happened to return them.
   const byId = new Map(members.map((user) => [String(user._id), publicUser(user)]));
+  const assets = await assetRepo.listRestrictedTo(orgId, groupId);
   return {
     group: {
       ...publicGroup(group),
       members: group.memberIds.map((id) => byId.get(String(id))).filter(Boolean),
+      restrictedAssets: assets.map((asset) => ({
+        id: String(asset._id),
+        name: asset.name,
+        onlyGroup: asset.allowedGroupIds.length === 1,
+      })),
     },
   };
 }
@@ -397,9 +408,39 @@ export async function removeGroupMember(orgId, actor, groupId, userId, { request
  * @returns {Promise<boolean>} true only when the group exists, contains this user, and the user is not deactivated
  */
 export async function isActiveMember(orgId, groupId, userId, { session } = {}) {
-  const [inGroup, user] = await Promise.all([
-    groupRepo.isMember(orgId, groupId, userId, { session }),
-    userRepo.findById(orgId, userId, { session }),
-  ]);
+  // Sequential, not Promise.all: operations sharing one transaction session must not run in parallel.
+  const inGroup = await groupRepo.isMember(orgId, groupId, userId, { session });
+  const user = await userRepo.findById(orgId, userId, { session });
   return inGroup && Boolean(user) && !user.deactivatedAt;
+}
+
+/**
+ * May `userId` request this asset right now? (SCRUM-150, SCRUM-173)
+ *
+ * The single place the restricted-equipment rule lives, called by `checkout.service.js` at submit and
+ * again at approval (AT-3), and by `asset.service.js` to tell the detail page whether to offer the
+ * Request button (AT-4). An asset with no `allowedGroupIds` is open to everyone. Otherwise the user
+ * must be an active member — listed, and not deactivated — of **any one** of the groups, so an asset
+ * can accept both a narrow certification and a broad one that covers it.
+ *
+ * Roles grant nothing here: an ORG_ADMIN or APPROVER outside every group is ineligible like anyone
+ * else (the ticket's second open question — eligibility is explicit). It fails closed: a list whose
+ * groups have all been deleted matches nobody, rather than falling back to open.
+ * @param {string} orgId the organisation the asset, its groups and the user all belong to
+ * @param {string} userId
+ * @param {{ allowedGroupIds?: unknown[] }} asset the asset document (or any object carrying the field)
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<boolean>}
+ */
+export async function isEligible(orgId, userId, asset, { session } = {}) {
+  const groupIds = (asset.allowedGroupIds ?? []).map(String);
+  if (groupIds.length === 0) {
+    return true;
+  }
+  const inAnyGroup = await groupRepo.isMemberOfAny(orgId, groupIds, userId, { session });
+  if (!inAnyGroup) {
+    return false;
+  }
+  const user = await userRepo.findById(orgId, userId, { session });
+  return Boolean(user) && !user.deactivatedAt;
 }

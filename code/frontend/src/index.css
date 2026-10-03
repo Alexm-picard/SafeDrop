@@ -1,7 +1,7 @@
 /* AI-USAGE SUMMARY
    Tools: Claude Code
    Overall AI Contribution: ~90% (skeleton generated from team design documents)
-   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen
+   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150)
    Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
    Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. */
 
@@ -676,11 +676,33 @@ th {
   align-items: baseline;
   margin-bottom: 0.75rem;
 }
-.radio-option input[type='radio'] {
+.radio-option input[type='radio'],
+.radio-option input[type='checkbox'] {
   width: auto;
   padding: 0;
 }
 .radio-option .hint {
   grid-column: 2;
   margin: 0.125rem 0 0;
+}
+
+/* SCRUM-150: the Restricted badge on a restricted asset, beside its name in the catalogue and under
+   the heading on its page. Shaped like the due badge; the word carries the meaning, the colour only
+   repeats it (WCAG 1.4.1). */
+.restricted-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid transparent;
+}
+@media (forced-colors: active) {
+  .restricted-badge {
+    border-color: currentColor;
+  }
 }

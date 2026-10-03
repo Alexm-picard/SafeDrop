@@ -7,8 +7,9 @@
  * asset.service.js.
  *
  * `req.id` travels with every write so the resulting audit event can be traced back to the request
- * that caused it. The reads take no actor and no `req.id`: looking at the catalogue is not an
- * auditable event.
+ * that caused it. The reads take no `req.id`: looking at the catalogue is not an auditable event.
+ * The one read that takes `req.auth` is `get`, and only to report whether the caller may request a
+ * restricted asset (SCRUM-150).
  */
 import * as assetService from '../services/asset.service.js';
 import { searchAssets } from '../services/ai/assetSearch.service.js';
@@ -34,12 +35,12 @@ export async function search(req, res) {
 }
 
 /**
- * `GET /api/assets/:id` — read one asset with its units.
+ * `GET /api/assets/:id` — read one asset with its units, and whether the caller may request it.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
 export async function get(req, res) {
-  res.status(200).json(await assetService.get(req.orgId, req.params.id));
+  res.status(200).json(await assetService.get(req.orgId, req.params.id, req.auth));
 }
 
 /**

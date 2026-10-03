@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: small display formatters
+// AI-Assisted Areas: small display formatters; restrictionNote for restricted equipment (SCRUM-150, SCRUM-203)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -94,4 +94,26 @@ export function humanize(value) {
   return words
     .map((word, i) => (i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word))
     .join(' ');
+}
+/**
+ * "Only members of A, B or C can request this" — who may request a restricted asset (SCRUM-150), with
+ * the groups joined the way a person would say them, so it reads naturally for one group or several.
+ *
+ * An asset can be restricted with no names left to show, when every group it listed was deleted
+ * (SCRUM-203); nobody can request it then, and passing `restricted: true` says so instead of
+ * returning nothing.
+ * @param {{ name: string }[]} allowedGroups
+ * @param {{ restricted?: boolean }} [options]
+ * @returns {string} the sentence, without a full stop; `''` for an unrestricted asset
+ */
+export function restrictionNote(allowedGroups, { restricted = false } = {}) {
+  const names = (allowedGroups ?? []).map((g) => g.name);
+  if (names.length === 0) {
+    return restricted
+      ? 'It is restricted to groups that no longer exist, so nobody can request it'
+      : '';
+  }
+  const who =
+    names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+  return `Only members of ${who} can request this`;
 }

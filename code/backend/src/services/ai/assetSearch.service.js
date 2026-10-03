@@ -9,6 +9,10 @@
  * and passes them to the model as data. The model only ranks; it never has access to the database
  * (prompts/asset-search.md, "Why the agent is not connected to MongoDB").
  *
+ * Every match carries `allowedGroups` and `restricted` (SCRUM-202), so search results can show the
+ * Restricted badge like the catalogue list. They are added after the search and never sent to the
+ * model: the prompt contract stays exactly as it was.
+ *
  * Exports: `searchAssets(orgId, query)`.
  */
 import * as assetRepo from '../../repositories/asset.repository.js';
@@ -16,6 +20,7 @@ import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
 import { ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import { restrictionsOf } from '../asset.service.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
 
 const log = logger.child({ component: 'asset-search' });
@@ -89,10 +94,18 @@ export async function searchAssets(orgId, query) {
   // hallucinated id, or another tenant's id smuggled in by injection — is dropped, not looked up:
   // a lookup would still accept an id from this org that was never offered to the model.
   const byId = new Map(candidates.map((asset) => [String(asset._id), asset]));
+  const kept = answer.matches.filter(({ assetId }) => byId.has(assetId));
+  const restrictions = await restrictionsOf(
+    orgId,
+    kept.map(({ assetId }) => byId.get(assetId)),
+  );
   return {
-    matches: answer.matches
-      .filter(({ assetId }) => byId.has(assetId))
-      .map(({ assetId, reason }) => ({ assetId, ...describe(byId.get(assetId)), reason })),
+    matches: kept.map(({ assetId, reason }, i) => ({
+      assetId,
+      ...describe(byId.get(assetId)),
+      reason,
+      ...restrictions[i],
+    })),
     clarification: answer.clarification,
     aiAssisted: true,
   };
@@ -124,8 +137,13 @@ async function pickCandidates(orgId, query) {
 /** The catalogue fallback: a case-insensitive match on name, description and category. */
 async function plainSearch(orgId, query) {
   const assets = await assetRepo.search(orgId, query, { limit: PLAIN_SEARCH_LIMIT });
+  const restrictions = await restrictionsOf(orgId, assets);
   return {
-    matches: assets.map((asset) => ({ assetId: String(asset._id), ...describe(asset) })),
+    matches: assets.map((asset, i) => ({
+      assetId: String(asset._id),
+      ...describe(asset),
+      ...restrictions[i],
+    })),
     clarification: null,
     aiAssisted: false,
   };

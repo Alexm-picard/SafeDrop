@@ -56,6 +56,7 @@ function foundryReply(answer) {
 const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
 const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
+const groupRepo = await import('../../../src/repositories/group.repository.js');
 const { searchAssets } = await import('../../../src/services/ai/assetSearch.service.js');
 const { ServiceUnavailableError } = await import('../../../src/utils/errors.js');
 
@@ -371,5 +372,60 @@ describe('SCRUM-103 AC4: unusable model output falls back to plain search', () =
     const logged = logLines.join('\n');
     expect(logged).not.toContain('Dana');
     expect(logged).not.toContain('Sorry');
+  });
+});
+
+/**
+ * SCRUM-202: search results carry the same restriction fields as the catalogue list, so the results
+ * can show the Restricted badge. They are added after the search, never to what is sent to the model:
+ * group names are the organisation's business, not the prompt's.
+ */
+describe('SCRUM-202: restricted assets in search results', () => {
+  /** A drone restricted to a "Certified Drone Pilots" group, and an open tripod. */
+  async function seedRestricted() {
+    const group = await groupRepo.create(ORG, {
+      name: 'Certified Drone Pilots',
+      nameLower: 'certified drone pilots',
+    });
+    const drone = await assetRepo.create(ORG, {
+      name: 'DJI Mavic 3 Drone',
+      category: 'Drone',
+      allowedGroupIds: [String(group._id)],
+    });
+    const tripod = await assetRepo.create(ORG, { name: 'Drone Landing Tripod', category: 'Drone' });
+    return { group, drone, tripod };
+  }
+
+  it('plain search: names a restricted match’s groups, and leaves an open one unrestricted', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(false);
+    const { group, drone, tripod } = await seedRestricted();
+
+    const { matches } = await searchAssets(ORG, 'drone');
+
+    const byId = Object.fromEntries(matches.map((m) => [m.assetId, m]));
+    expect(byId[drone.id]).toMatchObject({
+      restricted: true,
+      allowedGroups: [{ id: String(group._id), name: 'Certified Drone Pilots' }],
+    });
+    expect(byId[tripod.id]).toMatchObject({ restricted: false, allowedGroups: [] });
+  });
+
+  it('AI search: names a restricted match’s groups, without ever sending them to the model', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    const { group, drone } = await seedRestricted();
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({ matches: [{ assetId: drone.id, reason: 'A drone.' }], clarification: null }),
+    );
+
+    const { matches } = await searchAssets(ORG, 'something that flies');
+
+    expect(matches[0]).toMatchObject({
+      assetId: drone.id,
+      reason: 'A drone.',
+      restricted: true,
+      allowedGroups: [{ id: String(group._id), name: 'Certified Drone Pilots' }],
+    });
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    expect(body.input).not.toMatch(/Certified Drone Pilots|allowedGroup|restricted/);
   });
 });

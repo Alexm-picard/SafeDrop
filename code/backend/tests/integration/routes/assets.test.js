@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: GET /api/assets and GET /api/assets/:id — pagination, includeRetired, and the cross-tenant 404 (SR-2)
+// AI-Assisted Areas: GET /api/assets and GET /api/assets/:id — pagination, includeRetired, and the cross-tenant 404 (SR-2) ; allowedGroupIds, allowedGroups and eligible (SCRUM-150)
 // Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -27,6 +27,16 @@ let seed;
 beforeEach(async () => {
   seed = await seedTwoOrgs();
 });
+
+/** A new group in `org`, created by that org's admin. */
+async function newGroup(org, name) {
+  const { group } = await groupService.createGroup(
+    org.orgId,
+    { userId: org.admin._id, role: 'ORG_ADMIN' },
+    { name },
+  );
+  return group;
+}
 
 describe('GET /api/assets (SCRUM-115)', () => {
   it('lists the caller org’s assets, paginated, and never another org’s', async () => {
@@ -86,6 +96,19 @@ describe('GET /api/assets (SCRUM-115)', () => {
     const res = await request(app).get('/api/assets');
     expect(res.status).toBe(401);
   });
+
+  it('names each restricted asset’s allowed groups, for the catalogue badge (SCRUM-150)', async () => {
+    const pilots = await newGroup(seed.a, 'Certified Drone Pilots');
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+
+    const res = await request(app).get('/api/assets').set('Cookie', accessCookieFor(seed.a.member));
+
+    const byName = Object.fromEntries(res.body.items.map((a) => [a.name, a.allowedGroups]));
+    expect(byName['Laptop a']).toEqual([{ id: pilots.id, name: 'Certified Drone Pilots' }]);
+    expect(byName['Camera A']).toEqual([]);
+    const restricted = Object.fromEntries(res.body.items.map((a) => [a.name, a.restricted]));
+    expect(restricted).toMatchObject({ 'Laptop a': true, 'Camera A': false });
+  });
 });
 
 describe('GET /api/assets/:id (SCRUM-115)', () => {
@@ -123,6 +146,77 @@ describe('GET /api/assets/:id (SCRUM-115)', () => {
       .set('Cookie', accessCookieFor(seed.a.member));
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // SCRUM-150 (AT-4): the detail page names the groups and says whether the caller may request it,
+  // so the Request button can be disabled with a reason instead of failing with a 403.
+  it('names the allowed groups and reports the caller as not eligible when outside them', async () => {
+    const pilots = await newGroup(seed.a, 'Certified Drone Pilots');
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+
+    const res = await request(app)
+      .get(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.member));
+
+    expect(res.status).toBe(200);
+    expect(res.body.allowedGroups).toEqual([{ id: pilots.id, name: 'Certified Drone Pilots' }]);
+    expect(res.body.eligible).toBe(false);
+  });
+
+  it('reports the caller as eligible once they are in one of the allowed groups', async () => {
+    const pilots = await newGroup(seed.a, 'Certified Drone Pilots');
+    await groupService.addGroupMember(
+      seed.a.orgId,
+      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
+      pilots.id,
+      String(seed.a.member._id),
+    );
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+
+    const res = await request(app)
+      .get(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.member));
+
+    expect(res.body.eligible).toBe(true);
+  });
+
+  // SCRUM-203: deleting every group an asset lists must not make it look open — eligibility already
+  // fails closed, and the response has to say so too.
+  it('stays restricted, and nobody eligible, once every allowed group has been deleted', async () => {
+    const pilots = await newGroup(seed.a, 'Certified Drone Pilots');
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+    await groupService.deleteGroup(
+      seed.a.orgId,
+      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
+      pilots.id,
+    );
+
+    const res = await request(app)
+      .get(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.member));
+
+    expect(res.body.restricted).toBe(true);
+    expect(res.body.allowedGroups).toEqual([]);
+    expect(res.body.eligible).toBe(false);
+  });
+
+  it('an unrestricted asset has no allowed groups and everyone is eligible', async () => {
+    const res = await request(app)
+      .get(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.body.allowedGroups).toEqual([]);
+    expect(res.body.restricted).toBe(false);
+    expect(res.body.eligible).toBe(true);
+  });
+
+  it('an admin is not eligible by role alone — eligibility is explicit (open question 2)', async () => {
+    const pilots = await newGroup(seed.a, 'Certified Drone Pilots');
+    await assetRepo.update(seed.a.orgId, seed.a.asset._id, { allowedGroupIds: [pilots.id] });
+
+    const res = await request(app)
+      .get(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.body.eligible).toBe(false);
   });
 });
 
@@ -183,28 +277,36 @@ describe('POST /api/assets (SCRUM-134)', () => {
     expect(res.status).toBe(403);
   });
 
-  // SCRUM-149: restricted equipment. requiredGroupId gates who may later submit a request for the
-  // asset (checkout.service.js); here it only has to name a real group in this organisation.
-  it('creates a restricted asset when requiredGroupId names a real group in this org', async () => {
-    const { group } = await groupService.createGroup(
-      seed.a.orgId,
-      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
-      { name: 'Drone Pilots' },
-    );
+  // SCRUM-150: restricted equipment. allowedGroupIds gates who may later submit a request for the
+  // asset (checkout.service.js); here every id only has to name a real group in this organisation.
+  it('creates an asset restricted to several groups — any one of them grants access', async () => {
+    const forklift = await newGroup(seed.a, 'Forklift Certified');
+    const heavy = await newGroup(seed.a, 'Heavy Machinery Certified');
     const res = await request(app)
       .post('/api/assets')
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ name: 'Drone', category: 'drone', requiredGroupId: group.id });
+      .send({ name: 'Forklift', category: 'machinery', allowedGroupIds: [forklift.id, heavy.id] });
 
     expect(res.status).toBe(201);
-    expect(res.body.requiredGroupId).toBe(group.id);
+    expect(res.body.allowedGroupIds).toEqual([forklift.id, heavy.id]);
   });
 
-  it('rejects a requiredGroupId that names no group in this organisation', async () => {
+  it('stores a group listed twice only once', async () => {
+    const pilots = await newGroup(seed.a, 'Drone Pilots');
     const res = await request(app)
       .post('/api/assets')
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ name: 'Drone', category: 'drone', requiredGroupId: '0'.repeat(24) });
+      .send({ name: 'Drone', category: 'drone', allowedGroupIds: [pilots.id, pilots.id] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.allowedGroupIds).toEqual([pilots.id]);
+  });
+
+  it('rejects an allowedGroupIds entry that names no group in this organisation', async () => {
+    const res = await request(app)
+      .post('/api/assets')
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({ name: 'Drone', category: 'drone', allowedGroupIds: ['0'.repeat(24)] });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -212,28 +314,33 @@ describe('POST /api/assets (SCRUM-134)', () => {
     expect(created.items.some((a) => a.name === 'Drone')).toBe(false);
   });
 
-  it('rejects a requiredGroupId belonging to another organisation (SR-2)', async () => {
-    const { group } = await groupService.createGroup(
-      seed.b.orgId,
-      { userId: seed.b.admin._id, role: 'ORG_ADMIN' },
-      { name: 'Drone Pilots' },
-    );
+  it('AT-5: rejects a group belonging to another organisation (SR-2)', async () => {
+    const theirs = await newGroup(seed.b, 'Drone Pilots');
     const res = await request(app)
       .post('/api/assets')
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ name: 'Drone', category: 'drone', requiredGroupId: group.id });
+      .send({ name: 'Drone', category: 'drone', allowedGroupIds: [theirs.id] });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('defaults requiredGroupId to null — open to the whole organisation', async () => {
+  it('defaults allowedGroupIds to [] — open to the whole organisation', async () => {
     const res = await request(app)
       .post('/api/assets')
       .set('Cookie', accessCookieFor(seed.a.admin))
       .send({ name: 'Open Mic Stand', category: 'audio' });
     expect(res.status).toBe(201);
-    expect(res.body.requiredGroupId).toBeNull();
+    expect(res.body.allowedGroupIds).toEqual([]);
+  });
+
+  it('no longer accepts the single requiredGroupId field it replaced', async () => {
+    const pilots = await newGroup(seed.a, 'Drone Pilots');
+    const res = await request(app)
+      .post('/api/assets')
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({ name: 'Drone', category: 'drone', requiredGroupId: pilots.id });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -282,51 +389,62 @@ describe('PATCH /api/assets/:id (SCRUM-134)', () => {
     expect(events.total).toBe(0);
   });
 
-  it('restricts an asset to a real group in this org (SCRUM-149)', async () => {
-    const { group } = await groupService.createGroup(
-      seed.a.orgId,
-      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
-      { name: 'Drone Pilots' },
-    );
+  // SCRUM-150 (AT-5): restricting an asset to one or more groups of this organisation.
+  it('restricts an asset to groups in this org', async () => {
+    const pilots = await newGroup(seed.a, 'Drone Pilots');
     const res = await request(app)
       .patch(`/api/assets/${seed.a.asset._id}`)
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ requiredGroupId: group.id });
+      .send({ allowedGroupIds: [pilots.id] });
 
     expect(res.status).toBe(200);
-    expect(res.body.requiredGroupId).toBe(group.id);
+    expect(res.body.allowedGroupIds).toEqual([pilots.id]);
   });
 
-  it('rejects patching requiredGroupId to a group that does not exist in this org', async () => {
+  it('AT-5: refuses a group from another organisation and leaves the asset unchanged', async () => {
+    const theirs = await newGroup(seed.b, 'Drone Pilots');
     const res = await request(app)
       .patch(`/api/assets/${seed.a.asset._id}`)
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ requiredGroupId: '0'.repeat(24) });
+      .send({ allowedGroupIds: [theirs.id] });
 
+    // 400 rather than the ticket's 404: the team kept the validation error (2026-10-03).
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    // Keyed by `path`, like Zod's own errors, so the form can show it under the group picker.
+    expect(res.body.error.details).toEqual([expect.objectContaining({ path: 'allowedGroupIds' })]);
     const unchanged = await assetRepo.findById(seed.a.orgId, seed.a.asset._id);
-    expect(unchanged.requiredGroupId).toBeNull();
+    expect(unchanged.allowedGroupIds).toEqual([]);
+    const events = await auditRepo.query(seed.a.orgId, { action: 'ASSET_UPDATED' });
+    expect(events.total).toBe(0);
   });
 
-  it('clears a restriction by patching requiredGroupId back to null, with no group lookup needed', async () => {
-    const { group } = await groupService.createGroup(
-      seed.a.orgId,
-      { userId: seed.a.admin._id, role: 'ORG_ADMIN' },
-      { name: 'Drone Pilots' },
-    );
+  it('refuses the whole list when only one of its groups is unknown', async () => {
+    const pilots = await newGroup(seed.a, 'Drone Pilots');
+    const res = await request(app)
+      .patch(`/api/assets/${seed.a.asset._id}`)
+      .set('Cookie', accessCookieFor(seed.a.admin))
+      .send({ allowedGroupIds: [pilots.id, '0'.repeat(24)] });
+
+    expect(res.status).toBe(400);
+    const unchanged = await assetRepo.findById(seed.a.orgId, seed.a.asset._id);
+    expect(unchanged.allowedGroupIds).toEqual([]);
+  });
+
+  it('clears a restriction with an empty list, with no group lookup needed', async () => {
+    const pilots = await newGroup(seed.a, 'Drone Pilots');
     await request(app)
       .patch(`/api/assets/${seed.a.asset._id}`)
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ requiredGroupId: group.id });
+      .send({ allowedGroupIds: [pilots.id] });
 
     const res = await request(app)
       .patch(`/api/assets/${seed.a.asset._id}`)
       .set('Cookie', accessCookieFor(seed.a.admin))
-      .send({ requiredGroupId: null });
+      .send({ allowedGroupIds: [] });
 
     expect(res.status).toBe(200);
-    expect(res.body.requiredGroupId).toBeNull();
+    expect(res.body.allowedGroupIds).toEqual([]);
   });
 });
 
