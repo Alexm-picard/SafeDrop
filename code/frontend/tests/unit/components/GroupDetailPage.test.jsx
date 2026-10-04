@@ -258,3 +258,132 @@ describe('GroupDetailPage', () => {
     });
   });
 });
+
+describe('GroupDetailPage failures and paging (UI rework)', () => {
+  it('shows a failed save that is not about one field as a message on the form', async () => {
+    server.use(
+      http.patch('*/api/groups/:id', () =>
+        errorResponse(500, 'INTERNAL_ERROR', 'Something went wrong'),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    const form = screen.getByRole('form', { name: 'Edit details' });
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Something went wrong');
+  });
+
+  it('closes the edit form once the change is saved', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Group updated');
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+  });
+
+  it('says so in the add bar when the member list cannot be loaded', async () => {
+    server.use(
+      http.get('*/api/users', () => errorResponse(500, 'INTERNAL_ERROR', 'Something went wrong')),
+    );
+    renderDetail();
+    expect(
+      await screen.findByText(/could not load the organization’s members/i),
+    ).toBeInTheDocument();
+  });
+
+  it('says the member list is loading until it arrives', async () => {
+    server.use(http.get('*/api/users', () => new Promise(() => {})));
+    renderDetail();
+    expect(await screen.findByText('Loading members…')).toBeInTheDocument();
+  });
+
+  it('says so when everyone active is already in the group', async () => {
+    server.use(
+      http.get('*/api/groups/:id', () =>
+        HttpResponse.json({
+          group: groupWithMembers({
+            ...group,
+            memberIds: [adminUser.id, approverUser.id, memberUser.id],
+          }),
+        }),
+      ),
+    );
+    renderDetail();
+    expect(await screen.findByText(/everyone active in the organization/i)).toBeInTheDocument();
+  });
+
+  it('reports a failed add, remove or delete as an alert that can be dismissed', async () => {
+    server.use(
+      http.post('*/api/groups/:id/members', () =>
+        errorResponse(409, 'CONFLICT', 'Could not add them'),
+      ),
+      http.delete('*/api/groups/:id/members/:userId', () =>
+        errorResponse(409, 'CONFLICT', 'Could not remove them'),
+      ),
+      http.delete('*/api/groups/:id', () => errorResponse(409, 'CONFLICT', 'Could not delete it')),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.selectOptions(await screen.findByLabelText('Member to add'), approverUser.id);
+    await user.click(screen.getByRole('button', { name: 'Add to group' }));
+    expect(await screen.findByText('Could not add them')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: `Remove ${memberUser.name} from the group` }),
+    );
+    expect(await screen.findByText('Could not remove them')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Delete group' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete it' }));
+    expect(await screen.findByText('Could not delete it')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('Could not delete it')).not.toBeInTheDocument();
+  });
+
+  it('pages the members five at a time and the restricted equipment ten at a time', async () => {
+    const people = Array.from({ length: 7 }, (_, i) => ({
+      ...memberUser,
+      id: `person-${i}`,
+      name: `Person ${i}`,
+      email: `person${i}@acme.test`,
+      deactivatedAt: null,
+    }));
+    const equipment = Array.from({ length: 12 }, (_, i) => ({
+      id: `asset-${i}`,
+      name: `Drone ${i}`,
+      onlyGroup: i === 0,
+    }));
+    server.use(
+      http.get('*/api/groups/:id', () =>
+        HttpResponse.json({
+          group: {
+            ...group,
+            memberIds: people.map((p) => p.id),
+            members: people,
+            restrictedAssets: equipment,
+          },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail();
+
+    const table = await screen.findByRole('table', { name: /members/i });
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(5);
+    const memberPages = screen.getByRole('navigation', { name: 'Members of this group pages' });
+    await user.click(within(memberPages).getByRole('button', { name: 'Next' }));
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2);
+
+    const list = screen.getByRole('list', { name: /equipment restricted to this group/i });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(10);
+    const equipmentPages = screen.getByRole('navigation', { name: 'Restricted equipment pages' });
+    await user.click(within(equipmentPages).getByRole('button', { name: 'Next' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    await user.click(within(equipmentPages).getByRole('button', { name: 'Previous' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(10);
+  });
+});

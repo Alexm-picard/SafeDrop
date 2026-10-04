@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100%
-// AI-Assisted Areas: DataTable client-side paging and the usePagination clamp (UI rework)
+// AI-Assisted Areas: DataTable client-side paging and the usePagination clamp; Pagination and StatusBadge (UI rework)
 // Human Contributions: pending team review
 
 /**
@@ -11,6 +11,7 @@ import { act, render, renderHook, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { DataTable } from '../../../src/components/DataTable';
+import { StatusBadge } from '../../../src/components/StatusBadge';
 import { usePagination } from '../../../src/hooks/usePagination';
 
 const rows = Array.from({ length: 23 }, (_, i) => ({ id: String(i + 1), name: `Unit ${i + 1}` }));
@@ -69,5 +70,42 @@ describe('usePagination', () => {
     rerender({ items: rows.slice(0, 15) });
     expect(result.current.page).toBe(2);
     expect(result.current.pageItems).toHaveLength(5);
+  });
+});
+
+describe('Pagination', () => {
+  it('steps back with Previous', async () => {
+    const user = userEvent.setup();
+    render(
+      <DataTable
+        caption="Units"
+        columns={columns}
+        rows={rows}
+        getRowId={(r) => r.id}
+        pageSize={10}
+      />,
+    );
+    const nav = screen.getByRole('navigation', { name: 'Units pages' });
+    await user.click(within(nav).getByRole('button', { name: 'Next' }));
+    await user.click(within(nav).getByRole('button', { name: 'Previous' }));
+    expect(nav).toHaveTextContent('Page 1 of 3');
+    expect(screen.getByText('Unit 1')).toBeInTheDocument();
+  });
+});
+
+describe('StatusBadge', () => {
+  it('tints by kind, and falls back to neutral for a status it does not know', () => {
+    render(
+      <>
+        <StatusBadge value="AVAILABLE" kind="unit" />
+        <StatusBadge value="OVERDUE" />
+        <StatusBadge value="SOMETHING_NEW" />
+        <StatusBadge value="APPROVED">Approved (automatic)</StatusBadge>
+      </>,
+    );
+    expect(screen.getByText('Available')).toHaveAttribute('data-tone', 'ok');
+    expect(screen.getByText('Overdue')).toHaveAttribute('data-tone', 'danger');
+    expect(screen.getByText('Something new')).toHaveAttribute('data-tone', 'neutral');
+    expect(screen.getByText('Approved (automatic)')).toHaveAttribute('data-tone', 'info');
   });
 });

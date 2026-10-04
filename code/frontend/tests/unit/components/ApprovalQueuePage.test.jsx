@@ -169,3 +169,65 @@ describe('ApprovalQueuePage', () => {
     expect(fireEvent.submit(form)).toBe(false);
   });
 });
+
+describe('ApprovalQueuePage rows and labels (UI rework)', () => {
+  /** Serve exactly `items` as the queue, whatever the filter. */
+  const serve = (items) =>
+    server.use(
+      http.get('*/api/requests', () =>
+        HttpResponse.json({ items, total: items.length, page: 1, limit: 25 }),
+      ),
+    );
+  const base = requestsPage(new URLSearchParams()).items[0];
+
+  it('says "Unknown" rather than leaving a blank when the requester or asset no longer resolves', async () => {
+    serve([{ ...base, requester: null, asset: null, unit: null }]);
+    renderWithAuth(<ApprovalQueuePage />, { user: approverUser });
+    const table = await screen.findByRole('table', { name: 'Requests' });
+    expect(within(table).getByText('Unknown user')).toBeInTheDocument();
+    expect(within(table).getByText('Unknown asset')).toBeInTheDocument();
+    expect(within(table).queryByText(/^Unit/)).not.toBeInTheDocument();
+  });
+
+  it('marks an auto-approved request as automatic', async () => {
+    serve([{ ...base, state: 'APPROVED', autoApproved: true }]);
+    renderWithAuth(<ApprovalQueuePage />, { user: approverUser });
+    const table = await screen.findByRole('table', { name: 'Requests' });
+    expect(within(table).getByText('Approved (automatic)')).toBeInTheDocument();
+  });
+
+  it('counts the rows itself when the response has no total', async () => {
+    server.use(
+      http.get('*/api/requests', () =>
+        HttpResponse.json({ items: [base, { ...base, id: 'other' }], page: 1, limit: 25 }),
+      ),
+    );
+    renderWithAuth(<ApprovalQueuePage />, { user: approverUser });
+    expect(await screen.findByText('2 requests')).toBeInTheDocument();
+  });
+
+  it('heads the list with the state name for a state that has a button, and "All requests" for All', async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ApprovalQueuePage />, { user: approverUser, route: '/?state=RETURNED' });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Returned' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'All requests' }),
+    ).toBeInTheDocument();
+  });
+
+  it('treats an empty ?state= as All', async () => {
+    const seen = [];
+    server.use(
+      http.get('*/api/requests', ({ request }) => {
+        const search = new URL(request.url).searchParams;
+        seen.push(search);
+        return HttpResponse.json(requestsPage(search));
+      }),
+    );
+    renderWithAuth(<ApprovalQueuePage />, { user: approverUser, route: '/?state=' });
+    await screen.findByRole('table', { name: 'Requests' });
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(seen[0].has('state')).toBe(false);
+  });
+});

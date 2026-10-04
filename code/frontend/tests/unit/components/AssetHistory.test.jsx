@@ -166,3 +166,15 @@ describe('AssetHistory states (SCRUM-41)', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
   });
 });
+
+describe('AssetHistory paging back (UI rework)', () => {
+  it('steps back to the first page with Previous', async () => {
+    const user = userEvent.setup();
+    renderHistory();
+    await screen.findByRole('list', { name: /asset history/i });
+    await user.click(screen.getByRole('button', { name: /next/i }));
+    expect(await screen.findByText(/page 2 of/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /previous/i }));
+    expect(await screen.findByText(/page 1 of/i)).toBeInTheDocument();
+  });
+});

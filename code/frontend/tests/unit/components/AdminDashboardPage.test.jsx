@@ -162,3 +162,20 @@ describe('AdminDashboardPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/permission/);
   });
 });
+
+describe('AdminDashboardPage tones (UI rework)', () => {
+  it('highlights pending requests only while there are some', async () => {
+    const { unmount } = renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+    const busy = await screen.findByText('Pending requests');
+    expect(busy.closest('.stat')).toHaveClass('stat--attention');
+    unmount();
+    server.use(
+      http.get('*/api/dashboard/summary', () =>
+        HttpResponse.json({ ...summary, pendingRequests: 0 }),
+      ),
+    );
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+    const calm = await screen.findByText('Pending requests');
+    expect(calm.closest('.stat')).not.toHaveClass('stat--attention');
+  });
+});
