@@ -27,11 +27,18 @@ const allowed = [
   ['PENDING', 'CANCELLED', UNIT_STATUS.AVAILABLE],
   ['APPROVED', 'CANCELLED', UNIT_STATUS.AVAILABLE],
   ['APPROVED', 'CHECKED_OUT', UNIT_STATUS.OUT],
+  // SCRUM-205: an uncollected approval expires and frees its unit.
+  ['APPROVED', 'EXPIRED', UNIT_STATUS.AVAILABLE],
   ['CHECKED_OUT', 'RETURNED', UNIT_STATUS.AVAILABLE],
   ['CHECKED_OUT', 'OVERDUE', null],
   ['CHECKED_OUT', 'LOST', UNIT_STATUS.RETIRED],
+  // SCRUM-205: starting a return leaves the unit OUT; only a confirmation frees it.
+  ['CHECKED_OUT', 'RETURN_PENDING', null],
   ['OVERDUE', 'RETURNED', UNIT_STATUS.AVAILABLE],
   ['OVERDUE', 'LOST', UNIT_STATUS.RETIRED],
+  ['OVERDUE', 'RETURN_PENDING', null],
+  ['RETURN_PENDING', 'RETURNED', UNIT_STATUS.AVAILABLE],
+  ['RETURN_PENDING', 'CHECKED_OUT', null],
 ];
 const allowedKeys = new Set(allowed.map(([f, t]) => `${f}→${t}`));
 
@@ -70,6 +77,7 @@ describe('checkout state machine (F4)', () => {
     expect([...checkout.TERMINAL_STATES].sort()).toEqual([
       'CANCELLED',
       'DENIED',
+      'EXPIRED',
       'LOST',
       'RETURNED',
     ]);

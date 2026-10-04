@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: checkout request handlers (Sprint 1 stubs → 501)
+// AI-Assisted Areas: checkout request handlers (Sprint 1 stubs → 501); SCRUM-205 initiateReturn, rejectReturn, expireApprovals
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -91,7 +91,8 @@ export async function cancel(req, res) {
 }
 
 /**
- * `POST /api/requests/:id/checkout` — record the handover of the item.
+ * `POST /api/requests/:id/checkout` — record the handover of the item, by the borrower or a handoff
+ * holder (SCRUM-205).
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  */
@@ -120,6 +121,36 @@ export async function returnUnit(req, res) {
 }
 
 /**
+ * `POST /api/requests/:id/initiate-return` — the borrower starts a return and reports the condition
+ * (SCRUM-205). The unit stays out until someone else confirms it.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function initiateReturn(req, res) {
+  res.status(200).json(
+    await checkoutService.initiateReturn(req.orgId, req.auth, req.params.id, {
+      ...req.body,
+      requestId: req.id,
+    }),
+  );
+}
+
+/**
+ * `POST /api/requests/:id/reject-return` — refuse a pending return that never arrived, with a reason
+ * (SCRUM-205).
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function rejectReturn(req, res) {
+  res.status(200).json(
+    await checkoutService.rejectReturn(req.orgId, req.auth, req.params.id, {
+      ...req.body,
+      requestId: req.id,
+    }),
+  );
+}
+
+/**
  * `POST /api/requests/mark-overdue` — flag the caller's organisation's late checkouts now.
  *
  * "Now" is the server's clock at the moment of the request, never a value from the client: letting
@@ -131,4 +162,21 @@ export async function returnUnit(req, res) {
 export async function markOverdue(req, res) {
   const updated = await checkoutService.markOverdue(req.orgId, { now: new Date() });
   res.status(200).json({ updated });
+}
+
+/**
+ * `POST /api/requests/expire-approvals` — expire the caller's organisation's uncollected approvals now
+ * (SCRUM-205).
+ *
+ * The server's clock, never the client's, for the same reason as `markOverdue`: a caller who could
+ * choose "now" could expire approvals early or keep stale ones alive. Stands in for a scheduler.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function expireApprovals(req, res) {
+  const expired = await checkoutService.expireApprovals(req.orgId, {
+    now: new Date(),
+    requestId: req.id,
+  });
+  res.status(200).json({ expired });
 }

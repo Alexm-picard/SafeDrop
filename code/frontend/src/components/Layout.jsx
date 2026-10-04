@@ -9,9 +9,9 @@
  * The application shell: header, primary navigation, session bar and footer around every signed-in
  * page.
  *
- * Navigation entries are filtered by role — approvals for APPROVER and ORG_ADMIN, dashboard, members and
- * audit log for ORG_ADMIN — which is presentation only. The routes themselves are guarded by `RequireRole`,
- * and the API enforces every permission regardless (SR-1).
+ * Navigation entries are filtered by role — approvals for APPROVER and ORG_ADMIN,
+ * dashboard, members and audit log for ORG_ADMIN — which is presentation only. The routes themselves
+ * are guarded by `RequireRole`, and the API enforces every permission regardless (SR-1).
  *
  * The accessibility details here are deliberate: a skip link ahead of the navigation, a labelled `nav`
  * landmark, and a focusable `<main>` so that a route change moves focus into the new page rather than

@@ -24,6 +24,9 @@ export const ROLE_LABELS = Object.freeze({
   MEMBER: 'Member',
   APPROVER: 'Approver',
   ORG_ADMIN: 'Organization admin',
+  // Not a role anyone holds: the label for an audit event no person caused (SCRUM-205: an expired
+  // approval), which the API records with no actor id.
+  SYSTEM: 'Automatic',
 });
 /** The roles an admin can invite as or change to, least privileged first. */
 export const ROLE_OPTIONS = Object.freeze(Object.values(ROLES));
@@ -115,6 +118,16 @@ export const AUDIT_ACTIONS = Object.freeze([
   // that rule.
   'REQUEST_AUTO_APPROVED',
   'ORG_SETTINGS_UPDATED',
+  // The user-groups actions (SCRUM-149) the backend also accepts.
+  'GROUP_CREATED',
+  'GROUP_UPDATED',
+  'GROUP_DELETED',
+  'GROUP_MEMBER_ADDED',
+  'GROUP_MEMBER_REMOVED',
+  // SCRUM-205: custody confirmation.
+  'REQUEST_EXPIRED',
+  'RETURN_INITIATED',
+  'RETURN_REJECTED',
 ]);
 
 /**
@@ -183,8 +196,10 @@ export const REQUEST_STATES = Object.freeze([
   'CANCELLED',
   'CHECKED_OUT',
   'OVERDUE',
+  'RETURN_PENDING',
   'RETURNED',
   'LOST',
+  'EXPIRED',
 ]);
 /**
  * The conditions a physical unit can be in, mirroring the backend's `ASSET_CONDITION_LIST`.
@@ -220,6 +235,13 @@ export const MEMBERS_PAGE_SIZE = 25;
  * Drives the return action's condition selector on the approval queue.
  */
 export const UNIT_CONDITIONS = Object.freeze(['NEW', 'GOOD', 'FAIR', 'POOR']);
+
+/**
+ * The pickup grace period's default and ceiling, in hours, mirroring the backend's
+ * `DEFAULT_PICKUP_GRACE_HOURS` / `MAX_PICKUP_GRACE_HOURS` (SCRUM-205).
+ */
+export const DEFAULT_PICKUP_GRACE_HOURS = 48;
+export const MAX_PICKUP_GRACE_HOURS = 720;
 
 /**
  * The physical-unit lifecycle, mirroring the backend's `UNIT_STATUS` (SDD §2.4 AssetUnit.status).

@@ -23,7 +23,8 @@
  * same snapshot as the writes that follow them.
  *
  * Exports: `create`, `findById`, `findByIds`, `findByEmail`, `findByEmailWithPassword`, `findRole`,
- * `updateRole`, `list`, `countByOrg`, `countByRole`, `findByIdWithPassword`, `setPassword`.
+ * `updateRole`, `list`, `countByOrg`, `countByRole`, `countActiveWithRoles`, `findByIdWithPassword`,
+ * `setPassword`.
  */
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -199,6 +200,26 @@ export async function countByOrg(orgId) {
  */
 export async function countByRole(orgId, role, { session } = {}) {
   return User.countDocuments({ orgId, role }).session(session ?? null);
+}
+
+/**
+ * Count the *active* users holding any of `roles`, optionally leaving one person out (SCRUM-205).
+ *
+ * Backs the sole-confirmer rule: "is there anyone besides me who could confirm this return?". A
+ * deactivated account cannot sign in, so it cannot confirm anything and must not count, or an
+ * organisation whose only other admin left would leave its remaining admin unable to close a return.
+ * @param {string} orgId
+ * @param {string[]} roles
+ * @param {{ excludeUserId?: unknown, session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<number>}
+ */
+export async function countActiveWithRoles(orgId, roles, { excludeUserId, session } = {}) {
+  // `sanitizeFilter` is on globally and rewrites operators it did not put there; these are ours.
+  const filter = { orgId, role: mongoose.trusted({ $in: roles }), deactivatedAt: null };
+  if (excludeUserId) {
+    filter._id = mongoose.trusted({ $ne: excludeUserId });
+  }
+  return User.countDocuments(filter).session(session ?? null);
 }
 
 /**

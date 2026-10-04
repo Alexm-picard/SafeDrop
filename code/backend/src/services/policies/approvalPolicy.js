@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Strategy-pattern approval policy; Iteration 1 ships one fixed policy (SDD §8.5); SCRUM-148 configurableApproval (asset → org → REQUIRED)
+// AI-Assisted Areas: Strategy-pattern approval policy; Iteration 1 ships one fixed policy (SDD §8.5); SCRUM-148 configurableApproval (asset → org → REQUIRED); SCRUM-205 canConfirmReturn with the sole-confirmer fallback
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -20,8 +20,11 @@
  * request needs a human at all — per organisation, overridable per asset — and makes it the policy
  * every organisation gets.
  *
- * Exports: `requireDistinctApprover`, `configurableApproval`, `effectiveApprovalMode(asset, org)`,
- * `policyFor(org)`, `registerPolicy(policy)`, `getPolicy(name)`.
+ * SCRUM-205 adds the same separation of duties to the other end of a loan: `canConfirmReturn` decides
+ * who may close a return, so nobody clears themselves of an item that never reached anyone.
+ *
+ * Exports: `requireDistinctApprover`, `configurableApproval`, `canConfirmReturn`,
+ * `effectiveApprovalMode(asset, org)`, `policyFor(org)`, `registerPolicy(policy)`, `getPolicy(name)`.
  */
 import { APPROVAL_MODE, ORG_APPROVAL_MODE_LIST } from '../../utils/constants.js';
 import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
@@ -33,6 +36,8 @@ import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
  *   May `actor` approve or deny `request`?
  * @property {(context: ApprovalContext) => boolean} requiresApproval
  *   Does this request need a human decision before checkout?
+ * @property {(request: { requesterId: unknown }, actor: { userId: unknown, role: string }, org: object, context: { otherConfirmers: number }) => { allowed: boolean, selfConfirmed?: boolean, reason?: string }} [canConfirmReturn]
+ *   May `actor` confirm or reject the return of `request`? (SCRUM-205)
  */
 
 /**
@@ -61,6 +66,8 @@ import { PERMISSIONS, roleHasPermission } from '../../utils/permissions.js';
 export const requireDistinctApprover = Object.freeze({
   name: 'require-distinct-approver',
   requiresApproval: () => true,
+  // A hoisted function declaration (below), so it is already defined here.
+  canConfirmReturn,
   canDecide(request, actor) {
     if (!actor || !roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE)) {
       return { allowed: false, reason: 'role cannot decide requests' };
@@ -71,6 +78,38 @@ export const requireDistinctApprover = Object.freeze({
     return { allowed: true };
   },
 });
+
+/**
+ * May `actor` confirm (or reject) the return of `request`? (SCRUM-205)
+ *
+ * The return-side twin of `canDecide`. The actor needs `requests:handoff`, and must not be the
+ * requester: otherwise an approver could mark their own loan returned while the item sits in their
+ * bag, and the record would say it is back.
+ *
+ * **The sole-confirmer fallback.** In an organisation where the requester is the only Approver or Org
+ * Admin, nobody else could ever close their loan. There the requester is allowed, and the answer
+ * carries `selfConfirmed: true` so the audit entry can say so. `otherConfirmers` is how many *other*
+ * active Approvers and Org Admins exist; the service counts it, because a policy must not read the
+ * database. `org` is part of the signature so a later per-organisation rule has it to hand.
+ * @param {{ requesterId: unknown }} request
+ * @param {{ userId: unknown, role: string }} actor
+ * @param {object} _org
+ * @param {{ otherConfirmers: number }} context
+ * @returns {{ allowed: boolean, selfConfirmed?: boolean, reason?: string }}
+ */
+export function canConfirmReturn(request, actor, _org, { otherConfirmers } = {}) {
+  if (!actor || !roleHasPermission(actor.role, PERMISSIONS.REQUESTS_HANDOFF)) {
+    return { allowed: false, reason: 'role cannot confirm returns' };
+  }
+  if (String(request.requesterId) !== String(actor.userId)) {
+    return { allowed: true, selfConfirmed: false };
+  }
+  // Fail closed: an unknown count is treated as "someone else exists".
+  if (otherConfirmers === 0) {
+    return { allowed: true, selfConfirmed: true };
+  }
+  return { allowed: false, reason: 'requester cannot confirm their own return' };
+}
 
 /**
  * Configurable approval (SCRUM-148): the policy every organisation gets from Iteration 2.
@@ -90,6 +129,7 @@ export const configurableApproval = Object.freeze({
     return effectiveApprovalMode(asset, org) !== APPROVAL_MODE.AUTO;
   },
   canDecide: requireDistinctApprover.canDecide,
+  canConfirmReturn,
 });
 
 /**

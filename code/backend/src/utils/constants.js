@@ -34,7 +34,14 @@ export const UNIT_STATUS = freezeEnum([
 ]);
 export const UNIT_STATUS_LIST = Object.freeze(Object.keys(UNIT_STATUS));
 
-/** Checkout request state machine (SDD §2.4 CheckoutRequest.state, arch review F4). */
+/**
+ * Checkout request state machine (SDD §2.4 CheckoutRequest.state, arch review F4).
+ *
+ * SCRUM-205 adds two states. `RETURN_PENDING`: the borrower says the item is back, and a different
+ * Approver or Org Admin has not confirmed it yet. The unit stays OUT and the borrower stays
+ * accountable until then. `EXPIRED`: an approval nobody collected within the pickup window, so the
+ * held unit goes back to AVAILABLE.
+ */
 export const REQUEST_STATE = freezeEnum([
   'PENDING',
   'APPROVED',
@@ -42,8 +49,10 @@ export const REQUEST_STATE = freezeEnum([
   'CANCELLED',
   'CHECKED_OUT',
   'OVERDUE',
+  'RETURN_PENDING',
   'RETURNED',
   'LOST',
+  'EXPIRED',
 ]);
 export const REQUEST_STATE_LIST = Object.freeze(Object.keys(REQUEST_STATE));
 
@@ -86,6 +95,13 @@ export const AUDIT_ACTION = freezeEnum([
   'GROUP_DELETED',
   'GROUP_MEMBER_ADDED',
   'GROUP_MEMBER_REMOVED',
+  // Custody confirmation (SCRUM-205). REQUEST_EXPIRED is written by the expiry sweep with the system
+  // actor (no person decided it). RETURN_INITIATED is the borrower saying "it's back"; RETURN_REJECTED
+  // is a confirmer saying it never arrived, with the reason. The confirmed return itself is still
+  // ASSET_RETURNED, so "when did this unit come back" has one answer.
+  'REQUEST_EXPIRED',
+  'RETURN_INITIATED',
+  'RETURN_REJECTED',
 ]);
 export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
 
@@ -99,6 +115,20 @@ export const AUDIT_ACTION_LIST = Object.freeze(Object.keys(AUDIT_ACTION));
 export const APPROVAL_MODE = freezeEnum(['INHERIT', 'REQUIRED', 'AUTO']);
 export const APPROVAL_MODE_LIST = Object.freeze(Object.keys(APPROVAL_MODE));
 export const ORG_APPROVAL_MODE_LIST = Object.freeze([APPROVAL_MODE.REQUIRED, APPROVAL_MODE.AUTO]);
+
+/**
+ * The role recorded on an audit event that no person caused (SCRUM-205): the expiry sweep. Such an
+ * event has `actorId: null`. Not a user role: nobody can sign in as it or hold permissions with it.
+ */
+export const SYSTEM_ACTOR_ROLE = 'SYSTEM';
+
+/**
+ * How long an approved request may wait to be picked up, in hours after `neededFrom` (SCRUM-205).
+ * After this the expiry sweep moves it to EXPIRED and frees the unit. 48 hours was the story's
+ * answer to its own open question. The maximum (30 days) is a sanity bound for the settings form.
+ */
+export const DEFAULT_PICKUP_GRACE_HOURS = 48;
+export const MAX_PICKUP_GRACE_HOURS = 720;
 
 /**
  * The most groups one asset may be restricted to (SCRUM-150). Generous for real use — a narrow
