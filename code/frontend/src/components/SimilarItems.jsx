@@ -51,6 +51,7 @@ export function SimilarItems({ assetId, enabled }) {
         {items.map((item) => (
           <li key={item.assetId}>
             <strong>{item.name}</strong>
+            <br></br>
             {/*
               The model's one-line reason, or a plain statement of fact when it did not run. The
               backend sends `reason: null` on the fallback path rather than composing prose, so the
@@ -62,6 +63,7 @@ export function SimilarItems({ assetId, enabled }) {
               range, which that page already asks for — a one-click "Request" here would promise
               something it cannot finish.
             */}
+            <br></br>
             <Link to={ROUTES.asset(item.assetId)}>View {item.name}</Link>
           </li>
         ))}
