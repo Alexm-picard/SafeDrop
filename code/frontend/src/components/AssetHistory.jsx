@@ -60,14 +60,18 @@ function HistoryEntry({ event }) {
   const note = selfRecordedNote(event);
   return (
     <li>
-      <strong>{humanize(event.action)}</strong>
-      {event.unitTag ? <span className="meta"> unit {event.unitTag}</span> : null}
-      {note ? <span className="meta"> ({note})</span> : null}
-      <div>
-        <span>{event.actor.name}</span>
-        <span className="meta"> {ROLE_LABELS[event.actor.role] ?? event.actor.role}</span>
+      <div className="timeline-head">
+        <strong>{humanize(event.action)}</strong>
+        {event.unitTag ? <span className="tag">unit {event.unitTag}</span> : null}
+        {note ? <span className="hint note">({note})</span> : null}
+        <time className="timeline-time" dateTime={event.timestamp}>
+          {formatDate(event.timestamp)}
+        </time>
       </div>
-      <div className="meta">{formatDate(event.timestamp)}</div>
+      <div className="timeline-by">
+        by <span className="who">{event.actor.name}</span>
+        <span> · {ROLE_LABELS[event.actor.role] ?? event.actor.role}</span>
+      </div>
     </li>
   );
 }
@@ -93,11 +97,15 @@ export function AssetHistory({ assetId }) {
   // The API is the authority on who may read the trail; this screen only has to explain the answer.
   if (status === 'error' && isApiError(error) && error.status === 403) {
     return (
-      <section>
-        <h2>History</h2>
-        <p className="hint">
-          Only an organization administrator can view an asset&rsquo;s history.
-        </p>
+      <section className="panel" aria-labelledby="history-heading">
+        <div className="panel-header">
+          <h2 id="history-heading">History</h2>
+        </div>
+        <div className="panel-body">
+          <p className="hint">
+            Only an organization administrator can view an asset&rsquo;s history.
+          </p>
+        </div>
       </section>
     );
   }
@@ -105,51 +113,57 @@ export function AssetHistory({ assetId }) {
   const total = data?.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
   return (
-    <section>
-      <h2>History</h2>
-      {status === 'loading' && !data ? <LoadingState label="Loading history…" /> : null}
-      {status === 'error' ? (
-        <ErrorState error={error} title="Could not load this asset’s history" onRetry={reload} />
-      ) : null}
-      {status !== 'error' && data ? (
-        <>
+    <section className="panel" aria-labelledby="history-heading">
+      <div className="panel-header">
+        <h2 id="history-heading">History</h2>
+        {status !== 'error' && data ? (
           <p className="hint" role="status">
             {pluralize(total, 'event')}, newest first. This record cannot be edited.
           </p>
-          {data.items.length === 0 ? (
-            <p className="hint">Nothing has been recorded against this asset yet.</p>
-          ) : (
-            <ol className="timeline" aria-label="Asset history">
-              {data.items.map((event) => (
-                <HistoryEntry key={event.id} event={event} />
-              ))}
-            </ol>
-          )}
-          {lastPage > 1 ? (
-            <nav className="pagination" aria-label="Asset history pages">
-              <button
-                type="button"
-                className="secondary"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </button>
-              <span>
-                Page {page} of {lastPage}
-              </span>
-              <button
-                type="button"
-                className="secondary"
-                disabled={page >= lastPage}
-                onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
-              >
-                Next
-              </button>
-            </nav>
-          ) : null}
-        </>
-      ) : null}
+        ) : null}
+      </div>
+      <div className="panel-body">
+        {status === 'loading' && !data ? <LoadingState label="Loading history…" /> : null}
+        {status === 'error' ? (
+          <ErrorState error={error} title="Could not load this asset’s history" onRetry={reload} />
+        ) : null}
+        {status !== 'error' && data ? (
+          <>
+            {data.items.length === 0 ? (
+              <p className="hint">Nothing has been recorded against this asset yet.</p>
+            ) : (
+              <ol className="timeline" aria-label="Asset history">
+                {data.items.map((event) => (
+                  <HistoryEntry key={event.id} event={event} />
+                ))}
+              </ol>
+            )}
+            {lastPage > 1 ? (
+              <nav className="pagination" aria-label="Asset history pages">
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {page} of {lastPage}
+                </span>
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={page >= lastPage}
+                  onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                >
+                  Next
+                </button>
+              </nav>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

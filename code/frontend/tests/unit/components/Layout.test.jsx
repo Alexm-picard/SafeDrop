@@ -45,7 +45,9 @@ describe('Layout', () => {
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(screen.getByRole('contentinfo')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main');
-    expect(screen.getByText(/Max Member/)).toHaveTextContent('Acme Robotics');
+    expect(screen.getByText(/Max Member/).closest('.session-user')).toHaveTextContent(
+      'Acme Robotics',
+    );
   });
   it.each([
     [memberUser, ['Catalog', 'My requests']],

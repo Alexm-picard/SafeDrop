@@ -505,3 +505,70 @@ describe('AssetDetailPage — restricted equipment (SCRUM-150)', () => {
     expect(screen.queryByText('Restricted')).not.toBeInTheDocument();
   });
 });
+
+describe('AssetDetailPage layout (UI rework)', () => {
+  it('shows the description and availability in the details panel', async () => {
+    renderDetail(assets[0].id);
+    const details = await screen.findByRole('region', { name: 'Details' });
+    expect(within(details).getByText(assets[0].description)).toBeInTheDocument();
+    const units = assetUnits[assets[0].id];
+    const available = units.filter((u) => u.status === 'AVAILABLE').length;
+    expect(details).toHaveTextContent(`${available} of ${units.length} units available`);
+  });
+
+  it('brings a unit back from maintenance and says so, and the notice can be dismissed', async () => {
+    const unit = assetUnits[assets[0].id][0];
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({ ...assets[0], units: [{ ...unit, status: 'MAINTENANCE' }] }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderDetail(assets[0].id);
+    await user.click(
+      await screen.findByRole('button', { name: `End maintenance for unit ${unit.tag}` }),
+    );
+    expect(await screen.findByText(`Unit ${unit.tag} is back in circulation.`)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(`Unit ${unit.tag} is back in circulation.`)).not.toBeInTheDocument();
+  });
+
+  it('says nobody can request an asset whose groups were all deleted', async () => {
+    server.use(
+      http.get('*/api/assets/:id', () =>
+        HttpResponse.json({
+          ...assets[0],
+          restricted: true,
+          allowedGroups: [],
+          eligible: false,
+          units: assetUnits[assets[0].id],
+        }),
+      ),
+    );
+    renderDetail(assets[0].id);
+    const details = await screen.findByRole('region', { name: 'Details' });
+    expect(within(details).getByText('Nobody (its groups were deleted)')).toBeInTheDocument();
+  });
+
+  it('pages a long list of units ten at a time', async () => {
+    const template = assetUnits[assets[0].id][0];
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...template,
+      id: `unit-${i}`,
+      tag: `bulk-${String(i).padStart(2, '0')}`,
+    }));
+    server.use(
+      http.get('*/api/assets/:id', () => HttpResponse.json({ ...assets[0], units: many })),
+    );
+    const user = userEvent.setup();
+    renderDetail(assets[0].id);
+    const table = await screen.findByRole('table', { name: 'Units' });
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(10);
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Units pages' })).getByRole('button', {
+        name: 'Next',
+      }),
+    );
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2);
+  });
+});

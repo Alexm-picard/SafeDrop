@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members, Groups (SCRUM-167) and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12)
+// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members, Groups (SCRUM-167) and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12); UI rework: two-line session block
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket.
 
@@ -92,12 +92,13 @@ export function Layout() {
           </ul>
         </nav>
         <div className="session">
-          <span>
-            {user?.name}
-            {organization ? ` · ${organization.name}` : ''}
-            {role ? ` · ${ROLE_LABELS[role]}` : ''}
+          <span className="session-user">
+            <strong>{user?.name}</strong>
+            <span>
+              {[organization?.name, role ? ROLE_LABELS[role] : null].filter(Boolean).join(' · ')}
+            </span>
           </span>
-          <button type="button" className="secondary" onClick={onSignOut}>
+          <button type="button" className="secondary small" onClick={onSignOut}>
             Sign out
           </button>
         </div>

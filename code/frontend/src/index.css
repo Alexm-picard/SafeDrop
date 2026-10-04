@@ -1,17 +1,21 @@
 /* AI-USAGE SUMMARY
    Tools: Claude Code
    Overall AI Contribution: ~90% (skeleton generated from team design documents)
-   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150)
+   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150); UI rework: page headers, panels, detail grids, status badges, linked stat tiles, timeline, table polish
    Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
    Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. */
 
 :root {
-  --bg: #f7f7f5;
+  --bg: #f4f5f7;
   --surface: #ffffff;
+  --surface-2: #f8f9fb;
   --text: #1c1c1e;
   --muted: #5c5c66;
-  --border: #d9d9de;
+  --border: #dcdde3;
+  --border-strong: #c6c8d0;
   --accent: #1f5fbf;
+  --accent-hover: #194f9f;
+  --accent-soft: #e8f0fb;
   --accent-contrast: #ffffff;
   --danger: #b3261e;
   --danger-bg: #fdecea;
@@ -21,8 +25,17 @@
      for small text, since the due badge (SCRUM-143) is 0.8125rem. */
   --warn: #8a5300;
   --warn-bg: #fdf1dd;
+  --info: #1f4f99;
+  --info-bg: #e6eefa;
+  --neutral: #4a4a55;
+  --neutral-bg: #ececf0;
   --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 6%);
+  --shadow: 0 1px 3px rgb(16 24 40 / 8%), 0 1px 2px rgb(16 24 40 / 4%);
+  --shadow-lg: 0 6px 16px rgb(16 24 40 / 10%);
   --sans: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
   font: 16px/1.5 var(--sans);
   color: var(--text);
@@ -38,6 +51,14 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg);
+}
+
+a {
+  color: var(--accent);
+}
+a:hover {
+  color: var(--accent-hover);
 }
 
 :focus-visible {
@@ -58,16 +79,26 @@ body {
   top: 0;
 }
 
+/* ---------------------------------------------------------------------------
+   App shell
+   --------------------------------------------------------------------------- */
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 1.5rem;
-  padding: 0.75rem 1rem;
+  gap: 0.5rem 1.5rem;
+  padding: 0.625rem 1.25rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
 .app-header .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
   font-size: 1.125rem;
   text-decoration: none;
@@ -76,19 +107,27 @@ body {
 .app-header nav ul {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1rem;
+  gap: 0.25rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .app-header nav a {
-  color: var(--accent);
+  display: block;
+  color: var(--muted);
   text-decoration: none;
-  padding: 0.25rem 0;
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius);
+}
+.app-header nav a:hover {
+  color: var(--text);
+  background: var(--surface-2);
 }
 .app-header nav a[aria-current='page'] {
+  color: var(--accent);
+  background: var(--accent-soft);
   font-weight: 600;
-  border-bottom: 2px solid var(--accent);
 }
 .app-header .session {
   margin-left: auto;
@@ -97,13 +136,23 @@ body {
   align-items: center;
   gap: 0.75rem;
   color: var(--muted);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
+}
+.session-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+.session-user strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 main {
-  width: min(100% - 2rem, 64rem);
+  width: min(100% - 2rem, 72rem);
   margin: 0 auto;
-  padding: 1.5rem 0 3rem;
+  padding: 2rem 0 3rem;
 }
 
 .app-footer {
@@ -116,6 +165,7 @@ main {
 
 h1 {
   font-size: 1.75rem;
+  line-height: 1.2;
   margin: 0 0 1rem;
 }
 h2 {
@@ -126,11 +176,185 @@ p {
   margin: 0 0 1rem;
 }
 
-.card {
+/* A page's title row: the heading and its one-line description on the left, the page's own actions
+   on the right, wrapping beneath on a narrow screen. */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.page-header h1 {
+  margin: 0;
+}
+.page-header .subtitle {
+  margin: 0.375rem 0 0;
+  color: var(--muted);
+}
+.page-header .badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.page-header .badges .restricted-badge {
+  margin-left: 0;
+}
+.eyebrow {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+}
+.eyebrow a {
+  color: inherit;
+  text-decoration: none;
+}
+.eyebrow a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.card,
+.panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1.25rem;
+}
+/* A titled section of a page. The header carries the section's h2 and any count or action beside it,
+   separated from the body by a rule so each panel reads as its own block. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin-bottom: 1.5rem;
+  /* Keeps row hovers and header tints inside the rounded corners. */
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+.panel-header .hint {
+  margin: 0;
+}
+.panel-body {
+  padding: 1.25rem;
+}
+/* Pinned to the bottom of the panel, so a panel stretched to match its neighbour keeps its paging
+   controls at the bottom edge. */
+.pagination.panel-footer {
+  margin-top: auto;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.panel-body > :last-child {
+  margin-bottom: 0;
+}
+/* A table that is the whole body of a panel runs edge to edge; the panel supplies the frame. */
+.panel > .table-wrap,
+.panel-body--flush {
+  padding: 0;
+}
+.panel .table-wrap table {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.panel .table-wrap tr:last-child td {
+  border-bottom: 0;
+}
+.panel > .hint {
+  margin: 0;
+  padding: 1.25rem;
+}
+.card h2:first-child,
+.card h3:first-child {
+  margin-top: 0;
+}
+
+/* A two-column body: the lists on the left, the forms that add to them on the right, stacking on a
+   narrow screen. Both columns stretch to the taller one, and the last box in each grows to fill the
+   difference, so the two columns end on the same line. Long lists page (DataTable `pageSize`) rather
+   than stretching the row. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+.split > .stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.split > .stack > :last-child {
+  flex: 1 0 auto;
+}
+@media (min-width: 60rem) {
+  .split {
+    grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  }
+}
+.split > * {
+  margin-bottom: 0;
+}
+.stack > * {
+  margin: 0 0 1.5rem;
+}
+
+/* Key/value facts about one thing — an asset, a request — as a grid of labelled cells rather than a
+   run of bold labels and plain text. */
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem 1.5rem;
+  margin: 0;
+}
+.details-grid > div {
+  min-width: 0;
+}
+/* The flat dt/dd variant (request detail): label and value side by side on one row each. */
+dl.detail {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+  gap: 0.75rem 1.5rem;
+  align-items: baseline;
+  margin: 0;
+}
+.details-grid dt,
+dl.detail dt {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+}
+.details-grid dd,
+dl.detail dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.details-grid .wide {
+  grid-column: 1 / -1;
 }
 
 .auth-page {
@@ -152,12 +376,17 @@ select,
 textarea {
   font: inherit;
   padding: 0.5rem 0.625rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   min-width: 0;
   width: 100%;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--muted);
 }
 input[aria-invalid='true'] {
   border-color: var(--danger);
@@ -173,14 +402,31 @@ input[aria-invalid='true'] {
 
 button,
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
   font: inherit;
   font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.4;
   padding: 0.5rem 1rem;
   border-radius: var(--radius);
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--accent-contrast);
   cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+button:hover:not([disabled]),
+.button:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-contrast);
 }
 button[disabled] {
   opacity: 0.6;
@@ -190,6 +436,19 @@ button.secondary,
 .button.secondary {
   background: var(--surface);
   color: var(--accent);
+  border-color: var(--border-strong);
+}
+button.secondary:hover:not([disabled]),
+.button.secondary:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* A compact button for table rows, where a full-size one makes every row tall. */
+button.small,
+.button.small {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.625rem;
 }
 /* Destructive actions (retiring an asset). Colour is not the only signal — the label says what will
    happen, and ConfirmAction asks before it acts — because colour alone fails for a colour-blind
@@ -199,6 +458,11 @@ button.danger,
   background: var(--danger);
   border-color: var(--danger);
   color: #ffffff;
+}
+button.danger:hover:not([disabled]),
+.button.danger:hover {
+  background: #8f1e18;
+  border-color: #8f1e18;
 }
 /* The inline confirmation ConfirmAction reveals. Bordered in the danger colour so it reads as a
    pause in the flow rather than two more buttons that happened to appear. */
@@ -277,16 +541,54 @@ button.danger,
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
   border: 1px solid var(--ok);
-  background: var(--surface);
-  margin: 1rem 0;
+  border-left-width: 4px;
+  background: var(--ok-bg);
+  margin: 0 0 1rem;
 }
 .notice p {
   margin: 0 0 0.5rem;
 }
+/* A caution rather than a success: why something on the page is unavailable to this viewer. */
+.notice--warn {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+/* Information about the thing's state with no action implied (a retired asset). */
+.notice--muted {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+/* A message with its dismiss button on the same line, wrapping when the text is long. */
+.notice--inline,
+.alert--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.notice--inline p,
+.alert--inline p {
+  margin: 0;
+}
+/* A checkbox with its label text beside it. The box keeps its natural size: the global input rule
+   makes inputs full-width, which would centre the box on a line of its own away from its words. */
 .checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
   font-weight: 400;
   font-size: 0.875rem;
   margin-top: 0.25rem;
+  cursor: pointer;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
 }
 /* The invite form sits above the list; keep it from stretching across a wide screen. */
 .invite-form {
@@ -298,26 +600,85 @@ button.danger,
   font-size: 1.125rem;
 }
 
+/* ---------------------------------------------------------------------------
+   Dashboard
+   --------------------------------------------------------------------------- */
+.dashboard-section {
+  margin-bottom: 2rem;
+}
+.dashboard-section > h2 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem;
+}
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 1rem;
-  margin: 1rem 0;
+  margin: 0;
 }
 .stat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: 1rem 1.25rem;
+  transition:
+    box-shadow 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
 }
 .stat dt {
   color: var(--muted);
   font-size: 0.875rem;
+  font-weight: 600;
 }
 .stat dd {
   margin: 0.25rem 0 0;
   font-size: 2rem;
+  line-height: 1.2;
   font-weight: 700;
+}
+.stat .stat-link {
+  margin-top: auto;
+  padding-top: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+/* The whole tile is the link's hit area, through a stretched pseudo-element, while the link's own
+   name stays the short "View …" text — so the tile still reads as label, number, link. */
+.stat .stat-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.stat:has(.stat-link):hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+.stat:has(.stat-link:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.stat .stat-link:focus-visible {
+  outline: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat {
+    transition: none;
+  }
+  .stat:has(.stat-link):hover {
+    transform: none;
+  }
 }
 /* A count that means someone has to act — today, an overdue loan. The label says so too: the colour
    is never the only signal (NFR-12). */
@@ -325,8 +686,12 @@ button.danger,
   border-color: var(--danger);
   background: var(--danger-bg);
 }
-.stat--alert dd {
+.stat--alert dd,
+.stat--alert .stat-link {
   color: var(--danger);
+}
+.stat--attention {
+  border-left: 4px solid var(--warn);
 }
 
 /* The dashboard's activity chart. One series, so one hue: the bars carry the accent colour and every
@@ -337,7 +702,8 @@ button.danger,
   padding: 1rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 .chart figcaption {
   color: var(--muted);
@@ -380,7 +746,7 @@ button.danger,
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.75rem;
-  margin: 1rem 0;
+  margin: 0 0 1rem;
 }
 .filters .field {
   display: flex;
@@ -395,18 +761,180 @@ button.danger,
 .filters select,
 .filters input {
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   font: inherit;
 }
 
+/* Quick filters as a row of toggle chips: one click per common view, with the full select beside
+   them for everything else. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chip {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+.chip:hover:not([disabled]) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip[aria-pressed='true'],
+.chip[aria-pressed='true']:hover:not([disabled]) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
 /* Secondary identifiers inside a table cell: present for traceability, not competing with the label. */
 .meta {
   color: var(--muted);
   font-size: 0.8125rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mono);
+}
+
+/* Two lines in one cell: the thing's name, and a quieter line beneath it (an email, a unit tag). */
+.cell-primary {
+  display: block;
+  font-weight: 600;
+}
+.cell-secondary {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+/* A secondary line with nothing in it (no due badge on this row) takes no space. */
+.cell-secondary:empty {
+  display: none;
+}
+.tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 4px;
+  background: var(--neutral-bg);
+  color: var(--text);
+}
+
+/* The request page's action form: each labelled control stacks its label over the input, and the
+   buttons line up with the inputs. Labels sit above, so the row aligns on the bottom edge — and the
+   controls share one explicit height, because a select sizes itself by its own rules and would
+   otherwise sit a few pixels off the button beside it. */
+/* Two classes, so it outranks the generic `.actions` rule (which aligns to the top) wherever the two
+   sit in this file. */
+.actions.request-actions {
+  align-items: flex-end;
+}
+.request-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+  font-size: 0.875rem;
+}
+.request-actions select,
+.request-actions input,
+.request-actions button {
+  height: 2.5rem;
+  font-size: 0.9375rem;
+  margin: 0;
+}
+.request-actions select,
+.request-actions input {
+  padding-block: 0;
+}
+
+/* A plain list inside a panel, one row per item with a rule between them. */
+/* A panel that keeps one height whatever it holds: its list fills the space between the header and
+   the paging footer, scrolling only if a row wraps more than the height allows. Opts out of the
+   column-stretch in .split, which would otherwise grow it. */
+.panel--fixed,
+.split > .stack > .panel--fixed:last-child {
+  flex: none;
+}
+.panel--fixed > .table-wrap,
+.panel--fixed > .item-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* The group page's two lists share one height: the add bar plus MEMBER_PAGE_SIZE (5) two-line member
+   rows, which is also room for EQUIPMENT_PAGE_SIZE (10) one-line equipment rows. */
+.panel--group {
+  height: 37.5rem;
+}
+.panel--group > .hint {
+  flex: 1 1 auto;
+}
+@media (min-width: 60rem) {
+  .split--lists {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.split--lists > .panel {
+  margin-bottom: 1.5rem;
+}
+
+/* A one-line form inside a panel, under its header: a control and its button side by side. */
+.panel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.panel-toolbar select {
+  flex: 1 1 14rem;
+  width: auto;
+}
+.panel-toolbar .hint {
+  margin: 0;
+}
+
+/* The group's Edit details form: name and description side by side, compact enough to open above
+   the lists without pushing them off the screen. */
+.edit-details {
+  margin-bottom: 1.5rem;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 1rem;
+}
+@media (min-width: 48rem) {
+  .form-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+}
+
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.item-list > li {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.item-list > li:last-child {
+  border-bottom: 0;
 }
 
 .pagination {
@@ -418,6 +946,8 @@ button.danger,
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 0.5rem;
 }
 
@@ -431,8 +961,13 @@ button.danger,
 }
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 caption {
   text-align: left;
@@ -442,12 +977,75 @@ caption {
 th,
 td {
   text-align: left;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
 th {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface-2);
+}
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+/* Tables do not reliably clip to their own border-radius, so the corner cells round themselves. */
+thead tr:first-child th:first-child {
+  border-top-left-radius: var(--radius-lg);
+}
+thead tr:first-child th:last-child {
+  border-top-right-radius: var(--radius-lg);
+}
+tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius-lg);
+}
+tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius-lg);
+}
+tbody tr:hover td {
+  background: var(--surface-2);
+}
+td.numeric,
+th.numeric {
+  text-align: right;
+}
+
+/* Generic status pill: request states and unit statuses (StatusBadge). The word carries the
+   meaning; the tone repeats it so a column can be scanned (WCAG 1.4.1). */
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  color: var(--neutral);
+  background: var(--neutral-bg);
+}
+.badge[data-tone='ok'] {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+.badge[data-tone='warn'] {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.badge[data-tone='danger'] {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.badge[data-tone='info'] {
+  color: var(--info);
+  background: var(--info-bg);
+}
+@media (forced-colors: active) {
+  .badge {
+    border-color: currentColor;
+  }
 }
 
 /* The due badge (SCRUM-143), in a table cell on my requests and beside the date on request detail.
@@ -483,6 +1081,72 @@ th {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Timeline: an asset's history and a request's own history. A vertical rule with a dot per event,
+   so each event reads as one step rather than a run of loose text.
+   --------------------------------------------------------------------------- */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.timeline > li {
+  position: relative;
+  padding: 0 0 1.25rem 1.75rem;
+}
+.timeline > li::before {
+  content: '';
+  position: absolute;
+  left: 0.3125rem;
+  top: 0.5rem;
+  bottom: -0.5rem;
+  width: 2px;
+  background: var(--border);
+}
+.timeline > li:last-child {
+  padding-bottom: 0;
+}
+.timeline > li:last-child::before {
+  display: none;
+}
+.timeline > li::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.375rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+}
+.timeline-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+}
+.timeline-head strong {
+  font-weight: 600;
+}
+.timeline-time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.timeline-by {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.timeline-by .who {
+  color: var(--text);
+  font-weight: 500;
+}
+.timeline .note {
+  font-style: italic;
+}
+
 .placeholder {
   border: 1px dashed var(--border);
   border-radius: var(--radius);
@@ -490,11 +1154,21 @@ th {
   color: var(--muted);
 }
 .ticket {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mono);
   background: #ececf0;
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
   color: var(--text);
+}
+
+@media (max-width: 30rem) {
+  dl.detail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem;
+  }
+  dl.detail dd {
+    margin-bottom: 0.625rem;
+  }
 }
 
 @media (max-width: 48rem) {
@@ -503,6 +1177,13 @@ th {
   }
   h1 {
     font-size: 1.5rem;
+  }
+  .session-user {
+    align-items: flex-start;
+  }
+  .timeline-time {
+    margin-left: 0;
+    width: 100%;
   }
 }
 
