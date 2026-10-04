@@ -99,10 +99,18 @@ export const rejectReturnBody = z.object({
  * The state filter is restricted to known states, so an unknown value is a 400 rather than a query
  * that silently matches nothing. `scope=others` (SCRUM-205) is the organisation-wide view without the
  * caller's own requests, which is what the "Pending returns" queue asks for.
+ *
+ * `overdue=true` asks for the loans past their due date and not yet back — the same definition the
+ * dashboard's Overdue figure counts — whatever their stored state. It arrives as the string
+ * `"true"`/`"false"` because query strings have no booleans.
  */
 export const listQuery = pagination.extend({
   state: z.enum(REQUEST_STATE_LIST).optional(),
   scope: z.enum(['own', 'org', 'others']).optional(),
+  overdue: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export const requestsRouter = createRouter();

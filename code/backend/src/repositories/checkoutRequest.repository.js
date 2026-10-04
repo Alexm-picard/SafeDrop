@@ -72,14 +72,15 @@ export async function findById(orgId, requestId, { session } = {}) {
  * honoured at the data layer rather than by filtering after the fact.
  * @param {string} orgId
  * @param {string} requesterId
- * @param {{ state?: string, page?: number, limit?: number }} [options]
+ * @param {{ state?: string, overdue?: boolean, asOf?: Date, page?: number, limit?: number }} [options]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function listForRequester(orgId, requesterId, { state, page = 1, limit = 50 } = {}) {
-  const filter = { orgId, requesterId };
-  if (state) {
-    filter.state = state;
-  }
+export async function listForRequester(
+  orgId,
+  requesterId,
+  { state, overdue = false, asOf = new Date(), page = 1, limit = 50 } = {},
+) {
+  const filter = { ...listFilter(orgId, { state, overdue, asOf }), requesterId };
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     CheckoutRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -95,14 +96,14 @@ export async function listForRequester(orgId, requesterId, { state, page = 1, li
  * `excludeRequesterId` leaves one person's own requests out: the "Pending returns" queue (SCRUM-205)
  * is the requests someone *else* must confirm, so the caller's own never belong in it.
  * @param {string} orgId
- * @param {{ state?: string, page?: number, limit?: number, excludeRequesterId?: unknown }} [query]
+ * @param {{ state?: string, overdue?: boolean, asOf?: Date, page?: number, limit?: number, excludeRequesterId?: unknown }} [query]
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
-export async function list(orgId, { state, page = 1, limit = 50, excludeRequesterId } = {}) {
-  const filter = { orgId };
-  if (state) {
-    filter.state = state;
-  }
+export async function list(
+  orgId,
+  { state, overdue = false, asOf = new Date(), page = 1, limit = 50, excludeRequesterId } = {},
+) {
+  const filter = listFilter(orgId, { state, overdue, asOf });
   if (excludeRequesterId) {
     // `sanitizeFilter` is on globally and rewrites operators it did not put there; this one is ours.
     filter.requesterId = mongoose.trusted({ $ne: excludeRequesterId });
@@ -205,6 +206,34 @@ export async function countByState(orgId) {
 }
 
 /**
+ * The states in which the organisation does not have the item back: CHECKED_OUT, OVERDUE and
+ * RETURN_PENDING. A late request in any of them is overdue for the dashboard's count and for the
+ * request list's `overdue` view alike — one list, so the two can never disagree.
+ */
+const STILL_OUT = Object.freeze([
+  REQUEST_STATE.CHECKED_OUT,
+  REQUEST_STATE.OVERDUE,
+  REQUEST_STATE.RETURN_PENDING,
+]);
+
+/**
+ * The filter behind both request lists.
+ *
+ * `overdue` asks for the late loans — the same rule `countOverdue` counts — rather than the OVERDUE
+ * state, which is only set when `markOverdue` runs. Combined with `state`, it narrows to the late
+ * requests in that state (and to nothing for a state an item cannot be late in).
+ * @param {string} orgId
+ * @param {{ state?: string, overdue?: boolean, asOf: Date }} options
+ * @returns {object} a Mongo filter
+ */
+function listFilter(orgId, { state, overdue, asOf }) {
+  if (overdue) {
+    return lateFilter(orgId, asOf, state ? STILL_OUT.filter((s) => s === state) : STILL_OUT);
+  }
+  return state ? { orgId, state } : { orgId };
+}
+
+/**
  * The filter for "late": in one of `states`, with a due date strictly before `asOf`.
  *
  * The single definition of lateness that `countOverdue` and `markOverdue` both build on, so the
@@ -240,13 +269,7 @@ function lateFilter(orgId, asOf, states) {
  * @returns {Promise<number>}
  */
 export async function countOverdue(orgId, asOf = new Date()) {
-  return CheckoutRequest.countDocuments(
-    lateFilter(orgId, asOf, [
-      REQUEST_STATE.CHECKED_OUT,
-      REQUEST_STATE.OVERDUE,
-      REQUEST_STATE.RETURN_PENDING,
-    ]),
-  );
+  return CheckoutRequest.countDocuments(lateFilter(orgId, asOf, STILL_OUT));
 }
 
 /**

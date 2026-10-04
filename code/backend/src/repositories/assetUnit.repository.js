@@ -40,6 +40,24 @@ export async function findById(orgId, unitId, { session } = {}) {
 }
 
 /**
+ * Fetch several units by id in one query, scoped to the tenant.
+ *
+ * Backs the request list's summaries (unit tag and asset), one query per page of requests.
+ * Ids that do not resolve are simply absent from the result.
+ * @param {string} orgId
+ * @param {unknown[]} unitIds may contain duplicates; they are de-duplicated here
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function findByIds(orgId, unitIds) {
+  const unique = [...new Set(unitIds.map(String))];
+  if (unique.length === 0) {
+    return [];
+  }
+  // `sanitizeFilter` is on globally and neutralises operators it did not build; this one is ours.
+  return AssetUnit.find({ orgId, _id: mongoose.trusted({ $in: unique }) });
+}
+
+/**
  * List every unit of one asset, ordered by tag.
  *
  * Not paginated: this backs the asset detail view, where the number of units is small and a stable

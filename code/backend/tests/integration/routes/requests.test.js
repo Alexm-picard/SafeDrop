@@ -13,10 +13,13 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import app from '../../../src/app.js';
+import { AssetUnit } from '../../../src/models/AssetUnit.js';
 import { User } from '../../../src/models/User.js';
+import * as assetRepo from '../../../src/repositories/asset.repository.js';
 import * as assetUnitRepo from '../../../src/repositories/assetUnit.repository.js';
 import * as auditRepo from '../../../src/repositories/auditEvent.repository.js';
 import * as checkoutRepo from '../../../src/repositories/checkoutRequest.repository.js';
+import { clearSummaryCache } from '../../../src/services/dashboard.service.js';
 import * as groupService from '../../../src/services/group.service.js';
 import { AUDIT_ACTION } from '../../../src/utils/constants.js';
 import { accessCookieFor } from '../../helpers/authAs.js';
@@ -458,6 +461,21 @@ describe('POST /api/requests/:id/return (SCRUM-120, OD-4)', () => {
   });
 });
 
+describe('batched lookups for the request list (UI rework)', () => {
+  it('return nothing for an empty id list, without a query', async () => {
+    expect(await assetRepo.findByIds(seed.a.orgId, [])).toEqual([]);
+    expect(await assetUnitRepo.findByIds(seed.a.orgId, [])).toEqual([]);
+  });
+
+  it('de-duplicate ids and stay inside the tenant', async () => {
+    const unit = seed.a.units[0];
+    const found = await assetUnitRepo.findByIds(seed.a.orgId, [unit._id, String(unit._id)]);
+    expect(found).toHaveLength(1);
+    expect(await assetUnitRepo.findByIds(seed.b.orgId, [unit._id])).toEqual([]);
+    expect(await assetRepo.findByIds(seed.b.orgId, [unit.assetId])).toEqual([]);
+  });
+});
+
 describe('GET /api/requests (SCRUM-119)', () => {
   it("defaults to the caller's own requests for a MEMBER", async () => {
     const res = await request(app)
@@ -509,6 +527,87 @@ describe('GET /api/requests (SCRUM-119)', () => {
     expect(res.body.total).toBe(1);
     expect(res.body.items[0].id).toBe(String(seed.a.request._id));
     expect(res.body.items[0].state).toBe('PENDING');
+  });
+
+  it('names the requester, asset and unit on every row, so the queue is readable without ids', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&state=PENDING')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    const [row] = res.body.items;
+    const unit = await assetUnitRepo.findById(seed.a.orgId, row.unitId);
+    expect(row.unit).toEqual({ id: String(unit._id), tag: unit.tag });
+    expect(row.asset).toEqual({ id: String(unit.assetId), name: expect.any(String) });
+    expect(row.requester).toEqual({
+      id: row.requesterId,
+      name: expect.any(String),
+      email: expect.any(String),
+    });
+    // An allow-list: nothing else about the requester leaks into the queue.
+    expect(Object.keys(row.requester).sort()).toEqual(['email', 'id', 'name']);
+  });
+
+  it('overdue=true lists the late loans still marked CHECKED_OUT, matching the dashboard count', async () => {
+    // Both fixture due dates are in the past and nothing has run mark-overdue, so the two late loans
+    // are still CHECKED_OUT — the case where filtering on state=OVERDUE alone would show nothing.
+    clearSummaryCache();
+    const [list, summary] = await Promise.all([
+      request(app)
+        .get('/api/requests?scope=org&overdue=true')
+        .set('Cookie', accessCookieFor(seed.a.admin)),
+      request(app).get('/api/dashboard/summary').set('Cookie', accessCookieFor(seed.a.admin)),
+    ]);
+    expect(list.status).toBe(200);
+    expect(list.body.total).toBe(2);
+    expect(list.body.items.every((r) => r.state === 'CHECKED_OUT')).toBe(true);
+    expect(list.body.total).toBe(summary.body.overdue);
+  });
+
+  it('overdue=true leaves out a LOST request even though its date has passed', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&overdue=true')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.body.items.map((r) => r.id)).not.toContain(String(seed.a.lostRequest._id));
+  });
+
+  it('overdue=true combined with a state narrows to the late requests in that state', async () => {
+    const late = await request(app)
+      .get('/api/requests?scope=org&overdue=true&state=CHECKED_OUT')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(late.body.total).toBe(2);
+    // PENDING can never be late (nothing is due back), so the combination matches nothing.
+    const none = await request(app)
+      .get('/api/requests?scope=org&overdue=true&state=PENDING')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(none.body.total).toBe(0);
+  });
+
+  it("overdue=true works on a member's own list too", async () => {
+    const res = await request(app)
+      .get('/api/requests?overdue=true')
+      .set('Cookie', accessCookieFor(seed.a.member));
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(2);
+    expect(res.body.items.every((r) => r.requesterId === String(seed.a.member._id))).toBe(true);
+  });
+
+  it('names nothing rather than failing when the unit or requester no longer exists', async () => {
+    await AssetUnit.deleteOne({ _id: seed.a.request.unitId });
+    await User.deleteOne({ _id: seed.a.request.requesterId });
+    const res = await request(app)
+      .get('/api/requests?scope=org&state=PENDING')
+      .set('Cookie', accessCookieFor(seed.a.approver));
+    expect(res.status).toBe(200);
+    const [row] = res.body.items;
+    expect(row).toMatchObject({ unit: null, asset: null, requester: null });
+  });
+
+  it('answers an empty page without looking anything up', async () => {
+    const res = await request(app)
+      .get('/api/requests?scope=org&state=LOST&page=99')
+      .set('Cookie', accessCookieFor(seed.a.admin));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
   });
 
   it("state filters a MEMBER's own list too", async () => {
