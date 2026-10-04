@@ -187,6 +187,24 @@ export async function isMember(orgId, groupId, userId, { session } = {}) {
 }
 
 /**
+ * The ids of every group in this tenant that lists `userId` as a member (SCRUM-151).
+ *
+ * The many-assets counterpart to `isMemberOfAny`: that answers one asset's question in one query, so
+ * filtering a list of candidates with it costs a query per candidate. This answers the question once
+ * for the whole list, and the caller intersects in memory. Served by the same `orgId_memberIds` index.
+ * @param {string} orgId
+ * @param {string} userId
+ * @param {{ session?: import('mongoose').ClientSession }} [options]
+ * @returns {Promise<string[]>} group ids as strings, empty when the user is in none
+ */
+export async function listIdsForMember(orgId, userId, { session } = {}) {
+  const groups = await UserGroup.find({ orgId, memberIds: toObjectId(userId) }, { _id: 1 })
+    .lean()
+    .session(session ?? null);
+  return groups.map((group) => String(group._id));
+}
+
+/**
  * Fetch several groups by id, scoped to the tenant, with just their names (SCRUM-150).
  *
  * Two callers: `asset.service.js` checks that every id in an asset's `allowedGroupIds` belongs to

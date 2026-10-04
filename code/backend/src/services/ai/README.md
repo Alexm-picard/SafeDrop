@@ -11,7 +11,9 @@ Rules that already apply:
 - Foundry is called **only from the backend** (this folder). The SPA never holds an AI key.
 - Prompts must never include another tenant's data; every call takes `orgId` first like a repository.
 - Log the model, prompt hash and latency per call; never log raw member data.
-- `SearchQueryLog` (Lab 2) is created here in Iteration 2, not before.
+- `SearchQueryLog` (Lab 2) is created here in Iteration 2, not before — tracked as **SCRUM-206**,
+  which also settles what it is allowed to store. Where Lab 2 and the rule above disagree, the rule
+  wins: no query text, neither raw nor recoverable.
 
 ## What exists now
 
@@ -49,4 +51,23 @@ only in the Foundry portal because a prompt is where this feature's safety rules
 reviewable and diffable like any other security control. It also records why the agent is **not**
 connected to MongoDB directly, and the request contract the search service has to build.
 
-Still to come: the feature services themselves, and the `SearchQueryLog` model.
+`assetSearch.service.js` — AI-assisted catalogue search (SCRUM-103) and the recommended-alternatives
+pipeline it is reused for (SCRUM-151). The backend picks the candidates; the model only ranks them.
+
+Still to come: the `SearchQueryLog` model (SCRUM-206).
+
+## Deferred, and a decision rather than drift
+
+**The demand signal is out of scope and has no story yet.** SCRUM-206 was deliberately narrowed to
+operational telemetry — fallback rate, latency, zero-result rate — none of which needs the member's
+words. The one use that genuinely does is a demand signal: _"what are members searching for that we do
+not stock?"_ That was taken out of SCRUM-206 rather than smuggled in, because it is the only part with
+real privacy exposure. If the team wants it, it needs its own story (Iteration 3) and its own recorded
+position: aggregate-only, no link to a user, and a k-anonymity threshold so no stored row can describe
+one person's search.
+
+**A caveat for whoever writes that story.** `promptFingerprint` is for correlating identical prompts
+in logs; it is not a privacy control. Search queries are short and low-entropy ("canon r6",
+"projector"), so a plain hash of one is recoverable by dictionary attack by anyone who can read the
+collection. Anything persisted must be an HMAC keyed with a secret that does not live in the database
+— or, better, not persisted at all.

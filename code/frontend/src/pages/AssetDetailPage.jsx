@@ -47,6 +47,7 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { RequestUnitForm } from '../components/RequestUnitForm';
 import { RestrictedBadge } from '../components/RestrictedBadge';
+import { SimilarItems } from '../components/SimilarItems';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
@@ -180,6 +181,13 @@ export function AssetDetailPage() {
 
   const units = data?.units ?? [];
   const availableCount = units.filter((u) => u.status === UNIT_STATUS.AVAILABLE).length;
+  // SCRUM-151. The dead end this page can hit: units exist but none of them can be borrowed. Read off
+  // the count above rather than scanning the units again — both answer the same question, and two
+  // derivations of "how many are free" would be free to disagree after a later edit. Answered from
+  // units already loaded, so deciding whether to ask for alternatives costs no request of its own, and
+  // a page where something is free never asks at all (AT-4). An asset with no units is not a dead end
+  // either — nobody has stocked it — hence the length check rather than treating empty as "all out".
+  const nothingAvailable = units.length > 0 && availableCount === 0;
 
   return (
     <>
@@ -393,6 +401,13 @@ export function AssetDetailPage() {
               </div>
             ) : null}
           </div>
+          {/*
+            SCRUM-151. Directly under the units table, which is where the member has just read "0
+            available" — the answer belongs next to the question. Offered to every role, because
+            anyone who can browse the catalogue can be stuck in front of it, and not for a retired
+            asset: nobody is trying to borrow one, so there is nothing to substitute for.
+          */}
+          <SimilarItems assetId={id} enabled={nothingAvailable && !isRetired} />
           {/*
             SCRUM-29. Rendered for an admin only, and for a retired asset too: a retired laptop is
             exactly the one somebody asks about afterwards, so its history outlives its circulation.
