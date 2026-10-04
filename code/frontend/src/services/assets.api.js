@@ -40,6 +40,21 @@ export const list = (params = {}, signal) => apiRequest(`/api/assets${query(para
  */
 export const search = (q, signal) => apiRequest(`/api/assets/search${query({ q })}`, { signal });
 /**
+ * Comparable items available right now, for an asset the caller cannot borrow (SCRUM-151).
+ *
+ * Only worth calling when the asset has no available unit — the backend answers an empty list either
+ * way, but the point of the feature is to cost nothing when nobody is stuck.
+ *
+ * `reason` is the model's one-line explanation and is `null` when the recommendations came from the
+ * fallback, which the caller renders as a factual line rather than as prose from a model that never
+ * ran.
+ * @param {string} id asset id
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ alternatives: Array<{ assetId: string, name: string, category: string, description: string, reason: string|null }>, aiAssisted: boolean }>}
+ */
+export const alternatives = (id, signal) =>
+  apiRequest(`/api/assets/${encodeURIComponent(id)}/alternatives`, { signal });
+/**
  * Read one asset with its units.
  * @param {string} id
  * @param {AbortSignal} [signal]

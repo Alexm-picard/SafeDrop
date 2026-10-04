@@ -47,6 +47,7 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { RequestUnitForm } from '../components/RequestUnitForm';
 import { RestrictedBadge } from '../components/RestrictedBadge';
+import { SimilarItems } from '../components/SimilarItems';
 import { useAuth } from '../hooks/useAuth';
 import { useAsset } from '../hooks/useAssets';
 import { errorMessage } from '../services/api';
@@ -98,6 +99,14 @@ export function AssetDetailPage() {
   const restricted = data?.restricted ?? allowedGroups.length > 0;
   const ineligible = restricted && data?.eligible === false;
   const requestingUnit = data?.units?.find((u) => u.id === requestingUnitId) ?? null;
+  // SCRUM-151. The dead end this page can hit: units exist but none of them can be borrowed. Answered
+  // from the units already loaded, so deciding whether to ask for alternatives costs no request of its
+  // own, and a page where something is free never asks at all (AT-4). An asset with no units is not a
+  // dead end either — nobody has stocked it — which is why this counts units rather than trusting
+  // `units.length === 0` to mean "all out".
+  const units = data?.units ?? [];
+  const nothingAvailable =
+    units.length > 0 && !units.some((unit) => unit.status === UNIT_STATUS.AVAILABLE);
 
   const onRetire = useCallback(async () => {
     setNotice(null);
@@ -329,6 +338,13 @@ export function AssetDetailPage() {
             />
           ) : null}
           {isAdmin && !isRetired ? <AddUnitForm assetId={id} onAdded={onUnitAdded} /> : null}
+          {/*
+            SCRUM-151. Directly under the units table, which is where the member has just read "0
+            available" — the answer belongs next to the question. Offered to every role, because
+            anyone who can browse the catalogue can be stuck in front of it, and not for a retired
+            asset: nobody is trying to borrow one, so there is nothing to substitute for.
+          */}
+          <SimilarItems assetId={id} enabled={nothingAvailable && !isRetired} />
           {/*
             SCRUM-29. Rendered for an admin only, and for a retired asset too: a retired laptop is
             exactly the one somebody asks about afterwards, so its history outlives its circulation.

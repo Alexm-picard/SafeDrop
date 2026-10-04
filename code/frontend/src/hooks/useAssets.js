@@ -54,6 +54,24 @@ export function useAsset(id) {
   return useApiResource(fetcher);
 }
 /**
+ * Load comparable items available right now, for an asset the member cannot borrow (SCRUM-151).
+ *
+ * `enabled` is false whenever the asset still has an available unit, and then **no request is made**
+ * and the data resolves to `null`. The backend would answer an empty list anyway (AT-4), but the
+ * point of that criterion is that the feature costs nothing when nobody is stuck, and a request per
+ * asset page view would undo it. Same idiom as `useAssetSearch` with an empty query.
+ * @param {string} id asset id from the route
+ * @param {boolean} enabled whether this asset is actually a dead end
+ * @returns {{ status: string, data: ({ alternatives: object[], aiAssisted: boolean }|null), error: unknown, reload: () => void }}
+ */
+export function useAssetAlternatives(id, enabled) {
+  const fetcher = useCallback(
+    (signal) => (enabled ? assetsApi.alternatives(id, signal) : Promise.resolve(null)),
+    [id, enabled],
+  );
+  return useApiResource(fetcher);
+}
+/**
  * Load a page of one asset's chain of custody (SCRUM-29).
  *
  * `page` and `limit` are destructured out before being used as dependencies, for the same reason as
