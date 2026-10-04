@@ -11,6 +11,7 @@
  *
  * Exports: `create`, `findById`, `list`, `listRestrictedTo`, `search`, `update`, `retire`.
  */
+import mongoose from 'mongoose';
 import { Asset } from '../models/Asset.js';
 
 /**
@@ -46,6 +47,24 @@ export async function create(
  */
 export async function findById(orgId, assetId, { session } = {}) {
   return Asset.findOne({ _id: assetId, orgId }).session(session ?? null);
+}
+
+/**
+ * Fetch several assets by id in one query, scoped to the tenant.
+ *
+ * Backs the request list's summaries, so a page of 25 requests costs one asset lookup rather than 25.
+ * Ids that do not resolve are simply absent from the result.
+ * @param {string} orgId
+ * @param {unknown[]} assetIds may contain duplicates; they are de-duplicated here
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function findByIds(orgId, assetIds) {
+  const unique = [...new Set(assetIds.map(String))];
+  if (unique.length === 0) {
+    return [];
+  }
+  // `sanitizeFilter` is on globally and neutralises operators it did not build; this one is ours.
+  return Asset.find({ orgId, _id: mongoose.trusted({ $in: unique }) });
 }
 
 /**

@@ -318,23 +318,80 @@ export async function submit(orgId, actor, input = {}) {
  * requester: an approver's own pending return belongs in every queue but theirs.
  * @param {string} orgId
  * @param {{ userId: string, role: string }} actor
- * @param {{ state?: string, page?: number, limit?: number, scope?: 'own'|'org'|'others' }} [query] validated `listQuery`
+ * @param {{ state?: string, overdue?: boolean, page?: number, limit?: number, scope?: 'own'|'org'|'others' }} [query] validated `listQuery`
  * @returns {Promise<{ items: object[], total: number, page: number, limit: number }>}
  */
 export async function list(orgId, actor, query = {}) {
-  const { state, page, limit, scope } = query;
+  const { state, overdue, page, limit, scope } = query;
+  // The server's clock decides what is late, never the caller's — the same rule as `markOverdue`.
+  const asOf = new Date();
   const wantsOrgWide =
     (scope === 'org' || scope === 'others') &&
     roleHasPermission(actor.role, PERMISSIONS.REQUESTS_DECIDE);
-  if (wantsOrgWide) {
-    return checkoutRequestRepo.list(orgId, {
-      state,
-      page,
-      limit,
-      excludeRequesterId: scope === 'others' ? actor.userId : undefined,
-    });
+  const result = wantsOrgWide
+    ? await checkoutRequestRepo.list(orgId, {
+        state,
+        overdue,
+        asOf,
+        page,
+        limit,
+        excludeRequesterId: scope === 'others' ? actor.userId : undefined,
+      })
+    : await checkoutRequestRepo.listForRequester(orgId, actor.userId, {
+        state,
+        overdue,
+        asOf,
+        page,
+        limit,
+      });
+  return { ...result, items: await withSummaries(orgId, result.items) };
+}
+
+/**
+ * Attach the requester, asset and unit a list row needs to be readable.
+ *
+ * A queue of raw ids tells an approver nothing; the names are what they decide on. Three batched
+ * lookups per page (units first, since the asset hangs off the unit), never one per row. Each lookup
+ * is tenant-scoped, and a reference that no longer resolves becomes null rather than an error — the
+ * same rule `get()` follows.
+ * @param {string} orgId
+ * @param {object[]} items request documents
+ * @returns {Promise<object[]>}
+ */
+async function withSummaries(orgId, items) {
+  if (items.length === 0) {
+    return items;
   }
-  return checkoutRequestRepo.listForRequester(orgId, actor.userId, { state, page, limit });
+  const units = await assetUnitRepo.findByIds(
+    orgId,
+    items.map((r) => r.unitId),
+  );
+  const [assets, users] = await Promise.all([
+    assetRepo.findByIds(
+      orgId,
+      units.map((u) => u.assetId),
+    ),
+    userRepo.findByIds(
+      orgId,
+      items.map((r) => r.requesterId),
+    ),
+  ]);
+  const byId = (docs) => new Map(docs.map((d) => [String(d._id), d]));
+  const unitById = byId(units);
+  const assetById = byId(assets);
+  const userById = byId(users);
+  return items.map((request) => {
+    const plain = typeof request.toJSON === 'function' ? request.toJSON() : request;
+    const unit = unitById.get(String(request.unitId));
+    const asset = unit ? assetById.get(String(unit.assetId)) : undefined;
+    const requester = userById.get(String(request.requesterId));
+    return {
+      ...plain,
+      unit: unit ? { id: String(unit._id), tag: unit.tag } : null,
+      asset: asset ? { id: String(asset._id), name: asset.name } : null,
+      requester: requester ? publicPerson(requester) : null,
+    };
+  });
 }
 
 /**
