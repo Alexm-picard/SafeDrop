@@ -17,14 +17,17 @@ import { useApiResource } from './useApiResource';
  * Serves both the member's own list (no `scope`, or `scope: 'own'`) and the org-wide approval queue
  * (`scope: 'org'`) — the API still decides what the caller is actually allowed to see, so this hook
  * only forwards what the page asked for.
- * @param {{ page?: number, limit?: number, state?: string, scope?: 'own'|'org' }} [params]
+ * `overdue: true` asks for the loans past their due date and not yet back, whatever their stored
+ * state — the same definition the dashboard's Overdue figure counts.
+ * @param {{ page?: number, limit?: number, state?: string, scope?: 'own'|'org', overdue?: boolean }} [params]
  * @returns {{ status: string, data: unknown, error: unknown, reload: () => void }}
  */
 export function useRequests(params = {}) {
-  const { page, limit, state, scope } = params;
+  const { page, limit, state, scope, overdue } = params;
   const fetcher = useCallback(
-    (signal) => requestsApi.list({ page, limit, state, scope }, signal),
-    [page, limit, state, scope],
+    (signal) =>
+      requestsApi.list({ page, limit, state, scope, overdue: overdue || undefined }, signal),
+    [page, limit, state, scope, overdue],
   );
   return useApiResource(fetcher);
 }

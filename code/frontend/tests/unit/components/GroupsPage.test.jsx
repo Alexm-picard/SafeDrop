@@ -110,3 +110,52 @@ describe('GroupsPage', () => {
     expect(name).toHaveAccessibleDescription(/already exists/i);
   });
 });
+
+describe('GroupsPage messages (UI rework)', () => {
+  it('shows a failed create that is not about one field as a message on the form', async () => {
+    server.use(
+      http.post('*/api/groups', () => errorResponse(500, 'INTERNAL_ERROR', 'Something went wrong')),
+    );
+    const user = userEvent.setup();
+    renderGroups();
+    await user.type(await screen.findByLabelText('Name'), 'Film Dept Staff');
+    await user.click(screen.getByRole('button', { name: 'Create group' }));
+    const form = screen.getByRole('form', { name: 'Create a group' });
+    expect(await within(form).findByRole('alert')).toHaveTextContent('Something went wrong');
+  });
+
+  it('shows what the group page did before sending the admin back, until dismissed', async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<GroupsPage />, {
+      user: adminUser,
+      route: { pathname: '/admin/groups', state: { notice: 'Deleted Film Dept Staff.' } },
+      extraRoutes: [{ path: '/admin/groups', element: <GroupsPage /> }],
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('Deleted Film Dept Staff.');
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('Deleted Film Dept Staff.')).not.toBeInTheDocument();
+  });
+
+  it('pages a long list of groups ten at a time', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      ...groups[0],
+      id: `group-${i}`,
+      name: `Group ${String(i).padStart(2, '0')}`,
+    }));
+    server.use(
+      http.get('*/api/groups', () =>
+        HttpResponse.json({ items: many, total: many.length, page: 1, limit: 100 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderGroups();
+    const table = await screen.findByRole('table', { name: 'Groups in your organization' });
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(10);
+    await user.click(
+      within(
+        screen.getByRole('navigation', { name: 'Groups in your organization pages' }),
+      ).getByRole('button', { name: 'Next' }),
+    );
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2);
+  });
+});

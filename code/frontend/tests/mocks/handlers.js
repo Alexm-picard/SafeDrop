@@ -236,6 +236,27 @@ export function assetsPage(search) {
   const start = (page - 1) * limit;
   return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
 }
+
+/**
+ * Attach the requester, asset and unit summaries the real list endpoint adds to every row.
+ * @param {object} request
+ * @returns {object}
+ */
+function withSummaries(request) {
+  const unit = Object.values(assetUnits)
+    .flat()
+    .find((u) => u.id === request.unitId);
+  const asset = unit ? assets.find((a) => a.id === unit.assetId) : null;
+  const requester = [adminUser, approverUser, memberUser].find((u) => u.id === request.requesterId);
+  return {
+    ...request,
+    unit: unit ? { id: unit.id, tag: unit.tag } : null,
+    asset: asset ? { id: asset.id, name: asset.name } : null,
+    requester: requester
+      ? { id: requester.id, name: requester.name, email: requester.email }
+      : null,
+  };
+}
 /**
  * Answer `GET /api/assets/search` the way the real API does with AI off (SCRUM-200): a
  * case-insensitive match on name, description and category over the non-retired assets, sorted by
@@ -462,11 +483,21 @@ export const checkoutRequests = [
  */
 export function requestsPage(search) {
   const state = search.get('state');
-  const filtered = state ? checkoutRequests.filter((r) => r.state === state) : checkoutRequests;
+  const overdue = search.get('overdue') === 'true';
+  const now = Date.now();
+  const filtered = checkoutRequests.filter(
+    (r) =>
+      (!state || r.state === state) &&
+      (!overdue ||
+        (['CHECKED_OUT', 'OVERDUE', 'RETURN_PENDING'].includes(r.state) &&
+          r.dueAt &&
+          new Date(r.dueAt).getTime() < now)),
+  );
   const page = Number(search.get('page') ?? 1);
   const limit = Number(search.get('limit') ?? 25);
   const start = (page - 1) * limit;
-  return { items: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+  const items = filtered.slice(start, start + limit).map(withSummaries);
+  return { items, total: filtered.length, page, limit };
 }
 
 /**
