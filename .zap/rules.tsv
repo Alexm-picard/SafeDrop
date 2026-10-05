@@ -3,7 +3,7 @@
 # Format: <rule id>	<IGNORE|WARN|FAIL>	<comment>    — tab separated, one rule per line.
 # A rule that is not listed defaults to WARN, so a new alert always shows up rather than passing
 # silently. IGNORE means the team has looked at the alert and accepted it; the reasoning lives in
-# doc/zap-triage.md, which must be updated in the same PR as any change here.
+# .zap/zap-triage.md, which must be updated in the same PR as any change here.
 #
 # Note the build does NOT pass or fail on these levels. The workflow fails on any High-severity
 # alert and reports the rest (see .github/workflows/zap.yml), so IGNORE only controls the noise in

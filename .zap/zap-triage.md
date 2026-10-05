@@ -14,8 +14,9 @@ optional hardening. Ticket: SCRUM-126.
 | SPA    | <https://safe-drop-five.vercel.app>         |
 | API    | <https://safedrop-ony6.onrender.com/health> |
 
-It runs weekly (Monday 07:00 UTC), on any `v*` tag (before a release is promoted), and on demand
-from the Actions tab. It does **not** run on pull requests: a scan takes minutes, needs staging
+It runs weekly (Monday 07:00 UTC), whenever a GitHub release is published (the reports are then
+attached to the release as `zap-spa.html`, `zap-api.json` and so on), and on demand from the
+Actions tab. It does **not** run on pull requests: a scan takes minutes, needs staging
 awake, and staging only ever holds `main`, so a PR scan would report on code the PR does not have.
 
 Baseline mode crawls the site and runs passive rules only. It never sends attack payloads, so it is
