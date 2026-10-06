@@ -1,7 +1,7 @@
 # AI-USAGE SUMMARY
 # Tools: Claude Code
 # Overall AI Contribution: ~90%
-# AI-Assisted Areas: scheduled OWASP ZAP baseline scan of staging, report artifacts, severity gate
+# AI-Assisted Areas: scheduled OWASP ZAP baseline scan of staging, report artifacts, severity gate; scan on every published GitHub release, with the reports attached to it
 # Human Contributions: pending team review
 # Notes: Written for SCRUM-126 (SPPP DAST; SR-5, SR-6, SR-13). Must be reviewed and tested by the owning team member before merge.
 #
@@ -24,8 +24,12 @@ name: DAST (OWASP ZAP)
 on:
   schedule:
     - cron: '0 7 * * 1' # weekly, Monday 07:00 UTC — an hour after CodeQL
-  push:
-    tags: ['v*'] # before a release is promoted (SPPP)
+  # Every published GitHub release, whatever its tag is called (the team's are `Iteration1` and
+  # so on, which a `v*` tag filter never matched). This replaces that filter rather than adding to
+  # it, so a release whose tag happens to start with `v` is not scanned twice. Staging deploys from
+  # `main`, so the scan covers the release only when it is cut from the current `main`.
+  release:
+    types: [published]
   workflow_dispatch: # and on demand
 
 permissions:
@@ -50,7 +54,7 @@ jobs:
             url: https://safe-drop-five.vercel.app
           # Seeded at /health, not at the API root: the root is a 404 (there is no page there), and
           # ZAP's spider needs a real response to start from. It still cannot discover /api/*, which
-          # has no links and needs a session — see the coverage limits in doc/zap-triage.md.
+          # has no links and needs a session — see the coverage limits in .zap/zap-triage.md.
           - name: api
             url: https://safedrop-ony6.onrender.com/health
 
@@ -68,7 +72,7 @@ jobs:
       - name: ZAP baseline scan
         # -I: warnings alone do not fail the run. The severity gate below decides that instead, so
         # that "fails on high severity" is one explicit rule here rather than ZAP's exit codes.
-        # -c: the rule file records which alerts the team has formally accepted (see doc/zap-triage.md).
+        # -c: the rule file records which alerts the team has formally accepted (see .zap/zap-triage.md).
         run: |
           mkdir -p reports && chmod 777 reports
           docker run --rm \
@@ -126,3 +130,37 @@ jobs:
             exit 1
           fi
           echo "No high-severity findings."
+
+  attach-to-release:
+    # The release carries its own DAST evidence (SPPP: scan staging before a release is promoted):
+    # both reports are added to the release's assets. Runs even when the gate failed — a release
+    # with a high-severity finding is exactly the one whose report has to be on it.
+    if: always() && github.event_name == 'release' && github.repository == 'BUMETCS673/CS673OLF26P3'
+    needs: baseline
+    name: Attach ZAP reports to the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # uploading release assets; the scan jobs above stay read-only
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zap-*
+          path: reports
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        # Prefixed with the target (spa-, api-) by the scan already; --clobber replaces the reports
+        # if the workflow is re-run for the same release.
+        run: |
+          shopt -s nullglob
+          files=(reports/*/*.html reports/*/*.json reports/*/*.md)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no ZAP reports to attach — the scans did not produce any"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            cp "$f" "zap-$(basename "$f")"
+          done
+          gh release upload "$TAG" zap-* --clobber --repo "$GITHUB_REPOSITORY"
