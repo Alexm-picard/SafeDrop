@@ -6,6 +6,37 @@ This is an organizational inventory management/checkout service. The motivation 
 ## Purpose
 The goal is to create a full-stack web application that will allow organizations to create their own inventory portals, with an interface allowing organization members to request and check out equipment, as well as an admin dashboard for managing the inventory and viewing the audit log.
 
+## Features
+
+What is built today, by role. Every organization's data is kept separate from every other's, and
+every state change is written to the audit log.
+
+**Everyone (member, approver, admin)**
+- Browse and search the catalog. With AI search on, a plain-language request ("something to record
+  a lecture") is ranked by Microsoft Foundry, with a reason for each match; without it, or if the
+  AI is unavailable, a plain text search answers instead.
+- Request an available unit for a date range, then follow the request on My requests. An approved
+  item is collected in person; a pickup not recorded within the organization's grace period
+  (48 hours by default) expires and frees the unit.
+- When nothing suitable is available, the asset page suggests similar items that are.
+- Restricted equipment shows a **Restricted** badge naming the groups allowed to borrow it. Anyone
+  outside those groups sees the reason and cannot request it; the API refuses it regardless.
+
+**Approver**
+- Approval queue: approve or deny requests. Nobody can approve their own request, and a request for
+  restricted equipment is checked again at approval, in case the requester has left the group.
+
+**Organization admin**
+- Dashboard: what needs attention, inventory counts and a checkout activity chart.
+- Assets: create, edit, retire, add units, send a unit to maintenance and back, and see an asset's
+  full history.
+- Users: invite members, change roles, set a temporary password.
+- Groups: named sets of members, such as "Certified Drone Pilots". An asset can be restricted to
+  one or more groups; being in any one of them is enough to request it.
+- Settings: whether requests need an approver by default (each asset can override it), and the
+  pickup grace period.
+- Audit log, filterable by member, action, target and date range.
+
 ## Team Members
 Alexa Stein - Team Lead  
 Amber Rastella - Security  
@@ -31,7 +62,8 @@ Orelmis Toribio - QA
 
 ## Prerequisites
 
-- Node.js 20 or newer (`node --version` to check)
+- Docker Desktop (for the recommended setup below)
+- Node.js 22.12 or newer (`node --version` to check; `.nvmrc` pins 22)
 - npm (comes with Node)
 - Git
 
@@ -62,24 +94,28 @@ docker compose exec backend npm run migrate:status
 
 ## Quick start (without Docker)
 
-Prerequisites: Node.js 22 (`.nvmrc`), npm 10, and a MongoDB **replica set** (transactions need one). The easiest replica set is still Compose: `docker compose up mongo mongo-init`.
+You need a MongoDB **replica set**, because the API uses transactions. The easiest one is still
+Compose: `docker compose up mongo mongo-init`.
+
+1. From the repository root, create your `.env` (the backend reads it from the root):
 
 ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
+cp .env.example .env
 ```
 
-   Fill in the values. Ask the team channel for the shared dev keys. Never commit `.env` files.
+2. In `.env`, set `MONGODB_URI=mongodb://localhost:27017/safedrop?replicaSet=rs0&directConnection=true`
+   and a `JWT_ACCESS_SECRET` of at least 32 characters. Ask the team channel for shared keys such
+   as Foundry's. Never commit `.env` files.
 
-4. Start both servers:
+3. Install, migrate and start both servers, from `code/`:
 
 ```bash
-   npm run dev
+npm run install:all
+npm run migrate --prefix backend
+npm run dev
 ```
 
-5. Verify:
-   - Frontend: http://localhost:5173
-   - Backend: http://localhost:4000
+4. Check it: the app is at <http://localhost:5173> and the API at <http://localhost:4000/health>.
 
 ## Running after the first time
 
@@ -92,18 +128,28 @@ npm run dev
 If someone added a new dependency since your last pull, run `npm run install:all` again before `npm run dev`. A `Cannot find module` error is the usual sign you need to.
 
 ## Scripts
+
+Run from `code/`.
+
 | Command               | What it does                                      |
 | --------------------- | ------------------------------------------------- |
 | `npm run dev`         | Starts backend and frontend together              |
 | `npm run install:all` | Installs dependencies in root, backend, frontend  |
 | `npm run dev --prefix backend`  | Backend only                            |
 | `npm run dev --prefix frontend` | Frontend only                           |
+| `npm test`            | Backend and frontend test suites                  |
+| `npm run lint`        | ESLint on backend and frontend                    |
+| `npm run format:check`| Prettier check on backend and frontend (CI runs it) |
+| `npm run seed`        | Demo data (see below)                             |
+| `npm run migrate --prefix backend` | Applies pending database migrations  |
+| `npm run migrate:status --prefix backend` | Lists applied and pending migrations |
 
 ## Troubleshooting
 
 - **Port already in use:** something else is on 4000 or 5173. Kill it with `lsof -ti:4000 | xargs kill` (swap the port as needed).
+- **Backend changes don't show up under Docker:** the backend container doesn't always reload when files change on your machine. Run `docker compose restart backend`, then check that `uptime` in `/health` has reset.
 - **`Cannot use import statement outside a module`:** `backend/package.json` must have `"type": "module"`.
-- **Frontend can't reach backend:** make sure the backend is running and check the Vite proxy in `frontend/vite.config.ts`.
+- **Frontend can't reach backend:** make sure the backend is running and check the Vite proxy in `code/frontend/vite.config.js`.
 
 
 ## Seed dev data
@@ -124,6 +170,10 @@ drops and recreates them from scratch — no flag or confirmation needed. Refuse
 `NODE_ENV=production`.
 
 **`MONGODB_URI` must be set wherever you run this — inside the container or on your host machine.**
+
+The seed creates no user groups. To try restricted equipment, sign in as an admin, create a group
+under **Groups**, add a member to it, then pick that group under "Who can request this" on an
+asset's edit form.
 
 ## Staging
 
@@ -157,6 +207,8 @@ the Render API, so the session cookies stay first-party (SDD §6.3).
 | `MAIL_FROM` | the sender the provider has verified, e.g. `SafeDrop <no-reply@…>` |
 | `COOKIE_SECURE` | `true` |
 | `TRUST_PROXY` | `1` per SDD §6.8, which is also the production default when unset (see the known issue below) |
+| `FOUNDRY_ENABLED` | `true` to turn on AI search and recommendations; when unset or `false`, plain search is used |
+| `FOUNDRY_ENDPOINT`, `FOUNDRY_API_KEY`, `FOUNDRY_DEPLOYMENT` | needed only when `FOUNDRY_ENABLED=true` (key is secret) |
 
 In production mode the API refuses to start without `COOKIE_SECURE=true`, a non-empty
 `CORS_ORIGINS` and an `https://` `APP_BASE_URL`, so a missing value fails the deploy rather than
@@ -166,7 +218,8 @@ it merges**, and should add it to this table.
 
 **Database.** MongoDB Atlas (free tier). The container does not run migrations: after merging a
 change that adds one, run `npm run migrate` from `code/backend` with `MONGODB_URI` set to the Atlas
-connection string.
+connection string. `npm run migrate:status` with the same `MONGODB_URI` shows which ones are still
+pending.
 
 **Cold starts.** The Render free tier stops the API after 15 minutes without traffic, and the next
 request waits while it starts again (about 20 seconds when measured).
