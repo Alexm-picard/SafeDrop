@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label; SCRUM-205 borrower pickup, start/confirm/reject return; every approver action lives here (the approval queue links in); SCRUM-241: the needed dates read as the calendar days the member picked, like the board's cards
+// AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label; SCRUM-205 borrower pickup, start/confirm/reject return; every approver action lives here (the approval queue links in)
 // Human Contributions: pending team review
 // Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
 
@@ -39,7 +39,7 @@ import { useRequest } from '../hooks/useRequests';
 import { errorMessage, isApiError } from '../services/api';
 import * as requestsApi from '../services/requests.api';
 import { ROLES, ROUTES, UNIT_CONDITIONS } from '../utils/constants';
-import { formatDate, formatRequestDay, humanize } from '../utils/format';
+import { formatDate, formatDateOnly, humanize } from '../utils/format';
 import { actionsFor } from '../utils/requestState';
 
 /**
@@ -220,7 +220,7 @@ export function RequestDetailPage() {
               </dd>
               <dt>Needed</dt>
               <dd>
-                {formatRequestDay(request.neededFrom)} – {formatRequestDay(request.neededTo)}
+                {formatDateOnly(request.neededFrom)} – {formatDateOnly(request.neededTo)}
               </dd>
               {request.dueAt ? (
                 <>

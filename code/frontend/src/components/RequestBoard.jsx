@@ -25,7 +25,7 @@ import { errorMessage } from '../services/api';
 import * as requestsApi from '../services/requests.api';
 import { ROUTES } from '../utils/constants';
 import { dueStatus } from '../utils/dueStatus';
-import { formatRequestDay, humanize } from '../utils/format';
+import { formatDateOnly, humanize } from '../utils/format';
 import { actionsFor } from '../utils/requestState';
 import { DueBadge } from './DueBadge';
 import { StatusBadge } from './StatusBadge';
@@ -117,7 +117,7 @@ function RequestCard({ request: r, showRequester, actions, busy, onAct }) {
         </p>
       ) : null}
       <p className="rq-when">
-        {formatRequestDay(r.neededFrom)} to {formatRequestDay(r.neededTo)}
+        {formatDateOnly(r.neededFrom)} to {formatDateOnly(r.neededTo)}
         {r.asset ? (
           <Link to={ROUTES.asset(r.asset.id)} aria-describedby={titleId}>
             View asset

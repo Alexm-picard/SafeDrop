@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { errorMessage, isApiError } from '../services/api';
 import * as requestsApi from '../services/requests.api';
 import { fieldErrorsOf } from '../utils/formErrors';
-import { validateWindow } from '../utils/requestWindow';
+import { toUtcWindow, validateWindow } from '../utils/requestWindow';
 import { FormField } from './FormField';
 
 /** A blank request window, matching `createRequestBody`'s own default for `note`. */
@@ -62,10 +62,11 @@ export function RequestUnitForm({ unit, onCreated, onFailed, onCancel }) {
     setPending(true);
     setFieldErrors({});
     try {
+      // SCRUM-240: the picked days are the member's local days; send them as UTC instants (start of
+      // the first day, end of the last) rather than bare dates the server would read as UTC midnight.
       const created = await requestsApi.create({
         unitId: unit.id,
-        neededFrom: values.neededFrom,
-        neededTo: values.neededTo,
+        ...toUtcWindow(values),
         note: values.note.trim(),
       });
       onCreated(created);

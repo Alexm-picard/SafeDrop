@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: small display formatters; restrictionNote for restricted equipment (SCRUM-150, SCRUM-203); SCRUM-241: formatRequestDay (a request's calendar day, read in UTC)
+// AI-Assisted Areas: small display formatters; restrictionNote for restricted equipment (SCRUM-150, SCRUM-203)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -23,6 +23,9 @@ const dayFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   timeZone: 'UTC',
 });
+// The browser's own time zone (no `timeZone` option), for instants that mean a day on the viewer's
+// calendar, such as a request's window (SCRUM-240).
+const dateOnlyFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 const numberFormatter = new Intl.NumberFormat('en-US');
 /**
  * Format a date for display: `"Sep 16, 2026, 7:00 PM"`.
@@ -40,6 +43,23 @@ export function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '—' : dateFormatter.format(date);
 }
 /**
+ * Format an instant as a day on the viewer's calendar: `"Oct 12, 2026"` (SCRUM-240).
+ *
+ * For a request's `neededFrom` / `neededTo`, which are UTC instants marking the start and end of the
+ * days the member picked. They are shown in the browser's local time zone with no time of day,
+ * because the member chose days, not times. Total like `formatDate`: missing or unparseable input
+ * returns an em dash.
+ * @param {Date|string|number|null|undefined} value
+ * @returns {string} the formatted day, or `'—'`
+ */
+export function formatDateOnly(value) {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : dateOnlyFormatter.format(date);
+}
+/**
  * Format one of the API's day buckets for an axis or a table: `'2026-09-20'` → `"Sep 20"`.
  *
  * The year is left off deliberately — these appear thirty at a time along an axis, where it would be
@@ -52,22 +72,6 @@ export function formatDay(value) {
     return '—';
   }
   const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? '—' : dayFormatter.format(date);
-}
-/**
- * Format the day a request needs something from or until, without a time: `"Oct 1"`.
- *
- * SCRUM-241. The request form sends a calendar day and the API keeps it as midnight UTC, so it is read
- * back in UTC — in the browser's timezone, anywhere west of Greenwich would show the evening before
- * ("Sep 30, 8:00 PM" for a request that starts on October 1).
- * @param {Date|string|number|null|undefined} value
- * @returns {string} the formatted day, or `'—'`
- */
-export function formatRequestDay(value) {
-  if (value === null || value === undefined || value === '') {
-    return '—';
-  }
-  const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : dayFormatter.format(date);
 }
 /**

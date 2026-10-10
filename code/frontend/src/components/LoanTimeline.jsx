@@ -21,7 +21,7 @@ import { Link } from 'react-router';
 import { useRequests } from '../hooks/useRequests';
 import { ROUTES } from '../utils/constants';
 import { dueStatus } from '../utils/dueStatus';
-import { formatRequestDay, humanize } from '../utils/format';
+import { formatDateOnly, humanize } from '../utils/format';
 
 /** The largest page the API serves: enough to draw everything live in a typical organisation. */
 const TIMELINE_PARAMS = Object.freeze({ scope: 'org', limit: 100 });
@@ -128,7 +128,7 @@ export function LoanTimeline({ now }) {
                   <Link
                     className="tl-row"
                     to={ROUTES.request(r.id)}
-                    aria-label={`${name}, ${r.requester?.name ?? 'unknown requester'}: ${bar.label}, ${formatRequestDay(r.neededFrom)} to ${formatRequestDay(r.neededTo)}`}
+                    aria-label={`${name}, ${r.requester?.name ?? 'unknown requester'}: ${bar.label}, ${formatDateOnly(r.neededFrom)} to ${formatDateOnly(r.neededTo)}`}
                   >
                     <span className="tl-who">
                       <b>{r.asset?.name ?? 'Unknown asset'}</b>

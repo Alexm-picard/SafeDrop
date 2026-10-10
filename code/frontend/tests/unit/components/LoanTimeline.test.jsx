@@ -15,6 +15,7 @@ import { screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { LoanTimeline } from '../../../src/components/LoanTimeline';
+import { formatDateOnly } from '../../../src/utils/format';
 import { adminUser, daysFromNow, requestsPage } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
@@ -48,7 +49,10 @@ describe('LoanTimeline', () => {
     renderWithAuth(<LoanTimeline />, { user: adminUser });
     const link = await screen.findByRole('link', { name: /Pending/ });
     expect(link).toHaveAccessibleName(new RegExp(byState('PENDING').asset.name));
-    expect(link).toHaveAccessibleName(/Oct 1 to Oct 15/);
+    const { neededFrom, neededTo } = byState('PENDING');
+    expect(link).toHaveAccessibleName(
+      new RegExp(`${formatDateOnly(neededFrom)} to ${formatDateOnly(neededTo)}`),
+    );
   });
 
   it('says how late an overdue loan is, in words', async () => {
