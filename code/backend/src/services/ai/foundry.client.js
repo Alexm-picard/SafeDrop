@@ -52,9 +52,16 @@ export function isFoundryEnabled() {
 /**
  * A short, stable fingerprint of a prompt, for correlating log lines without recording the text.
  *
- * Truncated to 16 hex characters: enough to tell two prompts apart when reading a log, far too
- * little to work backwards to the content. This exists so that "the same query is being retried in a
- * loop" is answerable from the logs without those logs holding tenant data.
+ * Truncated to 16 hex characters: enough to tell two prompts apart when reading a log. This exists so
+ * that "the same query is being retried in a loop" is answerable from the logs without those logs
+ * quoting the prompt.
+ *
+ * **This is not a privacy control (SCRUM-206).** It is a plain, unkeyed SHA-256, so anyone who can
+ * guess the input can recompute it and compare. Search queries are short and low-entropy
+ * ("projector", "canon r6"), so a hash of one is reversed by hashing a word list, in seconds. It is
+ * fit for a log line, not for storage: nothing derived from member input is persisted —
+ * `SearchQueryLog` has no field for it — and if a fingerprint ever is, it must be an HMAC keyed with a
+ * secret that does not live in the database.
  * @param {string} prompt
  * @returns {string}
  */

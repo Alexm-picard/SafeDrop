@@ -20,17 +20,23 @@
  * Restricted badge like the catalogue list. They are added after the search and never sent to the
  * model: the prompt contract stays exactly as it was.
  *
- * Exports: `searchAssets(orgId, query)`.
+ * Every search and every alternatives lookup that reaches the AI pipeline also writes one
+ * `SearchQueryLog` row through `recordSearch()` (SCRUM-206): whether the model's answer was used and,
+ * if not, which of the three fallbacks below happened, plus latency and counts. Never the query, and
+ * never the caller. The write is fire-and-forget, so it cannot slow down or fail the search (AT-6).
+ *
+ * Exports: `searchAssets(orgId, query)`, `getAlternatives(orgId, userId, assetId)`.
  */
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
-import { UNIT_STATUS } from '../../utils/constants.js';
+import { SEARCH_FALLBACK_REASON, SEARCH_KIND, UNIT_STATUS } from '../../utils/constants.js';
 import { NotFoundError, ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { restrictionsOf } from '../asset.service.js';
 import { filterEligible } from '../group.service.js';
 import { foundryRequest, isFoundryEnabled } from './foundry.client.js';
+import { recordSearch } from './searchTelemetry.service.js';
 
 const log = logger.child({ component: 'asset-search' });
 
@@ -72,8 +78,32 @@ const MAX_ALTERNATIVES = 5;
  * @returns {Promise<{ matches: object[], clarification: string|null, aiAssisted: boolean }>}
  */
 export async function searchAssets(orgId, query) {
+  const startedAt = performance.now();
+  const { result, fallbackReason, candidateCount } = await runSearch(orgId, query);
+  // After the search has its answer, and not awaited: the row describes the search, it is not part
+  // of it (SCRUM-206 AT-6). The query itself is deliberately not passed (AT-2).
+  recordSearch(orgId, {
+    kind: SEARCH_KIND.SEARCH,
+    aiAssisted: result.aiAssisted,
+    fallbackReason,
+    latencyMs: elapsedSince(startedAt),
+    candidateCount,
+    resultCount: result.matches.length,
+  });
+  return result;
+}
+
+/**
+ * The search itself, plus what telemetry needs to know about how it went: which fallback, if any,
+ * was taken, and how many candidates were sent to the model (0 when it was never asked).
+ */
+async function runSearch(orgId, query) {
   if (!isFoundryEnabled()) {
-    return plainSearch(orgId, query);
+    return {
+      result: await plainSearch(orgId, query),
+      fallbackReason: SEARCH_FALLBACK_REASON.DISABLED,
+      candidateCount: 0,
+    };
   }
 
   const candidates = await pickCandidates(orgId, query);
@@ -93,7 +123,11 @@ export async function searchAssets(orgId, query) {
       throw err;
     }
     log.warn({ orgId }, 'Foundry unavailable; used plain search');
-    return plainSearch(orgId, query);
+    return {
+      result: await plainSearch(orgId, query),
+      fallbackReason: SEARCH_FALLBACK_REASON.UNAVAILABLE,
+      candidateCount: candidates.length,
+    };
   }
   const answer = readAnswer(response);
   if (!answer) {
@@ -102,7 +136,11 @@ export async function searchAssets(orgId, query) {
     // rather than silently turning every search into a plain one — but only the org, never the
     // query or the reply, which can quote catalogue data and member names.
     log.warn({ orgId }, 'model output did not fit the asset-search contract; used plain search');
-    return plainSearch(orgId, query);
+    return {
+      result: await plainSearch(orgId, query),
+      fallbackReason: SEARCH_FALLBACK_REASON.CONTRACT,
+      candidateCount: candidates.length,
+    };
   }
 
   // The candidates sent are the only ids the model may return (prompt rule 1). Anything else — a
@@ -115,14 +153,18 @@ export async function searchAssets(orgId, query) {
     kept.map(({ assetId }) => byId.get(assetId)),
   );
   return {
-    matches: kept.map(({ assetId, reason }, i) => ({
-      assetId,
-      ...describe(byId.get(assetId)),
-      reason,
-      ...restrictions[i],
-    })),
-    clarification: answer.clarification,
-    aiAssisted: true,
+    result: {
+      matches: kept.map(({ assetId, reason }, i) => ({
+        assetId,
+        ...describe(byId.get(assetId)),
+        reason,
+        ...restrictions[i],
+      })),
+      clarification: answer.clarification,
+      aiAssisted: true,
+    },
+    fallbackReason: null,
+    candidateCount: candidates.length,
   };
 }
 
@@ -139,6 +181,11 @@ export async function searchAssets(orgId, query) {
  * **Every failure is a fallback, never an error (AT-3).** Foundry switched off, unreachable, or
  * answering outside its contract all end in the same place: the candidates the backend had already
  * chosen, unranked. A member at a dead end gets a worse answer, never an error page.
+ *
+ * **Telemetry (SCRUM-206).** A lookup that reaches the AI pipeline writes one `SearchQueryLog` row of
+ * kind `alternatives`, with the asset id as its subject — organisation data, not something a member
+ * typed. The two early exits below (a missing asset, and an asset that is not a dead end) write
+ * nothing: the pipeline never ran, so counting them would only dilute the fallback rate.
  * @param {string} orgId tenant id, from the verified token
  * @param {string} userId the caller, who must be eligible for anything recommended (AT-2)
  * @param {string} assetId the asset the member is looking at
@@ -164,13 +211,36 @@ export async function getAlternatives(orgId, userId, assetId) {
     return { alternatives: [], aiAssisted: false };
   }
 
+  const startedAt = performance.now();
+  const { result, fallbackReason, candidateCount } = await rankAlternatives(orgId, userId, asset);
+  recordSearch(orgId, {
+    kind: SEARCH_KIND.ALTERNATIVES,
+    assetId: String(asset._id),
+    aiAssisted: result.aiAssisted,
+    fallbackReason,
+    latencyMs: elapsedSince(startedAt),
+    candidateCount,
+    resultCount: result.alternatives.length,
+  });
+  return result;
+}
+
+/**
+ * The AI half of `getAlternatives`, for an asset already known to be a dead end, plus what telemetry
+ * needs about how it went — the same shape as `runSearch`.
+ */
+async function rankAlternatives(orgId, userId, asset) {
   // Chosen once, for both paths. The fallback is the same set unranked rather than a second,
   // narrower query, so what the section *contains* does not change when Foundry flaps — only whether
   // it is ordered and explained. It also means the AT-2 filters cannot be bypassed by the fallback,
   // which is the obvious way for this feature to leak.
   const { candidates, candidateUnits } = await recommendableCandidates(orgId, userId, asset);
   if (!isFoundryEnabled()) {
-    return unranked(candidates);
+    return {
+      result: unranked(candidates),
+      fallbackReason: SEARCH_FALLBACK_REASON.DISABLED,
+      candidateCount: 0,
+    };
   }
 
   const input = JSON.stringify({
@@ -189,7 +259,11 @@ export async function getAlternatives(orgId, userId, assetId) {
       throw err;
     }
     log.warn({ orgId }, 'Foundry unavailable; alternatives returned unranked');
-    return unranked(candidates);
+    return {
+      result: unranked(candidates),
+      fallbackReason: SEARCH_FALLBACK_REASON.UNAVAILABLE,
+      candidateCount: candidates.length,
+    };
   }
 
   const answer = readAnswer(response);
@@ -201,24 +275,37 @@ export async function getAlternatives(orgId, userId, assetId) {
       { orgId },
       'model output did not fit the asset-search contract; alternatives returned unranked',
     );
-    return unranked(candidates);
+    return {
+      result: unranked(candidates),
+      fallbackReason: SEARCH_FALLBACK_REASON.CONTRACT,
+      candidateCount: candidates.length,
+    };
   }
 
   // Same rule as search: the candidates sent are the only ids the model may return (prompt rule 1),
   // and anything else is dropped rather than looked up.
   const byId = new Map(candidates.map((candidate) => [String(candidate._id), candidate]));
   return {
-    // Capped like the fallback, and for the member's sake rather than the model's: the output
-    // contract allows ten, so without this the section would hold ten options with Foundry up and
-    // five with it down. Sliced after the whitelist filter, so dropping a hallucinated id promotes
-    // the next real match instead of leaving a gap, and the model's own order is kept — its best
-    // five, not an arbitrary five.
-    alternatives: answer.matches
-      .filter(({ assetId: id }) => byId.has(id))
-      .slice(0, MAX_ALTERNATIVES)
-      .map(({ assetId: id, reason }) => ({ assetId: id, ...describe(byId.get(id)), reason })),
-    aiAssisted: true,
+    result: {
+      // Capped like the fallback, and for the member's sake rather than the model's: the output
+      // contract allows ten, so without this the section would hold ten options with Foundry up and
+      // five with it down. Sliced after the whitelist filter, so dropping a hallucinated id promotes
+      // the next real match instead of leaving a gap, and the model's own order is kept — its best
+      // five, not an arbitrary five.
+      alternatives: answer.matches
+        .filter(({ assetId: id }) => byId.has(id))
+        .slice(0, MAX_ALTERNATIVES)
+        .map(({ assetId: id, reason }) => ({ assetId: id, ...describe(byId.get(id)), reason })),
+      aiAssisted: true,
+    },
+    fallbackReason: null,
+    candidateCount: candidates.length,
   };
+}
+
+/** Whole milliseconds since a `performance.now()` reading, for the telemetry row's `latencyMs`. */
+function elapsedSince(startedAt) {
+  return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
 /**

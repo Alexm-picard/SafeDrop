@@ -20,6 +20,7 @@ import { createRouter, mount } from './define.js';
 import { groupsRouter } from './groups.routes.js';
 import { organizationsRouter } from './organizations.routes.js';
 import { requestsRouter } from './requests.routes.js';
+import { searchTelemetryRouter } from './searchTelemetry.routes.js';
 import { usersRouter } from './users.routes.js';
 
 /**
@@ -41,6 +42,7 @@ export function registerRoutes(app) {
   mount(api, '/requests', requestsRouter);
   mount(api, '/audit', auditRouter);
   mount(api, '/dashboard', dashboardRouter);
+  mount(api, '/search-telemetry', searchTelemetryRouter);
   mount(app, '/api', api);
   return app;
 }

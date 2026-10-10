@@ -146,6 +146,40 @@ export const AUDIT_TARGET_TYPE = freezeEnum([
 ]);
 export const AUDIT_TARGET_TYPE_LIST = Object.freeze(Object.keys(AUDIT_TARGET_TYPE));
 
+/**
+ * Why an AI search did not use the model's ranking (SCRUM-206 AT-1). Stored on `SearchQueryLog` as
+ * `fallbackReason`, with `null` meaning the model's answer was used. Lower case because the story
+ * names them that way and they are read back as-is in the admin summary.
+ *
+ *  - `disabled`    — AI is switched off in this environment, so the model was never asked.
+ *  - `unavailable` — Foundry failed: a network error, a timeout or a non-2xx answer.
+ *  - `contract`    — Foundry answered, but not in the shape prompts/asset-search.md requires.
+ *
+ * These are the three silent fallbacks in assetSearch.service.js. Telling them apart is the reason
+ * the log exists: "AI is off", "Foundry is down" and "the prompt is broken" need different fixes.
+ */
+export const SEARCH_FALLBACK_REASON = Object.freeze({
+  DISABLED: 'disabled',
+  UNAVAILABLE: 'unavailable',
+  CONTRACT: 'contract',
+});
+export const SEARCH_FALLBACK_REASON_LIST = Object.freeze(Object.values(SEARCH_FALLBACK_REASON));
+
+/**
+ * Which AI feature a `SearchQueryLog` row describes: a member's typed search (SCRUM-103) or the
+ * recommended alternatives on a dead-end asset page (SCRUM-151), which run the same pipeline.
+ */
+export const SEARCH_KIND = Object.freeze({ SEARCH: 'search', ALTERNATIVES: 'alternatives' });
+export const SEARCH_KIND_LIST = Object.freeze(Object.values(SEARCH_KIND));
+
+/**
+ * How long a `SearchQueryLog` row is kept (SCRUM-206 AT-5). The deletion itself is a MongoDB TTL
+ * index (migrations/20261010000000-search-query-log.js), so changing this number also needs a
+ * migration that changes the index; the test in tests/integration/searchTelemetry.test.js checks the
+ * two agree. 90 days is the story's proposal and still an open question for the team.
+ */
+export const SEARCH_LOG_RETENTION_DAYS = 90;
+
 export const ASSET_CONDITION = freezeEnum(['NEW', 'GOOD', 'FAIR', 'POOR']);
 export const ASSET_CONDITION_LIST = Object.freeze(Object.keys(ASSET_CONDITION));
 
