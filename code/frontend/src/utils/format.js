@@ -23,6 +23,9 @@ const dayFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   timeZone: 'UTC',
 });
+// The browser's own time zone (no `timeZone` option), for instants that mean a day on the viewer's
+// calendar, such as a request's window (SCRUM-240).
+const dateOnlyFormatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 const numberFormatter = new Intl.NumberFormat('en-US');
 /**
  * Format a date for display: `"Sep 16, 2026, 7:00 PM"`.
@@ -38,6 +41,23 @@ export function formatDate(value) {
   }
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : dateFormatter.format(date);
+}
+/**
+ * Format an instant as a day on the viewer's calendar: `"Oct 12, 2026"` (SCRUM-240).
+ *
+ * For a request's `neededFrom` / `neededTo`, which are UTC instants marking the start and end of the
+ * days the member picked. They are shown in the browser's local time zone with no time of day,
+ * because the member chose days, not times. Total like `formatDate`: missing or unparseable input
+ * returns an em dash.
+ * @param {Date|string|number|null|undefined} value
+ * @returns {string} the formatted day, or `'—'`
+ */
+export function formatDateOnly(value) {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : dateOnlyFormatter.format(date);
 }
 /**
  * Format one of the API's day buckets for an axis or a table: `'2026-09-20'` → `"Sep 20"`.

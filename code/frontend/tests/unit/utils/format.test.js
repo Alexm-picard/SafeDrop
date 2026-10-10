@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatCount,
   formatDate,
+  formatDateOnly,
   formatDay,
   humanize,
   pluralize,
@@ -27,6 +28,18 @@ describe('format', () => {
     expect(formatDate(new Date('2026-10-01T12:00:00Z'))).toMatch(/Oct/);
     expect(formatDate(null)).toBe('—');
     expect(formatDate('not a date')).toBe('—');
+  });
+  it('formatDateOnly shows the local day of an instant, with no time (SCRUM-240)', () => {
+    // Runs in America/New_York (vitest.config.js). The start and end of a picked day both read as that
+    // day, not the one before.
+    expect(formatDateOnly('2026-10-12T04:00:00.000Z')).toBe('Oct 12, 2026');
+    expect(formatDateOnly('2026-10-16T03:59:59.999Z')).toBe('Oct 15, 2026');
+    expect(formatDateOnly(new Date('2026-10-12T04:00:00.000Z'))).toBe('Oct 12, 2026');
+    // A legacy midnight-UTC value is the evening before in New York, and is shown as such.
+    expect(formatDateOnly('2026-10-12T00:00:00.000Z')).toBe('Oct 11, 2026');
+    expect(formatDateOnly(null)).toBe('—');
+    expect(formatDateOnly('')).toBe('—');
+    expect(formatDateOnly('not a date')).toBe('—');
   });
   it('formatDay renders the API’s day buckets in UTC', () => {
     // Read as UTC, not local: west of Greenwich, a local reading would show this as Sep 19.

@@ -47,3 +47,35 @@ export function validateWindow(values) {
   }
   return errors;
 }
+
+/**
+ * Turn a `<input type="date">` value into a local `Date` at the given time of day.
+ *
+ * Built from parts, never `new Date('2026-10-12')`: that form is parsed as midnight *UTC*, which is
+ * the evening before for anyone west of Greenwich — the bug SCRUM-240 fixes.
+ * @param {string} day `YYYY-MM-DD`
+ * @param {[number, number, number, number]} time hours, minutes, seconds, milliseconds
+ * @returns {Date}
+ */
+function localDay(day, [h, min, s, ms]) {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d, h, min, s, ms);
+}
+
+/**
+ * Convert the picked days into the UTC instants the API stores (SCRUM-240).
+ *
+ * The member picks days on their own calendar, so both are read in the browser's local time zone:
+ * `neededFrom` is the first instant of its day and `neededTo` the last, so "needed until Oct 15"
+ * means the loan is due at the end of Oct 15 where the member is, not at the start of it. Both are
+ * sent as ISO strings in UTC; the database stores UTC, and every screen converts back to the
+ * viewer's local time to display them.
+ * @param {{ neededFrom: string, neededTo: string }} values validated `YYYY-MM-DD` days
+ * @returns {{ neededFrom: string, neededTo: string }} ISO 8601 UTC instants
+ */
+export function toUtcWindow({ neededFrom, neededTo }) {
+  return {
+    neededFrom: localDay(neededFrom, [0, 0, 0, 0]).toISOString(),
+    neededTo: localDay(neededTo, [23, 59, 59, 999]).toISOString(),
+  };
+}

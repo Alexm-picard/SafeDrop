@@ -76,6 +76,27 @@ describe('POST /api/requests (SCRUM-135)', () => {
     expect(String(audit.items[0].targetId)).toBe(res.body.id);
   });
 
+  it('stores the window instants the client sends unchanged, as UTC (SCRUM-240)', async () => {
+    // What the request form now sends for "Nov 1 to Nov 5" picked in New York: the start of the first
+    // day and the end of the last, as UTC instants. The server must not round them to midnight.
+    const res = await request(app)
+      .post('/api/requests')
+      .set('Cookie', accessCookieFor(seed.a.member))
+      .send({
+        unitId: seed.a.extraAssets[0].units[0]._id,
+        neededFrom: '2026-11-01T04:00:00.000Z',
+        neededTo: '2026-11-06T04:59:59.999Z',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.neededFrom).toBe('2026-11-01T04:00:00.000Z');
+    expect(res.body.neededTo).toBe('2026-11-06T04:59:59.999Z');
+
+    const stored = await checkoutRepo.findById(seed.a.orgId, res.body.id);
+    expect(stored.neededFrom.toISOString()).toBe('2026-11-01T04:00:00.000Z');
+    expect(stored.neededTo.toISOString()).toBe('2026-11-06T04:59:59.999Z');
+  });
+
   it('reserves the unit (AVAILABLE -> REQUESTED) on submit', async () => {
     const res = await request(app)
       .post('/api/requests')

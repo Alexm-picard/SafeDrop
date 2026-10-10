@@ -12,7 +12,7 @@
  * here would let a same-day request through to a 400 the member cannot explain.
  */
 import { describe, expect, it } from 'vitest';
-import { validateWindow } from '../../../src/utils/requestWindow';
+import { toUtcWindow, validateWindow } from '../../../src/utils/requestWindow';
 
 /** Build a form value set, overriding the fields a case cares about. */
 const values = (over = {}) => ({ neededFrom: '', neededTo: '', note: '', ...over });
@@ -58,5 +58,55 @@ describe('validateWindow', () => {
   it('caps the note at the schema’s 1000 characters', () => {
     expect(validateWindow(values({ note: 'x'.repeat(1000) })).note).toBeUndefined();
     expect(validateWindow(values({ note: 'x'.repeat(1001) })).note).toBeDefined();
+  });
+});
+
+/**
+ * SCRUM-240: the picked days are the member's local days, sent as UTC instants. These run in
+ * America/New_York (pinned by vitest.config.js), west of UTC, which is where the old bare-date
+ * submission showed every request a day early.
+ */
+describe('toUtcWindow', () => {
+  it('sends the start of the first day and the end of the last, in local time', () => {
+    expect(toUtcWindow({ neededFrom: '2026-10-12', neededTo: '2026-10-15' })).toEqual({
+      neededFrom: '2026-10-12T04:00:00.000Z',
+      neededTo: '2026-10-16T03:59:59.999Z',
+    });
+  });
+
+  it('round-trips to the same local days, so nothing displays a day early', () => {
+    const { neededFrom, neededTo } = toUtcWindow({
+      neededFrom: '2026-10-12',
+      neededTo: '2026-10-15',
+    });
+    const from = new Date(neededFrom);
+    const to = new Date(neededTo);
+    expect([from.getFullYear(), from.getMonth() + 1, from.getDate()]).toEqual([2026, 10, 12]);
+    expect([to.getFullYear(), to.getMonth() + 1, to.getDate()]).toEqual([2026, 10, 15]);
+    expect([to.getHours(), to.getMinutes(), to.getSeconds()]).toEqual([23, 59, 59]);
+  });
+
+  it('follows the local offset across the November daylight-saving change', () => {
+    // Nov 1 starts in EDT (UTC-4); Nov 2 ends in EST (UTC-5).
+    expect(toUtcWindow({ neededFrom: '2026-11-01', neededTo: '2026-11-02' })).toEqual({
+      neededFrom: '2026-11-01T04:00:00.000Z',
+      neededTo: '2026-11-03T04:59:59.999Z',
+    });
+  });
+
+  it('follows the local offset across the March daylight-saving change', () => {
+    // Mar 7 starts in EST (UTC-5); Mar 8 ends in EDT (UTC-4).
+    expect(toUtcWindow({ neededFrom: '2026-03-07', neededTo: '2026-03-08' })).toEqual({
+      neededFrom: '2026-03-07T05:00:00.000Z',
+      neededTo: '2026-03-09T03:59:59.999Z',
+    });
+  });
+
+  it('keeps the window ordered, so the server’s neededTo > neededFrom check still passes', () => {
+    const { neededFrom, neededTo } = toUtcWindow({
+      neededFrom: '2026-12-31',
+      neededTo: '2027-01-01',
+    });
+    expect(new Date(neededTo) > new Date(neededFrom)).toBe(true);
   });
 });

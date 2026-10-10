@@ -34,7 +34,7 @@ import { LoadingState } from '../components/LoadingState';
 import { StatusBadge } from '../components/StatusBadge';
 import { useRequests } from '../hooks/useRequests';
 import { ROUTES } from '../utils/constants';
-import { formatDate, humanize, pluralize } from '../utils/format';
+import { formatDateOnly, humanize, pluralize } from '../utils/format';
 
 /** The state the queue opens on when the URL names none: `''` is All. */
 const DEFAULT_STATE = '';
@@ -165,8 +165,8 @@ export function ApprovalQueuePage() {
                 header: 'Needed',
                 render: (r) => (
                   <>
-                    <span className="cell-primary">{formatDate(r.neededFrom)}</span>
-                    <span className="cell-secondary">until {formatDate(r.neededTo)}</span>
+                    <span className="cell-primary">{formatDateOnly(r.neededFrom)}</span>
+                    <span className="cell-secondary">until {formatDateOnly(r.neededTo)}</span>
                   </>
                 ),
               },

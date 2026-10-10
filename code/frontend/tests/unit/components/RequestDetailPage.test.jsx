@@ -62,6 +62,17 @@ describe('RequestDetailPage', () => {
     expect(history).toHaveTextContent('Approved');
   });
 
+  it('shows the window as the days picked, in local time with no time of day (SCRUM-240)', async () => {
+    // The fixture stores the start of Sep 20 and the end of Sep 30 in New York as UTC instants; the
+    // test runs in New York (vitest.config.js), so the page must read those back as the same days.
+    await openRequest(approved, memberUser);
+
+    const details = screen.getByLabelText('Request details');
+    expect(details).toHaveTextContent('Sep 20, 2026 – Sep 30, 2026');
+    expect(details).not.toHaveTextContent('Sep 19, 2026');
+    expect(details).not.toHaveTextContent('Oct 1, 2026');
+  });
+
   it('offers the requester cancel, and none of the approver’s actions', async () => {
     await openRequest(pending, memberUser);
 

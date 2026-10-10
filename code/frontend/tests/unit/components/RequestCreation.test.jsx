@@ -151,8 +151,11 @@ describe('SCRUM-124: request creation flow from asset detail', () => {
 
     await waitFor(() => expect(sent).toBeDefined());
     expect(sent.unitId).toBe(availableUnit.id);
-    expect(sent.neededFrom).toBe('2026-10-01');
-    expect(sent.neededTo).toBe('2026-10-15');
+    // SCRUM-240: the picked days are sent as UTC instants for the start of the first day and the end
+    // of the last, in the browser's zone (America/New_York, pinned by vitest.config.js) — not as bare
+    // dates the server would read as UTC midnight, the evening before in New York.
+    expect(sent.neededFrom).toBe('2026-10-01T04:00:00.000Z');
+    expect(sent.neededTo).toBe('2026-10-16T03:59:59.999Z');
     expect(sent.note).toBe('For the field trip');
     // No requesterId: who is asking comes from the session, server-side.
     expect(sent).not.toHaveProperty('requesterId');
@@ -234,8 +237,8 @@ describe('SCRUM-124: request creation flow from asset detail', () => {
     const created = {
       ...checkoutRequests[0],
       id: '6aab2a45c6e457e01ac0973f',
-      neededFrom: '2026-11-01T00:00:00.000Z',
-      neededTo: '2026-11-08T00:00:00.000Z',
+      neededFrom: '2026-11-01T04:00:00.000Z',
+      neededTo: '2026-11-09T04:59:59.999Z',
       state: 'PENDING',
     };
     let submitted = false;
