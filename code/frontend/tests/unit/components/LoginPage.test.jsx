@@ -76,8 +76,8 @@ describe('LoginPage', () => {
   });
   it.each([
     ['member', memberUser, '/requests', 'My requests'],
-    ['approver', approverUser, '/admin/approvals', 'Approval queue'],
-    ['admin', adminUser, '/admin', 'Dashboard'],
+    ['approver', approverUser, '/admin/approvals', 'Requests'],
+    ['admin', adminUser, '/admin', 'Overview'],
   ])('lands a %s on their own screen after signing in', async (_role, who, path, heading) => {
     const user = userEvent.setup();
     signInAs(who);
@@ -95,7 +95,7 @@ describe('LoginPage', () => {
     server.use(meHandler(adminUser));
     await fillAndSubmit(user, 'Correct-Horse-Battery-9');
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin'));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
   });
   it('shows a generic message when the API is unreachable', async () => {
     const user = userEvent.setup();

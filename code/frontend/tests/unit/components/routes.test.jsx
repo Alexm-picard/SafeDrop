@@ -33,8 +33,8 @@ describe('routes', () => {
     ['/catalog', 'Catalog', null],
     [`/assets/${assets[0].id}`, assets[0].name, null],
     ['/requests', 'My requests', null],
-    ['/admin', 'Dashboard', null],
-    ['/admin/approvals', 'Approval queue', null],
+    ['/admin', 'Overview', null],
+    ['/admin/approvals', 'Requests', null],
     // Users has no ticket: the user-management screen is live (list, invite, change role), so it
     // renders real data rather than a placeholder. MembersPage.test.jsx covers it properly.
     ['/admin/users', 'Users', null],
@@ -118,7 +118,7 @@ describe('routes', () => {
     server.use(meHandler(adminUser));
     renderApp('/admin');
     expect(screen.getByRole('status')).toHaveTextContent(/checking/i);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByText(/Ada Admin/)).toBeInTheDocument();
   });
   it('a 401 from /me (after a failed refresh) lands on the login page', async () => {

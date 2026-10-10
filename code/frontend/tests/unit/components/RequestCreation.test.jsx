@@ -268,9 +268,9 @@ describe('SCRUM-124: request creation flow from asset detail', () => {
 
     router.navigate('/requests');
     await screen.findByRole('heading', { level: 1, name: 'My requests' });
-    const table = await screen.findByRole('table', { name: 'Requests' });
-    const firstRow = within(table).getAllByRole('row')[1];
-    expect(within(firstRow).getByRole('link', { name: 'Pending' })).toHaveAttribute(
+    const waiting = await screen.findByRole('region', { name: 'Waiting for a decision' });
+    const [firstCard] = within(waiting).getAllByRole('listitem');
+    expect(within(firstCard).getAllByRole('link')[0]).toHaveAttribute(
       'href',
       `/requests/${created.id}`,
     );
@@ -340,11 +340,14 @@ describe('SCRUM-148: auto-approved requests on MyRequestsPage', () => {
     );
     renderWithAuth(<MyRequestsPage />, { user: memberUser });
 
-    expect(await screen.findByRole('link', { name: 'Approved (automatic)' })).toHaveAttribute(
+    const cardWith = (text) =>
+      screen.getAllByRole('listitem').find((li) => within(li).queryByText(text, { exact: true }));
+    await screen.findByText('Approved (automatic)');
+    expect(within(cardWith('Approved (automatic)')).getAllByRole('link')[0]).toHaveAttribute(
       'href',
       `/requests/${auto.id}`,
     );
-    expect(screen.getByRole('link', { name: 'Approved' })).toHaveAttribute(
+    expect(within(cardWith('Approved')).getAllByRole('link')[0]).toHaveAttribute(
       'href',
       `/requests/${human.id}`,
     );

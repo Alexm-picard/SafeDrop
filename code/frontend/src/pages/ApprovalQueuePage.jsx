@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: approval queue (SCRUM-119, SCRUM-120); SCRUM-205 actions moved to the request detail page, every row links there; UI rework: requester/asset/unit names, state badges, state filter buttons, ?state= deep links; Overdue view uses the dashboard's past-due rule
+// AI-Assisted Areas: approval queue (SCRUM-119, SCRUM-120); SCRUM-205 actions moved to the request detail page, every row links there; UI rework: requester/asset/unit names, state badges, state filter buttons, ?state= deep links; Overdue view uses the dashboard's past-due rule; SCRUM-241 redesign: the queue as a board by stage, approve/deny/handoff on the card (same actionsFor() rules as the request page), Everyone's/Mine switch
 // Human Contributions: pending team review
 
 /**
@@ -16,25 +16,23 @@
  * selected — including PENDING for deciding, and RETURN_PENDING, the returns waiting to be confirmed
  * (SCRUM-205).
  *
- * The page offers no actions of its own. Each row links to the request's detail page, where
- * `actionsFor()` draws whatever this viewer may do next — approve, deny, record the handoff, record,
- * confirm or reject a return. Keeping them in one place means one set of rules for who sees which
- * button, rather than a second copy here that drifts from it.
+ * SCRUM-241: the requests are a board, a column per stage. A card offers the one-click next steps —
+ * approve, deny, record the handoff — and links to the request's page for the rest (returns need a
+ * condition, a rejected return a reason). Both ask `actionsFor()`, so there is still one set of rules
+ * for who sees which button.
  *
- * Each row names the requester, the asset and the unit tag (the API attaches them to every list item)
+ * Each card names the requester, the asset and the unit tag (the API attaches them to every list item)
  * because those are what an approver decides on; the raw ids are not. The filter lives in the URL
  * (`?state=OVERDUE`), so the dashboard's tiles can link straight to the matching view and a filtered
  * queue survives a reload or a shared link.
  */
 import { Link, useSearchParams } from 'react-router';
-import { DataTable } from '../components/DataTable';
-import { DueBadge } from '../components/DueBadge';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import { StatusBadge } from '../components/StatusBadge';
+import { RequestBoard } from '../components/RequestBoard';
 import { useRequests } from '../hooks/useRequests';
 import { ROUTES } from '../utils/constants';
-import { formatDateOnly, humanize, pluralize } from '../utils/format';
+import { humanize, pluralize } from '../utils/format';
 
 /** The state the queue opens on when the URL names none: `''` is All. */
 const DEFAULT_STATE = '';
@@ -91,10 +89,19 @@ export function ApprovalQueuePage() {
     <>
       <header className="page-header">
         <div>
-          <h1>Approval queue</h1>
+          <h1>Requests</h1>
           <p className="subtitle">
-            Requests across your organization. Open one to approve, deny, or record a handoff.
+            Every request in your organization, by where it is. Approve, deny and record handoffs on
+            the card; open one for returns and its history.
           </p>
+        </div>
+        <div className="actions">
+          <nav className="view-switch" aria-label="Whose requests">
+            <Link to={ROUTES.approvals} aria-current="page">
+              Everyone’s
+            </Link>
+            <Link to={ROUTES.myRequests}>Mine</Link>
+          </nav>
         </div>
       </header>
       <form className="filters" aria-label="Filter requests" onSubmit={(e) => e.preventDefault()}>
@@ -118,88 +125,21 @@ export function ApprovalQueuePage() {
         <ErrorState error={error} title="Could not load the queue" onRetry={reload} />
       ) : null}
       {status !== 'error' && data ? (
-        <section className="panel" aria-labelledby="queue-heading">
-          <div className="panel-header">
+        <section aria-labelledby="queue-heading">
+          <div className="board-head">
             <h2 id="queue-heading">{listLabel}</h2>
             <span className="hint">{pluralize(data.total ?? data.items.length, 'request')}</span>
           </div>
-          <DataTable
-            caption="Requests"
-            hideCaption
-            columns={[
-              {
-                key: 'requester',
-                header: 'Requester',
-                render: (r) =>
-                  r.requester ? (
-                    <>
-                      <span className="cell-primary">{r.requester.name}</span>
-                      <span className="cell-secondary">{r.requester.email}</span>
-                    </>
-                  ) : (
-                    <span className="cell-secondary">Unknown user</span>
-                  ),
-              },
-              {
-                key: 'asset',
-                header: 'Asset',
-                render: (r) => (
-                  <>
-                    {r.asset ? (
-                      <Link className="cell-primary" to={ROUTES.asset(r.asset.id)}>
-                        {r.asset.name}
-                      </Link>
-                    ) : (
-                      <span className="cell-secondary">Unknown asset</span>
-                    )}
-                    {r.unit ? (
-                      <span className="cell-secondary">
-                        Unit <span className="tag">{r.unit.tag}</span>
-                      </span>
-                    ) : null}
-                  </>
-                ),
-              },
-              {
-                key: 'window',
-                header: 'Needed',
-                render: (r) => (
-                  <>
-                    <span className="cell-primary">{formatDateOnly(r.neededFrom)}</span>
-                    <span className="cell-secondary">until {formatDateOnly(r.neededTo)}</span>
-                  </>
-                ),
-              },
-              {
-                key: 'state',
-                header: 'State',
-                render: (r) => (
-                  <>
-                    <StatusBadge value={r.state}>
-                      {humanize(r.state)}
-                      {r.autoApproved && r.state === 'APPROVED' ? ' (automatic)' : ''}
-                    </StatusBadge>
-                    <span className="cell-secondary">
-                      <DueBadge request={r} />
-                    </span>
-                  </>
-                ),
-              },
-              {
-                key: 'open',
-                header: 'Request',
-                className: 'numeric',
-                render: (r) => (
-                  <Link className="button secondary small" to={ROUTES.request(r.id)}>
-                    Open
-                  </Link>
-                ),
-              },
-            ]}
-            rows={data.items}
-            getRowId={(r) => r.id}
-            emptyMessage="No requests match this filter."
-          />
+          {data.items.length === 0 ? (
+            <p className="empty-state">No requests match this filter.</p>
+          ) : (
+            <RequestBoard
+              requests={data.items}
+              showRequester
+              onChanged={reload}
+              onlyStates={stateFilter ? [isOverdueView ? 'OVERDUE' : stateFilter] : undefined}
+            />
+          )}
         </section>
       ) : null}
     </>

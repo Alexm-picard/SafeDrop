@@ -19,7 +19,7 @@
  * invitation succeeds, and must never show it back — the confirmation tells the admin what they need
  * (the organization code) but not the password.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -79,14 +79,29 @@ beforeEach(() => {
   );
 });
 
-/** Body rows currently rendered, excluding the header row. */
-const dataRows = () => screen.getAllByRole('row').slice(1);
+/** The person cards currently on the roster, column by column (admins, approvers, members). */
+const dataRows = () => screen.getAllByRole('listitem');
 
-/** Render the page as the admin and wait for the list. */
-async function renderLoaded() {
+/** Wait for the roster. */
+const roster = () => screen.findByRole('region', { name: 'Members' });
+
+/**
+ * Render the page as the admin and wait for the roster; with `invite`, also open the invite panel.
+ * @param {{ invite?: boolean }} [options]
+ */
+async function renderLoaded({ invite = false } = {}) {
   const utils = renderWithAuth(<MembersPage />, { user: adminUser });
-  await screen.findByRole('table');
+  await roster();
+  if (invite) {
+    await openInvite(userEvent.setup());
+  }
   return utils;
+}
+
+/** Open the invite side panel. */
+async function openInvite(user) {
+  await user.click(screen.getByRole('button', { name: 'Invite someone' }));
+  return screen.findByRole('dialog', { name: 'Invite a member' });
 }
 
 /** Fill the invite form; every field is optional so a test sets only what it cares about. */
@@ -112,7 +127,7 @@ describe('MembersPage: the list', () => {
     renderWithAuth(<MembersPage />, { user: adminUser });
     expect(screen.getByRole('status')).toHaveTextContent(/loading members/i);
 
-    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(await roster()).toBeInTheDocument();
     expect(screen.getByText('3 members')).toBeInTheDocument();
     expect(dataRows()).toHaveLength(3);
     expect(screen.getByText('ann@acme.test')).toBeInTheDocument();
@@ -122,40 +137,41 @@ describe('MembersPage: the list', () => {
     expect(screen.getByLabelText('Role for Max Member')).toHaveValue('MEMBER');
   });
 
-  it('shows exactly name, email, role, join date and the password action for each member', async () => {
+  it('puts each member in the column for their role, saying what the role can do', async () => {
     await renderLoaded();
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
-      'Name',
-      'Email',
-      'Role',
-      'Joined',
-      // The reset action, added with SCRUM-36; the column holds a button, never a password.
-      'Password',
-    ]);
-    // Oldest first, as the API returns them: the founding admin is at the top.
-    expect(dataRows().map((row) => within(row).getAllByRole('cell')[0].textContent)).toEqual([
+    const column = (name) => screen.getByRole('region', { name });
+    expect(within(column('Organization admins')).getByText(/Ada Admin/)).toBeInTheDocument();
+    expect(within(column('Approvers')).getByText('Ann Approver')).toBeInTheDocument();
+    expect(within(column('Members')).getByText('Max Member')).toBeInTheDocument();
+    expect(column('Approvers')).toHaveTextContent(
+      'Decide requests and record handoffs and returns.',
+    );
+  });
+
+  it('shows name, email, role, join date and the password action for each member', async () => {
+    await renderLoaded();
+    // Oldest first within the roster, as the API returns them: the founding admin is first.
+    expect(dataRows().map((card) => card.querySelector('strong').textContent)).toEqual([
       'Ada Admin (you)',
       'Ann Approver',
       'Max Member',
     ]);
-    // Each row carries that member's email and the date they joined.
-    const first = within(dataRows()[0]).getAllByRole('cell');
-    expect(first[1]).toHaveTextContent('ada@acme.test');
-    expect(first[2]).toHaveTextContent('Organization admin');
-    expect(first[3]).toHaveTextContent(formatDate(members[0].createdAt));
-    expect(within(dataRows()[2]).getAllByRole('cell')[3]).toHaveTextContent(
-      formatDate(members[2].createdAt),
-    );
+    const first = dataRows()[0];
+    expect(first).toHaveTextContent('ada@acme.test');
+    expect(first).toHaveTextContent('Organization admin');
+    expect(first).toHaveTextContent(formatDate(members[0].createdAt));
+    expect(dataRows()[2]).toHaveTextContent(formatDate(members[2].createdAt));
+    expect(within(dataRows()[2]).getByRole('button', { name: 'Reset password' })).toBeVisible();
   });
 
   it('never shows a password or hash: the list has no such data to show', async () => {
     await renderLoaded();
-    const table = screen.getByRole('table').textContent;
-    // The word itself now appears as the column header and the "Reset password" button, so the
-    // check is for what must never be rendered: a hash, or anything labelled as a stored password.
-    expect(table).not.toMatch(/\$2[aby]\$/);
-    expect(table).not.toMatch(/hash/i);
-    expect(table).not.toMatch(/password:\s*\S/i);
+    const text = (await roster()).closest('.roster').textContent;
+    // The word itself appears on the "Reset password" buttons, so the check is for what must never
+    // be rendered: a hash, or anything labelled as a stored password.
+    expect(text).not.toMatch(/\$2[aby]\$/);
+    expect(text).not.toMatch(/hash/i);
+    expect(text).not.toMatch(/password:\s*\S/i);
     // And the API never sends one to render.
     expect(JSON.stringify(members)).not.toMatch(/password/i);
   });
@@ -166,8 +182,30 @@ describe('MembersPage: the list', () => {
     expect(own.getByText(/\(you\)/)).toBeInTheDocument();
     expect(own.getByText('Organization admin')).toBeInTheDocument();
     expect(own.queryByRole('combobox')).not.toBeInTheDocument();
-    // Everyone else can be changed.
+    expect(dataRows()[0]).not.toHaveAttribute('draggable', 'true');
+    // Everyone else can be changed, with the control or by dragging their card.
     expect(within(dataRows()[1]).getByRole('combobox')).toBeInTheDocument();
+    expect(dataRows()[1]).toHaveAttribute('draggable', 'true');
+  });
+
+  it('changes a role when a card is dropped on another column', async () => {
+    await renderLoaded();
+    const card = dataRows()[2];
+    const target = screen.getByRole('region', { name: 'Approvers' });
+    const dataTransfer = {
+      data: {},
+      setData(k, v) {
+        this.data[k] = v;
+      },
+      getData(k) {
+        return this.data[k];
+      },
+    };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    expect(await screen.findByRole('status')).toHaveTextContent('Max Member is now Approver.');
+    expect(roleChanges).toEqual([{ id: memberUser.id, role: 'APPROVER' }]);
   });
 
   it('requests the first page at the page size', async () => {
@@ -192,7 +230,7 @@ describe('MembersPage: the list', () => {
     );
     const user = userEvent.setup();
     renderWithAuth(<MembersPage />, { user: adminUser });
-    await screen.findByRole('table');
+    await roster();
     expect(dataRows()).toHaveLength(25);
     expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
@@ -222,13 +260,15 @@ describe('MembersPage: the list', () => {
       ),
     );
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(await roster()).toBeInTheDocument();
   });
 
   it('still offers the invite form when the list fails to load', async () => {
     server.use(http.get('*/api/users', () => errorResponse(500, 'INTERNAL_ERROR', 'Boom')));
+    const user = userEvent.setup();
     renderWithAuth(<MembersPage />, { user: adminUser });
     await screen.findByRole('alert');
+    await openInvite(user);
     expect(screen.getByRole('button', { name: 'Invite member' })).toBeInTheDocument();
   });
 });
@@ -236,7 +276,7 @@ describe('MembersPage: the list', () => {
 describe('MembersPage: inviting', () => {
   it('sends name, email, role and the initial password, then refreshes the list', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, {
       name: 'Nina New',
       email: 'nina@acme.test',
@@ -256,7 +296,7 @@ describe('MembersPage: inviting', () => {
 
   it('defaults the new member’s role to the least privileged one', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     expect(screen.getByLabelText('Role')).toHaveValue('MEMBER');
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
@@ -266,7 +306,7 @@ describe('MembersPage: inviting', () => {
 
   it('tells the admin how the new member signs in, including the organization code', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -279,7 +319,7 @@ describe('MembersPage: inviting', () => {
 
   it('never shows the password back, in the confirmation or anywhere else', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     const notice = await screen.findByRole('status');
@@ -290,13 +330,15 @@ describe('MembersPage: inviting', () => {
     expect(notice).toHaveTextContent(/password is not shown again/i);
   });
 
-  it('clears the whole form once the invitation succeeds, password included', async () => {
+  it('closes the panel once the invitation succeeds, and starts empty the next time', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     await screen.findByRole('status');
 
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await openInvite(user);
     expect(screen.getByLabelText('Name')).toHaveValue('');
     expect(screen.getByLabelText('Email')).toHaveValue('');
     expect(screen.getByLabelText('Initial password')).toHaveValue('');
@@ -305,7 +347,7 @@ describe('MembersPage: inviting', () => {
 
   it('stores the password nowhere in the browser', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     await screen.findByRole('status');
@@ -316,7 +358,7 @@ describe('MembersPage: inviting', () => {
 
   it('masks the password by default, and lets the admin reveal it to check what they typed', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     const field = screen.getByLabelText('Initial password');
     expect(field).toHaveAttribute('type', 'password');
     expect(field).toHaveAttribute('autocomplete', 'new-password');
@@ -332,12 +374,13 @@ describe('MembersPage: inviting', () => {
 
   it('hides the password again after a successful invitation', async () => {
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByLabelText('Show password'));
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
     await screen.findByRole('status');
 
+    await openInvite(user);
     expect(screen.getByLabelText('Initial password')).toHaveAttribute('type', 'password');
     expect(screen.getByLabelText('Show password')).not.toBeChecked();
   });
@@ -356,7 +399,7 @@ describe('MembersPage: inviting', () => {
       ),
     );
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Max Again', email: 'max@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -374,7 +417,7 @@ describe('MembersPage: inviting', () => {
       ),
     );
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: 'short' });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -389,8 +432,17 @@ describe('MembersPage: inviting', () => {
     expect(field.getAttribute('aria-describedby')).toContain('password-hint');
   });
 
+  it('closes the panel with Escape without sending anything', async () => {
+    const user = userEvent.setup();
+    await renderLoaded({ invite: true });
+    await fillInvite(user, { name: 'Nina New' });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(inviteBodies).toEqual([]);
+  });
+
   it('has no invitation link or email step: there is nothing to copy or resend', async () => {
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     expect(screen.queryByRole('button', { name: /copy link/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /resend/i })).not.toBeInTheDocument();
   });
@@ -407,7 +459,7 @@ describe('MembersPage: inviting', () => {
       ),
     );
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Max Again', email: 'max@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -433,7 +485,7 @@ describe('MembersPage: inviting', () => {
       ),
     );
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'N', email: 'nope', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -446,7 +498,7 @@ describe('MembersPage: inviting', () => {
   it('shows an error with no field as a banner in the form', async () => {
     server.use(http.post('*/api/users/invite', () => errorResponse(403, 'FORBIDDEN', 'Forbidden')));
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
@@ -468,14 +520,14 @@ describe('MembersPage: inviting', () => {
       }),
     );
     const user = userEvent.setup();
-    await renderLoaded();
+    await renderLoaded({ invite: true });
     await fillInvite(user, { name: 'Nina New', email: 'nina@acme.test', password: PASSWORD });
     await user.click(screen.getByRole('button', { name: 'Invite member' }));
 
     const busy = await screen.findByRole('button', { name: 'Inviting…' });
     expect(busy).toBeDisabled();
     release();
-    await screen.findByRole('button', { name: 'Invite member' });
+    await screen.findByRole('status');
   });
 });
 
@@ -498,7 +550,7 @@ describe('MembersPage: changing a role', () => {
     const select = screen.getByLabelText('Role for Max Member');
     await user.selectOptions(select, 'APPROVER');
     await screen.findByRole('status');
-    // The same DOM element is still there: the table was never swapped for a loading state.
+    // The same DOM element is still there: the roster was never swapped for a loading state.
     expect(screen.getByLabelText('Role for Max Member')).toBe(select);
   });
 
@@ -554,10 +606,34 @@ describe('MembersPage: changing a role', () => {
 describe('MembersPage: whose row has no role control', () => {
   it('omits the control only from the viewer’s own row, whoever the viewer is', async () => {
     renderWithAuth(<MembersPage />, { user: approverUser });
-    await screen.findByRole('table');
+    await roster();
     // The viewer (here the approver fixture) is the only row without a control.
     expect(screen.getAllByRole('combobox', { name: /^Role for / })).toHaveLength(2);
     expect(screen.queryByLabelText('Role for Ann Approver')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Role for Ada Admin')).toHaveValue('ORG_ADMIN');
+  });
+});
+
+describe('MembersPage: setting a password', () => {
+  it('opens a panel for that member, sets the password and confirms it', async () => {
+    const posted = [];
+    server.use(
+      http.post('*/api/users/:id/password', async ({ params, request }) => {
+        posted.push({ id: params.id, ...(await request.json()) });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderLoaded();
+    await user.click(within(dataRows()[2]).getByRole('button', { name: 'Reset password' }));
+    const panel = await screen.findByRole('dialog', { name: 'Set a password for Max Member' });
+    await user.type(within(panel).getByLabelText('Temporary password'), PASSWORD);
+    await user.click(within(panel).getByRole('button', { name: 'Set password' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Set a new password for Max Member.',
+    );
+    expect(posted).toEqual([{ id: memberUser.id, password: PASSWORD }]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

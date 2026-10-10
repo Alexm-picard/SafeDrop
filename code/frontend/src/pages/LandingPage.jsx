@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: public landing page at `/`: hero, how-it-works, feature summary, sign-in/sign-up calls to action
+// AI-Assisted Areas: public landing page at `/`: hero, how-it-works, feature summary, sign-in/sign-up calls to action; SCRUM-241 redesign: page title on the board
 // Human Contributions:
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -177,7 +177,7 @@ export function LandingPage() {
           </div>
         </section>
       </main>
-      <footer className="app-footer">{APP_NAME} · CS673 Team 3 · Iteration 1</footer>
+      <footer className="app-footer">{APP_NAME} · CS673 Team 3</footer>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-148 story)
-// AI-Assisted Areas: organisation settings page with the approval default (REQUIRED / AUTO); SCRUM-205 pickup grace period and on-demand expiry
+// AI-Assisted Areas: organisation settings page with the approval default (REQUIRED / AUTO); SCRUM-205 pickup grace period and on-demand expiry; SCRUM-241 redesign: each setting written as a rule in a sentence, the approval choice as two tiles over a diagram of what a request goes through, the pickup window as an inline number over a bar
 // Human Contributions: story, acceptance criteria and the "auto-approval still needs a handoff" decision by Orelmis Toribio; pending team review
 // Notes: Follows the load/seed pattern in AssetFormPage. Verified by tests/unit/components/OrgSettingsPage.test.jsx.
 
@@ -67,9 +67,12 @@ function ApprovalSettingsForm({ initialMode }) {
     }
   };
 
+  const automatic = mode === 'AUTO';
   return (
-    <form className="card" onSubmit={onSubmit} aria-labelledby="approval-heading">
-      <h2 id="approval-heading">Checkout approval</h2>
+    <form className="card rule" onSubmit={onSubmit} aria-label="Checkout approval">
+      <h2 id="approval-heading" className="rule-line">
+        When someone requests equipment,
+      </h2>
       {notice ? (
         <div
           role={notice.tone === 'error' ? 'alert' : 'status'}
@@ -78,10 +81,10 @@ function ApprovalSettingsForm({ initialMode }) {
           {notice.message}
         </div>
       ) : null}
-      <fieldset className="radio-group">
-        <legend>By default, checkout requests should…</legend>
+      <fieldset className="choices">
+        <legend className="visually-hidden">By default, checkout requests should…</legend>
         {ORG_APPROVAL_OPTIONS.map((option) => (
-          <div key={option.value} className="radio-option">
+          <div key={option.value} className="choice">
             <input
               type="radio"
               id={`approval-${option.value}`}
@@ -98,11 +101,23 @@ function ApprovalSettingsForm({ initialMode }) {
           </div>
         ))}
       </fieldset>
-      <p className="hint">
-        Individual assets can override this from their edit form — for example, approve chargers
-        automatically while cameras still need an approver.
-      </p>
-      <div className="actions">
+      {/* What a request goes through under the chosen rule. Automatic approval skips the decision
+          and nothing else: the item is still handed over in person. */}
+      <ol className="flow" aria-label="What a request goes through">
+        <li>Requested</li>
+        <li className="flow-decide" data-skipped={automatic ? 'true' : undefined}>
+          An approver decides
+          {automatic ? <span className="visually-hidden"> (skipped)</span> : null}
+        </li>
+        <li>On hold for pickup</li>
+        <li>Handed over</li>
+        <li>Returned</li>
+      </ol>
+      <div className="rule-foot">
+        <p className="hint">
+          Individual assets can override this from their edit form — for example, approve chargers
+          automatically while cameras still need an approver.
+        </p>
         <button type="submit" disabled={pending || mode === saved}>
           {pending ? 'Saving…' : 'Save'}
         </button>
@@ -167,21 +182,21 @@ function PickupSettingsForm({ initialHours }) {
     }
   };
 
+  // The bar shows the window against one week, the longest anyone usually holds an approval open.
+  const share = valid ? Math.min(100, Math.max(2, (parsed / 168) * 100)) : 0;
   return (
-    <form className="card" onSubmit={onSubmit} aria-labelledby="pickup-heading">
-      <h2 id="pickup-heading">Pickup window</h2>
-      {notice ? (
-        <div
-          role={notice.tone === 'error' ? 'alert' : 'status'}
-          className={notice.tone === 'error' ? 'alert' : 'notice'}
-        >
-          {notice.message}
-        </div>
-      ) : null}
-      <div className="field">
-        <label htmlFor="pickup-grace-hours">Hours to collect an approved item</label>
+    <form className="card rule" onSubmit={onSubmit} aria-labelledby="pickup-heading">
+      <h2 id="pickup-heading" className="visually-hidden">
+        Pickup window
+      </h2>
+      <p className="rule-line">
+        <label htmlFor="pickup-grace-hours" className="visually-hidden">
+          Hours to collect an approved item
+        </label>
+        An approved item waits{' '}
         <input
           id="pickup-grace-hours"
+          className="inline-number"
           type="number"
           min={0}
           max={MAX_PICKUP_GRACE_HOURS}
@@ -190,18 +205,34 @@ function PickupSettingsForm({ initialHours }) {
           onChange={(event) => setHours(event.target.value)}
           aria-describedby="pickup-grace-hours-hint"
           aria-invalid={!valid}
-        />
-        <p id="pickup-grace-hours-hint" className="hint">
-          Counted from the start of the request. An approval nobody collects in time expires, and
-          the unit becomes available again. Whole hours, up to {MAX_PICKUP_GRACE_HOURS}.
-        </p>
+        />{' '}
+        hours to be collected.
+      </p>
+      {notice ? (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          className={notice.tone === 'error' ? 'alert' : 'notice'}
+        >
+          {notice.message}
+        </div>
+      ) : null}
+      <div className="window" aria-hidden="true">
+        <span>Request starts</span>
+        <span className="window-bar">
+          <span style={{ inlineSize: `${share}%` }} />
+        </span>
+        <span>Approval expires, unit freed</span>
       </div>
-      <div className="actions">
-        <button type="submit" disabled={pending || !valid || parsed === saved}>
-          {pending ? 'Saving…' : 'Save pickup window'}
-        </button>
+      <p id="pickup-grace-hours-hint" className="hint">
+        Counted from the start of the request. An approval nobody collects in time expires, and the
+        unit becomes available again. Whole hours, up to {MAX_PICKUP_GRACE_HOURS}.
+      </p>
+      <div className="rule-foot">
         <button type="button" className="secondary" disabled={pending} onClick={onExpire}>
           Expire uncollected approvals now
+        </button>
+        <button type="submit" disabled={pending || !valid || parsed === saved}>
+          {pending ? 'Saving…' : 'Save pickup window'}
         </button>
       </div>
     </form>
@@ -231,13 +262,21 @@ export function OrgSettingsPage() {
 
   return (
     <>
-      <h1>Settings</h1>
+      <header className="page-header">
+        <div>
+          <h1>Settings</h1>
+          <p className="subtitle">
+            The rules your organization lends by. Each applies to new requests; requests already
+            waiting keep the rule they started with.
+          </p>
+        </div>
+      </header>
       {status === 'loading' ? <LoadingState label="Loading settings…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load the settings" onRetry={reload} />
       ) : null}
       {status === 'success' && data ? (
-        <div className="stack">
+        <div className="rules">
           <ApprovalSettingsForm initialMode={data.approval.defaultMode} />
           <PickupSettingsForm initialHours={data.pickup.graceHours} />
         </div>

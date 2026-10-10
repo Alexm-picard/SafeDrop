@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: my-requests page wired to the real GET /api/requests endpoint (SCRUM-119); "(automatic)" marker for auto-approved requests (SCRUM-148)
+// AI-Assisted Areas: my-requests page wired to the real GET /api/requests endpoint (SCRUM-119); "(automatic)" marker for auto-approved requests (SCRUM-148); SCRUM-241 redesign: the requests as a board by stage, with the one-click next steps on each card
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -13,66 +13,59 @@
  * an approver or admin who could ask the same endpoint for the organisation-wide view elsewhere
  * (see ApprovalQueuePage).
  */
-import { DataTable } from '../components/DataTable';
-import { DueBadge } from '../components/DueBadge';
+import { Link } from 'react-router';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import { Link } from 'react-router';
+import { RequestBoard } from '../components/RequestBoard';
+import { useAuth } from '../hooks/useAuth';
 import { useRequests } from '../hooks/useRequests';
-import { ROUTES } from '../utils/constants';
-import { formatDateOnly, humanize } from '../utils/format';
+import { ROLES, ROUTES } from '../utils/constants';
+
 /**
- * Render the member's requests as a table.
+ * Render the viewer's requests as a board, one column per stage.
  *
- * States are passed through `humanize`, so `CHECKED_OUT` reads as "Checked out" — and a state added
- * on the backend still displays sensibly without a label map here.
+ * An approver or admin also has the organisation-wide board (the approval queue); the two links under
+ * the title switch between them, so "everyone's" and "mine" read as two views of one page.
  *
- * The Due column (SCRUM-143) is the one piece of derived data in the table: everything else is a
- * field of the request, while that is computed from `dueAt` against the clock by `dueStatus`.
+ * The Due badge (SCRUM-143) on each loan is the one piece of derived data: everything else is a field
+ * of the request, while that is computed from `dueAt` against the clock by `dueStatus`.
  * @returns {JSX.Element}
  */
 export function MyRequestsPage() {
   const { status, data, error, reload } = useRequests();
+  const { role } = useAuth();
+  const canApprove = role === ROLES.APPROVER || role === ROLES.ORG_ADMIN;
   return (
     <>
-      <h1>My requests</h1>
+      <header className="page-header">
+        <div>
+          <h1>My requests</h1>
+          <p className="subtitle">Everything you asked to borrow, and where it is now.</p>
+        </div>
+        <div className="actions">
+          {canApprove ? (
+            <nav className="view-switch" aria-label="Whose requests">
+              <Link to={ROUTES.approvals}>Everyone’s</Link>
+              <Link to={ROUTES.myRequests} aria-current="page">
+                Mine
+              </Link>
+            </nav>
+          ) : null}
+          <Link className="button" to={ROUTES.catalog}>
+            Browse the catalog
+          </Link>
+        </div>
+      </header>
       {status === 'loading' ? <LoadingState label="Loading your requests…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load your requests" onRetry={reload} />
       ) : null}
       {status === 'success' && data ? (
-        <DataTable
-          caption="Requests"
-          columns={[
-            {
-              key: 'state',
-              header: 'State',
-              // The state doubles as the way in to the detail screen (SCRUM-123), so the row has a
-              // link without a column of bare "View" links.
-              // SCRUM-148: an auto-approved request reads "Approved (automatic)" so the member does not
-              // look for an approver who never existed.
-              render: (r) => (
-                <Link to={ROUTES.request(r.id)}>
-                  {humanize(r.state)}
-                  {r.autoApproved && r.state === 'APPROVED' ? ' (automatic)' : ''}
-                </Link>
-              ),
-            },
-            { key: 'from', header: 'Needed from', render: (r) => formatDateOnly(r.neededFrom) },
-            { key: 'to', header: 'Needed until', render: (r) => formatDateOnly(r.neededTo) },
-            {
-              key: 'due',
-              header: 'Due',
-              // Last, beside the window it belongs with. Empty on every row that is not out on
-              // loan, which is most of them — the badge is the answer to "when do I have to give
-              // this back", and a request nobody has handed over yet has no answer.
-              render: (r) => <DueBadge request={r} />,
-            },
-          ]}
-          rows={data.items}
-          getRowId={(r) => r.id}
-          emptyMessage="You have not requested anything yet."
-        />
+        data.items.length === 0 ? (
+          <p className="empty-state">You have not requested anything yet.</p>
+        ) : (
+          <RequestBoard requests={data.items} onChanged={reload} />
+        )
       ) : null}
     </>
   );

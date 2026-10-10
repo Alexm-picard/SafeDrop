@@ -345,3 +345,28 @@ describe('AssetFormPage — restricting to groups (SCRUM-150)', () => {
     expect(patched.allowedGroupIds).toEqual([groups[0].id]);
   });
 });
+
+describe('AssetFormPage — catalog preview (SCRUM-241)', () => {
+  it('draws the catalog card from the form as it is typed', async () => {
+    renderCreate();
+    const preview = await screen.findByRole('complementary', { name: 'Catalog preview' });
+    expect(within(preview).getByRole('heading', { name: 'Untitled asset' })).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Drone B');
+    await userEvent.type(screen.getByLabelText('Category'), 'drone');
+
+    expect(within(preview).getByRole('heading', { name: 'Drone B' })).toBeInTheDocument();
+    expect(within(preview).getByText('drone')).toBeInTheDocument();
+    expect(within(preview).getByText('Everyone in the organization can request it.')).toBeVisible();
+  });
+
+  it('badges the preview and names the groups once the asset is restricted', async () => {
+    renderCreate();
+    const preview = await screen.findByRole('complementary', { name: 'Catalog preview' });
+    await userEvent.click(await screen.findByRole('checkbox', { name: groups[0].name }));
+    expect(within(preview).getByText('Restricted')).toBeInTheDocument();
+    expect(
+      within(preview).getByText(`Only members of ${groups[0].name} can request it.`),
+    ).toBeInTheDocument();
+  });
+});

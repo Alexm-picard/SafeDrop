@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-102 AC2);
-//   overdue/pending tiles and the 30-day activity chart (SCRUM-102 AT1)
+//   overdue/pending tiles and the 30-day activity chart (SCRUM-102 AT1); SCRUM-241: the attention tiles are their own list on the board
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -40,10 +40,12 @@ describe('AdminDashboardPage', () => {
     expect(within(summaryList).getByText('Available').nextElementSibling).toHaveTextContent(
       String(summary.available),
     );
-    expect(within(summaryList).getByText('Overdue').nextElementSibling).toHaveTextContent(
+    // SCRUM-241: the figures that ask for action are their own list, hung on the page's board.
+    const attention = screen.getByLabelText('Needs attention', { selector: 'dl' });
+    expect(within(attention).getByText('Overdue').nextElementSibling).toHaveTextContent(
       String(summary.overdue),
     );
-    expect(within(summaryList).getByText('Pending requests').nextElementSibling).toHaveTextContent(
+    expect(within(attention).getByText('Pending requests').nextElementSibling).toHaveTextContent(
       String(summary.pendingRequests),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -74,7 +76,8 @@ describe('AdminDashboardPage', () => {
     const list = await screen.findByLabelText('Inventory summary');
     expect(within(list).getByText('Total assets').nextElementSibling).toHaveTextContent('10');
     expect(within(list).getByText('Checked out').nextElementSibling).toHaveTextContent('3');
-    expect(within(list).getByText('Overdue').nextElementSibling).toHaveTextContent('1');
+    const attention = screen.getByLabelText('Needs attention', { selector: 'dl' });
+    expect(within(attention).getByText('Overdue').nextElementSibling).toHaveTextContent('1');
   });
 
   it('links each actionable tile to the screen that answers it', async () => {

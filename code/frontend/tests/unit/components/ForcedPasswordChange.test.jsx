@@ -101,18 +101,20 @@ describe('a session using a password an admin set', () => {
 });
 
 describe('an admin setting a member’s password (SCRUM-36)', () => {
-  /** Render the members page as the admin and wait for the table. */
+  /** Render the members page as the admin and wait for the roster. */
   async function openMembers() {
     // The default handlers already serve GET /api/users from the three fixture members.
     server.use(meHandler(adminUser));
     const utils = renderApp('/admin/users', authenticatedState(adminUser));
     await screen.findByRole('heading', { level: 1, name: /users/i });
+    // The rail's links are list items too, so wait for the roster's cards before looking for one.
+    await screen.findByText(memberUser.email);
     return utils;
   }
 
   it('offers the action for other people but not for yourself', async () => {
     await openMembers();
-    const rows = await screen.findAllByRole('row');
+    const rows = await screen.findAllByRole('listitem');
     const adminRow = rows.find((row) => within(row).queryByText(adminUser.email));
     expect(within(adminRow).queryByRole('button', { name: /reset password/i })).toBeNull();
 
@@ -123,7 +125,7 @@ describe('an admin setting a member’s password (SCRUM-36)', () => {
   it('sets a password and explains what the admin must now do', async () => {
     const user = userEvent.setup();
     await openMembers();
-    const rows = await screen.findAllByRole('row');
+    const rows = await screen.findAllByRole('listitem');
     const otherRow = rows.find((row) => within(row).queryByText(memberUser.email));
 
     await user.click(within(otherRow).getByRole('button', { name: /reset password/i }));
@@ -140,7 +142,7 @@ describe('an admin setting a member’s password (SCRUM-36)', () => {
   it('reports a password the API rejects against the field', async () => {
     const user = userEvent.setup();
     await openMembers();
-    const rows = await screen.findAllByRole('row');
+    const rows = await screen.findAllByRole('listitem');
     const otherRow = rows.find((row) => within(row).queryByText(memberUser.email));
 
     await user.click(within(otherRow).getByRole('button', { name: /reset password/i }));

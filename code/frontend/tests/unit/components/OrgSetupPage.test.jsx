@@ -60,7 +60,7 @@ describe('OrgSetupPage', () => {
     const { router } = renderApp('/setup', anonymousState);
     await fill(user, 'Correct-Horse-Battery-9');
     await waitFor(() => expect(router.state.location.pathname).toBe('/admin'));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
     // From the fixture, not typed here: this test is about landing on a dashboard that has loaded its
     // data, and it should not break when the fixture's numbers change (SCRUM-141 changed totalAssets).
     expect(await screen.findByText(String(summary.totalAssets))).toBeInTheDocument();
