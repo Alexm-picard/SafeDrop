@@ -19,7 +19,7 @@
  *  - **An illegal transition is readable.** The API's 409 says what went wrong; the page shows it
  *    rather than swallowing it.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -156,7 +156,8 @@ describe('RequestDetailPage', () => {
     const user = userEvent.setup();
     server.use(meHandler(memberUser));
     const { router } = renderApp('/requests', authenticatedState(memberUser));
-    const link = await screen.findByRole('link', { name: 'Pending' });
+    const waiting = await screen.findByRole('region', { name: 'Waiting for a decision' });
+    const [link] = within(within(waiting).getAllByRole('listitem')[0]).getAllByRole('link');
 
     await user.click(link);
 

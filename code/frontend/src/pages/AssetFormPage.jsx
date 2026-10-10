@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
-// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148); group picker restricting who can request it (SCRUM-150, SCRUM-176)
+// AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148); group picker restricting who can request it (SCRUM-150, SCRUM-176); SCRUM-241 redesign: a live preview of the catalog card beside the form
 // Human Contributions: pending team review
 // Notes: Follows the form patterns in OrgSetupPage and MembersPage. Fields mirror the `assetBody`
 // Zod schema in backend routes/assets.routes.js. Verified by
@@ -35,6 +35,7 @@
  */
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { AssetCard } from '../components/AssetCard';
 import { ErrorState } from '../components/ErrorState';
 import { FormField } from '../components/FormField';
 import { LoadingState } from '../components/LoadingState';
@@ -113,6 +114,8 @@ function toPayload(values) {
  */
 function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
   const [values, setValues] = useState(initialValues);
+  // One fetch of the groups, shared by the picker and the preview's Restricted badge.
+  const groups = useGroups(GROUP_PICKER_PARAMS);
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState(null);
   const [pending, setPending] = useState(false);
@@ -148,110 +151,139 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
     }
   };
 
+  const groupNames = new Map((groups.data?.items ?? []).map((g) => [g.id, g.name]));
+  const previewGroups = values.allowedGroupIds
+    .filter((id) => groupNames.has(id))
+    .map((id) => ({ id, name: groupNames.get(id) }));
+  // A half-typed address would draw a broken picture, so only a complete-looking one is previewed.
+  const previewImage = /^https?:\/\/\S+\.\S+/.test(values.imageUrl.trim())
+    ? values.imageUrl.trim()
+    : null;
+
   return (
-    <form className="card" onSubmit={onSubmit} noValidate aria-labelledby="asset-form-title">
-      <h2 id="asset-form-title" className="visually-hidden">
-        {isEdit ? 'Edit asset' : 'New asset'}
-      </h2>
-      {formError ? (
-        <div role="alert" className="alert">
-          {formError}
+    <div className="composer">
+      <form className="card" onSubmit={onSubmit} noValidate aria-labelledby="asset-form-title">
+        <h2 id="asset-form-title" className="visually-hidden">
+          {isEdit ? 'Edit asset' : 'New asset'}
+        </h2>
+        {formError ? (
+          <div role="alert" className="alert">
+            {formError}
+          </div>
+        ) : null}
+        <FormField id="asset-name" label="Name" error={fieldErrors.name}>
+          {(props) => (
+            <input
+              {...props}
+              name="name"
+              type="text"
+              autoComplete="off"
+              required
+              value={values.name}
+              onChange={set('name')}
+            />
+          )}
+        </FormField>
+        <FormField
+          id="asset-category"
+          label="Category"
+          error={fieldErrors.category}
+          hint="For example: laptop, camera, projector."
+        >
+          {(props) => (
+            <input
+              {...props}
+              name="category"
+              type="text"
+              autoComplete="off"
+              required
+              value={values.category}
+              onChange={set('category')}
+            />
+          )}
+        </FormField>
+        <FormField id="asset-description" label="Description" error={fieldErrors.description}>
+          {(props) => (
+            <textarea
+              {...props}
+              name="description"
+              rows={3}
+              value={values.description}
+              onChange={set('description')}
+            />
+          )}
+        </FormField>
+        <FormField
+          id="asset-imageUrl"
+          label="Image URL"
+          error={fieldErrors.imageUrl}
+          hint="Optional. Leave blank if there is no picture."
+        >
+          {(props) => (
+            <input
+              {...props}
+              name="imageUrl"
+              type="url"
+              autoComplete="off"
+              value={values.imageUrl}
+              onChange={set('imageUrl')}
+            />
+          )}
+        </FormField>
+        <FormField
+          id="asset-approvalMode"
+          label="Checkout approval"
+          error={fieldErrors.approvalMode}
+          hint="Whether a request for this asset waits for an approver. Approved items are still handed over in person."
+        >
+          {(props) => (
+            <select
+              {...props}
+              name="approvalMode"
+              value={values.approvalMode}
+              onChange={set('approvalMode')}
+            >
+              {ASSET_APPROVAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+        <GroupPicker
+          groups={groups}
+          selected={values.allowedGroupIds}
+          onToggle={toggleGroup}
+          error={fieldErrors.allowedGroupIds}
+        />
+        <div className="actions">
+          <button type="submit" disabled={pending}>
+            {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create asset'}
+          </button>
+          <button type="button" className="secondary" disabled={pending} onClick={onCancel}>
+            Cancel
+          </button>
         </div>
-      ) : null}
-      <FormField id="asset-name" label="Name" error={fieldErrors.name}>
-        {(props) => (
-          <input
-            {...props}
-            name="name"
-            type="text"
-            autoComplete="off"
-            required
-            value={values.name}
-            onChange={set('name')}
-          />
-        )}
-      </FormField>
-      <FormField
-        id="asset-category"
-        label="Category"
-        error={fieldErrors.category}
-        hint="For example: laptop, camera, projector."
-      >
-        {(props) => (
-          <input
-            {...props}
-            name="category"
-            type="text"
-            autoComplete="off"
-            required
-            value={values.category}
-            onChange={set('category')}
-          />
-        )}
-      </FormField>
-      <FormField id="asset-description" label="Description" error={fieldErrors.description}>
-        {(props) => (
-          <textarea
-            {...props}
-            name="description"
-            rows={3}
-            value={values.description}
-            onChange={set('description')}
-          />
-        )}
-      </FormField>
-      <FormField
-        id="asset-imageUrl"
-        label="Image URL"
-        error={fieldErrors.imageUrl}
-        hint="Optional. Leave blank if there is no picture."
-      >
-        {(props) => (
-          <input
-            {...props}
-            name="imageUrl"
-            type="url"
-            autoComplete="off"
-            value={values.imageUrl}
-            onChange={set('imageUrl')}
-          />
-        )}
-      </FormField>
-      <FormField
-        id="asset-approvalMode"
-        label="Checkout approval"
-        error={fieldErrors.approvalMode}
-        hint="Whether a request for this asset waits for an approver. Approved items are still handed over in person."
-      >
-        {(props) => (
-          <select
-            {...props}
-            name="approvalMode"
-            value={values.approvalMode}
-            onChange={set('approvalMode')}
-          >
-            {ASSET_APPROVAL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        )}
-      </FormField>
-      <GroupPicker
-        selected={values.allowedGroupIds}
-        onToggle={toggleGroup}
-        error={fieldErrors.allowedGroupIds}
-      />
-      <div className="actions">
-        <button type="submit" disabled={pending}>
-          {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create asset'}
-        </button>
-        <button type="button" className="secondary" disabled={pending} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
+      </form>
+      {/* SCRUM-241: the card this asset will be in the catalogue, drawn from the form as it is typed. */}
+      <aside className="composer-preview" aria-label="Catalog preview">
+        <p className="preview-label">How it appears in the catalog</p>
+        <AssetCard
+          preview
+          name={values.name.trim() || 'Untitled asset'}
+          category={values.category.trim()}
+          imageUrl={previewImage}
+          allowedGroups={previewGroups}
+          restricted={values.allowedGroupIds.length > 0}
+        />
+        <p className="hint">
+          {previewGroups.length
+            ? `Only members of ${previewGroups.map((g) => g.name).join(' or ')} can request it.`
+            : 'Everyone in the organization can request it.'}
+        </p>
+      </aside>
+    </div>
   );
 }
 
@@ -264,11 +296,11 @@ function AssetForm({ initialValues, isEdit, save, onSaved, onCancel }) {
  * If the groups cannot be loaded the picker says so and shows no boxes, and the form still sends the
  * asset's current `allowedGroupIds` unchanged — an admin editing a description must not silently lift
  * a restriction because the group list failed to load.
- * @param {{ selected: string[], onToggle: (groupId: string) => (event: object) => void, error?: string }} props
+ * @param {{ groups: { status: string, data: object|null }, selected: string[], onToggle: (groupId: string) => (event: object) => void, error?: string }} props
+ *   `groups` is the form's one fetch of the organisation's groups, shared with the preview
  * @returns {JSX.Element}
  */
-function GroupPicker({ selected, onToggle, error }) {
-  const { status, data } = useGroups(GROUP_PICKER_PARAMS);
+function GroupPicker({ groups: { status, data }, selected, onToggle, error }) {
   const groups = data?.items ?? [];
 
   let body;
@@ -348,7 +380,11 @@ export function AssetFormPage() {
   if (isEdit && status === 'loading') {
     return (
       <>
-        <h1>{title}</h1>
+        <header className="page-header">
+          <div>
+            <h1>{title}</h1>
+          </div>
+        </header>
         <LoadingState label="Loading asset…" />
       </>
     );
@@ -356,7 +392,11 @@ export function AssetFormPage() {
   if (isEdit && (status === 'error' || !data)) {
     return (
       <>
-        <h1>{title}</h1>
+        <header className="page-header">
+          <div>
+            <h1>{title}</h1>
+          </div>
+        </header>
         <ErrorState error={error} title="Could not load this asset" onRetry={reload} />
       </>
     );
@@ -364,12 +404,16 @@ export function AssetFormPage() {
 
   return (
     <>
-      <h1>{title}</h1>
-      <p className="hint">
-        {isEdit
-          ? 'Changes are recorded in the audit log.'
-          : 'Add a catalogue entry. You can add its physical units from the asset’s page afterwards.'}
-      </p>
+      <header className="page-header">
+        <div>
+          <h1>{title}</h1>
+          <p className="subtitle">
+            {isEdit
+              ? 'Changes are recorded in the audit log.'
+              : 'Add a catalogue entry. You can add its physical units from the asset’s page afterwards.'}
+          </p>
+        </div>
+      </header>
       <AssetForm
         initialValues={isEdit ? toValues(data) : EMPTY_FORM}
         isEdit={isEdit}

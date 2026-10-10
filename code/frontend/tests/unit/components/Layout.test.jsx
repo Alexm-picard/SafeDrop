@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out
+// AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out; SCRUM-241 redesign: Primary and Manage navigation, Requests destination by role, the ⌘K palette
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -51,20 +51,8 @@ describe('Layout', () => {
   });
   it.each([
     [memberUser, ['Catalog', 'My requests']],
-    [approverUser, ['Catalog', 'My requests', 'Approvals']],
-    [
-      adminUser,
-      [
-        'Catalog',
-        'My requests',
-        'Approvals',
-        'Dashboard',
-        'Users',
-        'Groups',
-        'Audit log',
-        'Settings',
-      ],
-    ],
+    [approverUser, ['Catalog', 'Requests']],
+    [adminUser, ['Overview', 'Catalog', 'Requests']],
   ])('shows navigation by role', (user, expected) => {
     renderLayout(user);
     const nav = screen.getByRole('navigation', { name: 'Primary' });
@@ -73,6 +61,44 @@ describe('Layout', () => {
         .getAllByRole('link')
         .map((a) => a.textContent),
     ).toEqual(expected);
+  });
+  it('offers the Manage links to an ORG_ADMIN only', () => {
+    const { unmount } = renderLayout(adminUser);
+    const manage = screen.getByRole('navigation', { name: 'Manage' });
+    expect(
+      within(manage)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Users', 'Groups', 'Audit log', 'Settings']);
+    unmount();
+    for (const person of [memberUser, approverUser]) {
+      const view = renderLayout(person);
+      expect(screen.queryByRole('navigation', { name: 'Manage' })).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+  it('sends Requests to the organization board for approvers and to their own list for members', () => {
+    const { unmount } = renderLayout(approverUser);
+    expect(screen.getByRole('link', { name: 'Requests' })).toHaveAttribute(
+      'href',
+      '/admin/approvals',
+    );
+    unmount();
+    renderLayout(memberUser);
+    expect(screen.getByRole('link', { name: 'My requests' })).toHaveAttribute('href', '/requests');
+  });
+  it('opens the jump palette with Ctrl+K and lists only the pages the role may open', async () => {
+    const user = userEvent.setup();
+    renderLayout(memberUser);
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = screen.getByRole('dialog', { name: 'Search or jump to' });
+    const names = within(dialog)
+      .getAllByRole('option')
+      .map((o) => o.firstChild.textContent);
+    expect(names).toContain('Catalog');
+    expect(names).not.toContain('Users');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('links the Users entry to /admin/users, and only an ORG_ADMIN is offered it', () => {
     const { unmount } = renderLayout(adminUser);
@@ -83,6 +109,16 @@ describe('Layout', () => {
       expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
       view.unmount();
     }
+  });
+
+  it('goes to the highlighted page when Enter is pressed in the palette', async () => {
+    const user = userEvent.setup();
+    const { router } = renderLayout(adminUser);
+    await user.click(screen.getByRole('button', { name: /search or jump to/i }));
+    await user.keyboard('settings');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/settings'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('signs out and goes to the landing page', async () => {

@@ -1,3 +1,9 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90%
+// AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards
+// Human Contributions: pending team review
+
 /**
  * The catalogue: the landing page for every signed-in user.
  *
@@ -16,10 +22,9 @@
  */
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
-import { DataTable } from '../components/DataTable';
+import { AssetCard } from '../components/AssetCard';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
-import { RestrictedBadge } from '../components/RestrictedBadge';
 import { useAssets, useAssetSearch } from '../hooks/useAssets';
 import { useAuth } from '../hooks/useAuth';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -60,77 +65,83 @@ export function CatalogPage() {
   const searching = text.trim() !== '' && q !== '';
   return (
     <>
-      <h1>Catalog</h1>
+      <header className="page-header">
+        <div>
+          <h1>Catalog</h1>
+          <p className="subtitle">
+            Everything your organization lends out. Open an item to see its units and request one.
+          </p>
+        </div>
+        {/* SCRUM-122: the admin's way into the create form. Shown here rather than in the primary
+            nav because the catalogue is where inventory is managed from, and the nav is shared with
+            two roles that cannot use it. Hiding it is usability only — the API enforces
+            `assets:write`. */}
+        {role === ROLES.ORG_ADMIN ? (
+          <p className="actions">
+            <Link className="button" to={ROUTES.assetNew}>
+              New asset
+            </Link>
+          </p>
+        ) : null}
+        {/* Searching happens as you type, so there is nothing to submit; preventing it stops Enter
+            from reloading the page. */}
+        <form
+          role="search"
+          className="catalog-search page-header-extra"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <label htmlFor="catalog-search" className="visually-hidden">
+            Search the catalog
+          </label>
+          <input
+            id="catalog-search"
+            type="search"
+            value={text}
+            maxLength={SEARCH_MAX_LENGTH}
+            placeholder="What do you need? For example, something to record a lecture"
+            onChange={(event) => setText(event.target.value)}
+          />
+        </form>
+      </header>
       {denied ? (
         <div role="alert" className="alert">
           You do not have access to that page.
         </div>
       ) : null}
-      {/* SCRUM-122: the admin's way into the create form. Shown here rather than in the primary nav
-          because the catalogue is where inventory is managed from, and the nav is shared with two
-          roles that cannot use it. Hiding it is usability only — the API enforces `assets:write`. */}
-      {role === ROLES.ORG_ADMIN ? (
-        <p className="actions">
-          <Link className="button" to={ROUTES.assetNew}>
-            New asset
-          </Link>
-        </p>
-      ) : null}
-      {/* Searching happens as you type, so there is nothing to submit; preventing it stops Enter
-          from reloading the page. */}
-      <form role="search" onSubmit={(event) => event.preventDefault()}>
-        <label htmlFor="catalog-search">Search the catalog</label>
-        <input
-          id="catalog-search"
-          type="search"
-          value={text}
-          maxLength={SEARCH_MAX_LENGTH}
-          placeholder="e.g. something to record a lecture"
-          onChange={(event) => setText(event.target.value)}
-        />
-      </form>
       {searching ? <SearchResults q={q} {...search} /> : null}
       {!searching && status === 'loading' ? <LoadingState label="Loading assets…" /> : null}
       {!searching && status === 'error' ? (
         <ErrorState error={error} title="Could not load the catalog" onRetry={reload} />
       ) : null}
       {!searching && status === 'success' && data ? (
-        <DataTable
-          caption="Assets"
-          columns={[
-            {
-              key: 'name',
-              header: 'Name',
-              // SCRUM-150: restricted assets stay listed, badged beside (not inside) the link so the
-              // link's name is still just the asset's.
-              render: (a) => (
-                <>
-                  <Link to={ROUTES.asset(a.id)}>{a.name}</Link>
-                  <RestrictedBadge allowedGroups={a.allowedGroups} restricted={a.restricted} />
-                </>
-              ),
-            },
-            { key: 'category', header: 'Category', render: (a) => a.category },
-          ]}
-          rows={data.items}
-          getRowId={(a) => a.id}
-          emptyMessage="No assets yet."
-        />
+        data.items.length === 0 ? (
+          <p className="empty-state">No assets yet.</p>
+        ) : (
+          // SCRUM-150: restricted assets stay listed, badged on the card, rather than hidden.
+          <ul className="gallery" aria-label="Assets">
+            {data.items.map((a) => (
+              <li key={a.id}>
+                <AssetCard
+                  id={a.id}
+                  name={a.name}
+                  category={a.category}
+                  imageUrl={a.imageUrl}
+                  allowedGroups={a.allowedGroups}
+                  restricted={a.restricted}
+                />
+              </li>
+            ))}
+          </ul>
+        )
       ) : null}
     </>
   );
 }
 
 /**
- * The matches for `q`, in the order the API returned them.
- *
- * "Searching…" shows until the data answers *this* query: `useApiResource` keeps the previous
- * results while a new request is in flight, so `status` alone would show stale matches as current.
- *
- * AI-ranked and plain results render the same way, except that AI results add the model's reason
- * per match and may carry a clarifying question. A plain result after an AI failure therefore looks
- * like any other search — the fallback is the backend's business, not the member's (SCRUM-103 AT2).
- * @param {{ q: string, status: string, data: ({ q: string, matches: object[], clarification: string|null, aiAssisted: boolean }|null), error: unknown, reload: () => void }} props
+ * The matches for one query, in place of the catalogue: the same cards, with the model's reason on
+ * each when the search was AI-assisted, and its clarifying question above them.
+ * @param {{ q: string, status: string, data: object|null, error: unknown, reload: () => void }} props
  * @returns {JSX.Element}
  */
 function SearchResults({ q, status, data, error, reload }) {
@@ -140,33 +151,31 @@ function SearchResults({ q, status, data, error, reload }) {
   if (status === 'loading' || data?.q !== q) {
     return <LoadingState label="Searching…" />;
   }
-  const columns = [
-    {
-      key: 'name',
-      header: 'Name',
-      // SCRUM-202: the same Restricted badge as the list, beside the link.
-      render: (m) => (
-        <>
-          <Link to={ROUTES.asset(m.assetId)}>{m.name}</Link>
-          <RestrictedBadge allowedGroups={m.allowedGroups} restricted={m.restricted} />
-        </>
-      ),
-    },
-    { key: 'category', header: 'Category', render: (m) => m.category },
-  ];
-  if (data.aiAssisted) {
-    columns.push({ key: 'reason', header: 'Why it matches', render: (m) => m.reason });
-  }
   return (
     <>
-      {data.clarification ? <p className="hint">{data.clarification}</p> : null}
-      <DataTable
-        caption="Search results"
-        columns={columns}
-        rows={data.matches}
-        getRowId={(m) => m.assetId}
-        emptyMessage={`No assets match “${q}”.`}
-      />
+      {data.clarification ? (
+        <p className="hint search-clarification">{data.clarification}</p>
+      ) : null}
+      {data.matches.length === 0 ? (
+        <p className="empty-state">No assets match “{q}”.</p>
+      ) : (
+        <ul className="gallery" aria-label="Search results">
+          {data.matches.map((m) => (
+            <li key={m.assetId}>
+              {/* SCRUM-202: the same Restricted badge as the list. */}
+              <AssetCard
+                id={m.assetId}
+                name={m.name}
+                category={m.category}
+                imageUrl={m.imageUrl}
+                allowedGroups={m.allowedGroups}
+                restricted={m.restricted}
+                reason={data.aiAssisted ? m.reason : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

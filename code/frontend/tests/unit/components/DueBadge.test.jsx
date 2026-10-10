@@ -40,23 +40,25 @@ import { authenticatedState, renderApp, renderWithAuth } from '../../utils/rende
 const checkedOut = checkoutRequests.find((r) => r.state === 'CHECKED_OUT');
 const approved = checkoutRequests.find((r) => r.state === 'APPROVED');
 
-/** Mount the member's own requests and wait for the table to arrive. */
+/** Mount the member's own requests and wait for the board to arrive. */
 async function renderMyRequests() {
   const utils = renderWithAuth(<MyRequestsPage />, { user: memberUser });
-  await screen.findByRole('table');
+  await screen.findByRole('region', { name: 'Out on loan' });
   return utils;
 }
 
 /**
- * The table row for a request, found by the state link that is its way in to the detail screen.
+ * The board card for a request, found by the state badge it carries.
  *
  * By the state rather than by index, so a fixture reordered later moves these tests' subject with it
- * instead of quietly pointing them at the wrong row.
- * @param {string} state the humanised state, as the first column renders it
+ * instead of quietly pointing them at the wrong card.
+ * @param {string} state the humanised state, as the card's badge renders it
  * @returns {HTMLElement|undefined}
  */
 function rowFor(state) {
-  return screen.getAllByRole('row').find((row) => within(row).queryByRole('link', { name: state }));
+  return screen
+    .getAllByRole('listitem')
+    .find((card) => within(card).queryByText(state, { exact: true }));
 }
 
 /** Open one request's detail screen as `user`, waiting for it to settle. */
@@ -67,11 +69,11 @@ async function openRequest(request, user = memberUser) {
   return utils;
 }
 
-describe('the Due column on my requests', () => {
-  it('is a column of the requests table', async () => {
+describe('the due badge on my requests', () => {
+  it('has a column for loans, where the badge lives', async () => {
     await renderMyRequests();
 
-    expect(screen.getByRole('columnheader', { name: 'Due' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Out on loan' })).toBeVisible();
   });
 
   it('badges the checked-out row with how long is left', async () => {
@@ -83,8 +85,7 @@ describe('the Due column on my requests', () => {
   it('says nothing on rows that are not out on loan', async () => {
     await renderMyRequests();
 
-    // The column exists on every row, because a table cannot have a cell missing from one of them.
-    // What it must not do is invent a deadline for a request that has not been handed over.
+    // What the badge must not do is invent a deadline for a request that has not been handed over.
     expect(rowFor('Pending')).not.toHaveTextContent(/Due|Overdue/);
     expect(rowFor('Approved')).not.toHaveTextContent(/Due|Overdue/);
     expect(rowFor('Denied')).not.toHaveTextContent(/Due|Overdue/);

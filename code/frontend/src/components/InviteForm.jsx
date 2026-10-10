@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket; moved out of MembersPage.jsx unchanged)
-// AI-Assisted Areas: invite form (admin-set initial password) with field-level API errors
+// AI-Assisted Areas: invite form (admin-set initial password) with field-level API errors; SCRUM-241: inPanel rendering for the side panel
 // Human Contributions: pending team review
 // Notes: Moved verbatim from MembersPage.jsx to follow the SPPP coding standard (components live in
 // src/components). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
@@ -24,10 +24,12 @@ const EMPTY_FORM = Object.freeze({
  *
  * Reports success upward rather than rendering it, because the confirmation belongs in the page-level
  * notice, which must outlive the form's own state.
- * @param {{ onInvited: (result: { user: object }) => void }} props
+ * SCRUM-241: `inPanel` renders it for the Users page's side panel, which supplies the frame and the
+ * heading, so the form drops its own card and title and is labelled by name instead.
+ * @param {{ onInvited: (result: { user: object }) => void, inPanel?: boolean }} props
  * @returns {JSX.Element}
  */
-export function InviteForm({ onInvited }) {
+export function InviteForm({ onInvited, inPanel = false }) {
   const [values, setValues] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
@@ -71,12 +73,13 @@ export function InviteForm({ onInvited }) {
 
   return (
     <form
-      className="card invite-form"
+      className={inPanel ? 'invite-form' : 'card invite-form'}
       onSubmit={onSubmit}
       noValidate
-      aria-labelledby="invite-title"
+      aria-labelledby={inPanel ? undefined : 'invite-title'}
+      aria-label={inPanel ? 'Invite a member' : undefined}
     >
-      <h2 id="invite-title">Invite a member</h2>
+      {inPanel ? null : <h2 id="invite-title">Invite a member</h2>}
       {error ? (
         <div role="alert" className="alert">
           {error}

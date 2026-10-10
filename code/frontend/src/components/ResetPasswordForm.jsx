@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-36; moved out of MembersPage.jsx unchanged)
-// AI-Assisted Areas: admin set-password form with show-password option and field-level API error
+// AI-Assisted Areas: admin set-password form with show-password option and field-level API error; SCRUM-241: inPanel rendering for the side panel
 // Human Contributions: pending team review
 // Notes: Moved verbatim from MembersPage.jsx to follow the SPPP coding standard (components live in
 // src/components). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
@@ -16,10 +16,11 @@ import { fieldErrorsOf } from '../utils/formErrors';
  * Separate from the row so the password has a real field — labelled, with the same show-password
  * option as the invite form, because a typo in a credential nobody can read back is unrecoverable.
  * The value lives here only until it is sent.
- * @param {{ member: object, pending: boolean, onCancel: () => void, onSubmit: (member: object, password: string) => Promise<unknown> }} props
+ * SCRUM-241: `inPanel` drops the card and the heading, which the side panel supplies.
+ * @param {{ member: object, pending: boolean, onCancel: () => void, onSubmit: (member: object, password: string) => Promise<unknown>, inPanel?: boolean }} props
  * @returns {JSX.Element}
  */
-export function ResetPasswordForm({ member, pending, onCancel, onSubmit }) {
+export function ResetPasswordForm({ member, pending, onCancel, onSubmit, inPanel = false }) {
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [fieldError, setFieldError] = useState(null);
@@ -38,8 +39,14 @@ export function ResetPasswordForm({ member, pending, onCancel, onSubmit }) {
   };
 
   return (
-    <form className="card" onSubmit={submit} noValidate aria-labelledby="reset-title">
-      <h2 id="reset-title">Set a password for {member.name}</h2>
+    <form
+      className={inPanel ? undefined : 'card'}
+      onSubmit={submit}
+      noValidate
+      aria-labelledby={inPanel ? undefined : 'reset-title'}
+      aria-label={inPanel ? `Set a password for ${member.name}` : undefined}
+    >
+      {inPanel ? null : <h2 id="reset-title">Set a password for {member.name}</h2>}
       <p className="hint">
         Use this when someone cannot use the emailed link. They must choose their own password the
         next time they sign in, and every session they have now ends.

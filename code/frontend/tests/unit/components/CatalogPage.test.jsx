@@ -28,15 +28,15 @@ describe('CatalogPage', () => {
   it('shows a loading state, then the assets from the API as links to their detail page', async () => {
     renderWithAuth(<CatalogPage />, { user: adminUser });
     expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
-    const table = await screen.findByRole('table', { name: 'Assets' });
+    const table = await screen.findByRole('list', { name: 'Assets' });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    const rows = within(table).getAllByRole('row').slice(1);
+    const rows = within(table).getAllByRole('listitem');
     expect(rows).toHaveLength(assets.length);
     const link = within(table).getByRole('link', { name: assets[0].name });
     expect(link).toHaveAttribute('href', `/assets/${assets[0].id}`);
     expect(within(table).getByText(assets[0].category)).toBeInTheDocument();
   });
-  it('shows an explicit empty state rather than an empty table', async () => {
+  it('shows an explicit empty state rather than an empty gallery', async () => {
     server.use(
       http.get('*/api/assets', () =>
         HttpResponse.json({ items: [], total: 0, page: 1, limit: 25 }),
@@ -44,7 +44,7 @@ describe('CatalogPage', () => {
     );
     renderWithAuth(<CatalogPage />, { user: adminUser });
     expect(await screen.findByText('No assets yet.')).toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Assets' })).not.toBeInTheDocument();
   });
   it('renders ErrorState when the API fails and retries on demand', async () => {
     let calls = 0;
@@ -62,7 +62,7 @@ describe('CatalogPage', () => {
     expect(alert).toHaveTextContent('Could not load the catalog');
     expect(alert).toHaveTextContent('INTERNAL_ERROR');
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('table', { name: 'Assets' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Assets' })).toBeInTheDocument();
     expect(calls).toBe(2);
   });
   it('shows the RequireRole denial notice when redirected here with state.denied', async () => {
@@ -71,7 +71,7 @@ describe('CatalogPage', () => {
       route: { pathname: '/', state: { denied: true } },
     });
     expect(screen.getByText('You do not have access to that page.')).toBeInTheDocument();
-    await screen.findByRole('table', { name: 'Assets' });
+    await screen.findByRole('list', { name: 'Assets' });
   });
 });
 
@@ -97,7 +97,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
   async function renderCatalog() {
     const user = userEvent.setup();
     renderWithAuth(<CatalogPage />, { user: memberUser });
-    await screen.findByRole('table', { name: 'Assets' });
+    await screen.findByRole('list', { name: 'Assets' });
     return { user, box: screen.getByRole('searchbox', { name: 'Search the catalog' }) };
   }
 
@@ -107,13 +107,13 @@ describe('CatalogPage search (SCRUM-201)', () => {
 
     await user.type(box, 'canon');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
+    const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toHaveAttribute(
       'href',
       `/assets/${assets[1].id}`,
     );
     expect(within(results).queryByText('Dell XPS 15')).not.toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Assets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Assets' })).not.toBeInTheDocument();
     // Debounced: five keystrokes, one request, carrying the whole word.
     expect(queries).toEqual(['canon']);
   });
@@ -140,8 +140,8 @@ describe('CatalogPage search (SCRUM-201)', () => {
 
     await user.type(box, 'canon');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
-    const [row] = within(results).getAllByRole('row').slice(1);
+    const results = await screen.findByRole('list', { name: 'Search results' });
+    const [row] = within(results).getAllByRole('listitem');
     expect(within(row).getByRole('link', { name: assets[1].name })).toBeInTheDocument();
     expect(within(row).getByText('Restricted')).toHaveAttribute(
       'title',
@@ -155,7 +155,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
 
     await user.type(box, 'canon');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
+    const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeInTheDocument();
     expect(within(results).queryByText('Restricted')).not.toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent(/searching/i);
     release();
-    await screen.findByRole('table', { name: 'Search results' });
+    await screen.findByRole('list', { name: 'Search results' });
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
@@ -199,21 +199,21 @@ describe('CatalogPage search (SCRUM-201)', () => {
 
     await user.type(box, 'something to film a talk');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
-    expect(within(results).getByRole('columnheader', { name: 'Why it matches' })).toBeVisible();
+    const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByText('Full-frame camera that records video.')).toBeVisible();
     expect(screen.getByText('Do you need video, or stills only?')).toBeVisible();
   });
 
-  it('shows plain-search results with no reason column and no error (SCRUM-103 AT2)', async () => {
+  it('shows plain-search results with no reason and no error (SCRUM-103 AT2)', async () => {
     recordSearches();
     const { user, box } = await renderCatalog();
 
     await user.type(box, 'camera');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
+    const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
-    expect(within(results).queryByRole('columnheader', { name: 'Why it matches' })).toBeNull();
+    // No reason line on a plain match: there is no model to give one.
+    expect(results.querySelector('.asset-reason')).toBeNull();
     // A fallback is invisible to the member: same results list, no alert.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -242,7 +242,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
     await user.clear(box);
     await user.type(box, 'canon');
 
-    const results = await screen.findByRole('table', { name: 'Search results' });
+    const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
     // Give the slow "dell" answer time to land; it must not replace the newer results.
     await new Promise((resolve) => setTimeout(resolve, 700));
@@ -254,12 +254,12 @@ describe('CatalogPage search (SCRUM-201)', () => {
     recordSearches();
     const { user, box } = await renderCatalog();
     await user.type(box, 'canon');
-    await screen.findByRole('table', { name: 'Search results' });
+    await screen.findByRole('list', { name: 'Search results' });
 
     await user.clear(box);
 
-    expect(await screen.findByRole('table', { name: 'Assets' })).toBeVisible();
-    expect(screen.queryByRole('table', { name: 'Search results' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Assets' })).toBeVisible();
+    expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument();
   });
 
   it('sends nothing for whitespace, which the API would refuse', async () => {
@@ -270,7 +270,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     expect(queries).toEqual([]);
-    expect(screen.getByRole('table', { name: 'Assets' })).toBeVisible();
+    expect(screen.getByRole('list', { name: 'Assets' })).toBeVisible();
   });
 
   it('caps input at the 200 characters the API accepts', async () => {
@@ -296,7 +296,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Could not search the catalog');
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('table', { name: 'Search results' })).toBeVisible();
+    expect(await screen.findByRole('list', { name: 'Search results' })).toBeVisible();
     expect(calls).toBe(2);
   });
 });
@@ -322,8 +322,8 @@ describe('CatalogPage — restricted equipment (SCRUM-150)', () => {
     );
     renderWithAuth(<CatalogPage />, { user: memberUser });
 
-    const table = await screen.findByRole('table', { name: 'Assets' });
-    const [restrictedRow, openRow] = within(table).getAllByRole('row').slice(1);
+    const table = await screen.findByRole('list', { name: 'Assets' });
+    const [restrictedRow, openRow] = within(table).getAllByRole('listitem');
     // Restricted assets stay visible (the ticket's design note), with the reason beside the name.
     expect(within(restrictedRow).getByRole('link', { name: assets[0].name })).toBeInTheDocument();
     expect(within(restrictedRow).getByText('Restricted')).toHaveAttribute(

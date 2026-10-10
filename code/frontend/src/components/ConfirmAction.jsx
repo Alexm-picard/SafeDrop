@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-122)
-// AI-Assisted Areas: two-step confirmation for a destructive action, without a modal dialog
+// AI-Assisted Areas: two-step confirmation for a destructive action, without a modal dialog; SCRUM-241: the opening button is an outlined danger pill, the solid one only confirms
 // Human Contributions: pending team review
 // Notes: Verified by tests/unit/components/AssetDetailPage.test.jsx (the retire confirmation). Must
 // be reviewed by the owning team member before merge.
@@ -57,7 +57,12 @@ export function ConfirmAction({
 
   if (!armed) {
     return (
-      <button type="button" className="danger" disabled={disabled} onClick={() => setArmed(true)}>
+      <button
+        type="button"
+        className="danger-outline"
+        disabled={disabled}
+        onClick={() => setArmed(true)}
+      >
         {label}
       </button>
     );

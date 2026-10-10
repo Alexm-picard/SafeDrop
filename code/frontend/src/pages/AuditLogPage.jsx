@@ -1,3 +1,9 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90%
+// AI-Assisted Areas: audit log screen (SCRUM-51), actor filter and names (SCRUM-46); SCRUM-241 redesign: the trail as a feed grouped by day, one line per event, target filter as chips
+// Human Contributions: pending team review
+
 /**
  * The audit log (ORG_ADMIN only) — SCRUM-51.
  *
@@ -6,12 +12,16 @@
  * the caption says so, because "cannot be edited" is the point of the feature rather than an
  * incidental detail.
  *
+ * SCRUM-241: the events read as a feed, grouped under the day they happened, newest first: what
+ * happened, who did it with the authority they held at the time, what it happened to, and when. A
+ * coloured peg marks the kind of thing it happened to. The target filter is a row of chips; the
+ * member, action and date filters sit beside it.
+ *
  * Filtering and paging happen server-side. The alternative — fetching everything and filtering in the
  * browser — would send one tenant's entire history to the client and get slower every day the system
  * is used.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { DataTable } from '../components/DataTable';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { useAuditEvents } from '../hooks/useAuditLog';
@@ -22,7 +32,7 @@ import {
   AUDIT_TARGET_TYPES,
   ROLE_LABELS,
 } from '../utils/constants';
-import { formatDate, humanize, pluralize } from '../utils/format';
+import { humanize, pluralize } from '../utils/format';
 /** The filter state when nothing is selected. Empty strings, because they are `<select>`/`<input>` values. */
 const NO_FILTERS = Object.freeze({ actorId: '', action: '', targetType: '', from: '', to: '' });
 /**
@@ -34,6 +44,63 @@ const NO_FILTERS = Object.freeze({ actorId: '', action: '', targetType: '', from
  * reason the name lookup below degrades to the id rather than showing nothing.
  */
 const ACTOR_LIMIT = 100;
+
+/** The target chips' words: what each kind of record is called on screen. */
+const TARGET_LABELS = Object.freeze({
+  Organization: 'Organization',
+  User: 'People',
+  Asset: 'Equipment',
+  AssetUnit: 'Units',
+  CheckoutRequest: 'Requests',
+});
+
+const dayKey = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+const dayHeading = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+});
+const dayHeadingWithYear = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+});
+const timeOfDay = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' });
+
+/**
+ * Group a page of events (already newest first) under the local day each happened on.
+ * @param {object[]} events
+ * @param {Date} [now]
+ * @returns {{ key: string, label: string, events: object[] }[]}
+ */
+function byDay(events, now = new Date()) {
+  const today = dayKey.format(now);
+  const days = [];
+  for (const event of events) {
+    const at = new Date(event.timestamp);
+    const key = Number.isNaN(at.getTime()) ? 'unknown' : dayKey.format(at);
+    let day = days[days.length - 1];
+    if (!day || day.key !== key) {
+      const label =
+        key === 'unknown'
+          ? 'Unknown date'
+          : key === today
+            ? `Today, ${dayHeading.format(at).split(', ').slice(1).join(', ')}`
+            : at.getFullYear() === now.getFullYear()
+              ? dayHeading.format(at)
+              : dayHeadingWithYear.format(at);
+      day = { key, label, events: [] };
+      days.push(day);
+    }
+    day.events.push(event);
+  }
+  return days;
+}
 /**
  * Turn an empty string into `undefined` so the API layer leaves the parameter out altogether.
  *
@@ -107,86 +174,92 @@ export function AuditLogPage() {
   const lastPage = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
   return (
     <>
-      <h1>Audit log</h1>
-      <p className="hint">
-        Every request, approval, checkout, return and inventory change is recorded here and can
-        never be edited or deleted.
-      </p>
+      <header className="page-header">
+        <div>
+          <h1>Audit log</h1>
+          <p className="subtitle">
+            Every request, approval, checkout, return and inventory change is recorded here and can
+            never be edited or deleted.
+          </p>
+        </div>
+      </header>
       <form
-        className="filters"
+        className="feed-filters"
         aria-label="Filter audit events"
         onSubmit={(e) => e.preventDefault()}
       >
-        <div className="field">
-          <label htmlFor="filter-actor">Member</label>
-          <select
-            id="filter-actor"
-            value={filters.actorId}
-            onChange={(e) => updateFilter('actorId', e.target.value)}
-          >
-            <option value="">All members</option>
-            {actors.map((actor) => (
-              <option key={actor.id} value={actor.id}>
-                {actor.name}
-              </option>
-            ))}
-          </select>
+        <div className="chips" role="group" aria-label="Target">
+          {[['', 'Everything'], ...AUDIT_TARGET_TYPES.map((t) => [t, TARGET_LABELS[t] ?? t])].map(
+            ([value, label]) => (
+              <button
+                key={value || 'all'}
+                type="button"
+                className="chip"
+                aria-pressed={filters.targetType === value}
+                onClick={() => updateFilter('targetType', value)}
+              >
+                {label}
+              </button>
+            ),
+          )}
         </div>
-        <div className="field">
-          <label htmlFor="filter-action">Action</label>
-          <select
-            id="filter-action"
-            value={filters.action}
-            onChange={(e) => updateFilter('action', e.target.value)}
-          >
-            <option value="">All actions</option>
-            {AUDIT_ACTIONS.map((action) => (
-              <option key={action} value={action}>
-                {humanize(action)}
-              </option>
-            ))}
-          </select>
+        <div className="feed-fields">
+          <div className="field">
+            <label htmlFor="filter-actor">Member</label>
+            <select
+              id="filter-actor"
+              value={filters.actorId}
+              onChange={(e) => updateFilter('actorId', e.target.value)}
+            >
+              <option value="">All members</option>
+              {actors.map((actor) => (
+                <option key={actor.id} value={actor.id}>
+                  {actor.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="filter-action">Action</label>
+            <select
+              id="filter-action"
+              value={filters.action}
+              onChange={(e) => updateFilter('action', e.target.value)}
+            >
+              <option value="">All actions</option>
+              {AUDIT_ACTIONS.map((action) => (
+                <option key={action} value={action}>
+                  {humanize(action)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="filter-from">From</label>
+            <input
+              id="filter-from"
+              type="date"
+              value={filters.from}
+              max={filters.to || undefined}
+              onChange={(e) => updateFilter('from', e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="filter-to">To</label>
+            <input
+              id="filter-to"
+              type="date"
+              value={filters.to}
+              min={filters.from || undefined}
+              onChange={(e) => updateFilter('to', e.target.value)}
+            />
+          </div>
+          {hasFilters ? (
+            <button type="button" className="secondary" onClick={clearFilters}>
+              Clear filters
+            </button>
+          ) : null}
         </div>
-        <div className="field">
-          <label htmlFor="filter-target-type">Target</label>
-          <select
-            id="filter-target-type"
-            value={filters.targetType}
-            onChange={(e) => updateFilter('targetType', e.target.value)}
-          >
-            <option value="">All targets</option>
-            {AUDIT_TARGET_TYPES.map((targetType) => (
-              <option key={targetType} value={targetType}>
-                {targetType}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="filter-from">From</label>
-          <input
-            id="filter-from"
-            type="date"
-            value={filters.from}
-            max={filters.to || undefined}
-            onChange={(e) => updateFilter('from', e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="filter-to">To</label>
-          <input
-            id="filter-to"
-            type="date"
-            value={filters.to}
-            min={filters.from || undefined}
-            onChange={(e) => updateFilter('to', e.target.value)}
-          />
-        </div>
-        {hasFilters ? (
-          <button type="button" className="secondary" onClick={clearFilters}>
-            Clear filters
-          </button>
-        ) : null}
       </form>
       {status === 'loading' ? <LoadingState label="Loading audit events…" /> : null}
       {status === 'error' ? (
@@ -198,55 +271,73 @@ export function AuditLogPage() {
             {pluralize(total, 'event')}
             {hasFilters ? ' matching the filters' : ''}
           </p>
-          <DataTable
-            caption="Audit events, newest first. This record cannot be edited."
-            columns={[
-              {
-                key: 'timestamp',
-                header: 'When',
-                render: (e) => formatDate(e.timestamp),
-              },
-              {
-                key: 'action',
-                header: 'Action',
-                render: (e) => humanize(e.action),
-              },
-              {
-                key: 'actor',
-                header: 'Actor',
-                // Name first, because "who" is the question this screen is read for. The role is the
-                // authority they acted with *at the time*, stored on the row, so it is not looked up
-                // from the member list — a later promotion must not rewrite the record. The id is the
-                // fallback for an actor the member list does not cover: someone who has since left,
-                // or, past ACTOR_LIMIT, someone simply not on the loaded page. No id at all is an
-                // event no person caused (SCRUM-205: an expired approval), shown by its role label.
-                render: (e) =>
-                  e.actorId ? (
-                    <>
-                      {actorNameById.get(e.actorId) ?? e.actorId}
-                      <span className="meta"> {ROLE_LABELS[e.actorRole] ?? e.actorRole}</span>
-                    </>
-                  ) : (
-                    (ROLE_LABELS[e.actorRole] ?? e.actorRole)
-                  ),
-              },
-              {
-                key: 'target',
-                header: 'Target',
-                render: (e) => (
-                  <>
-                    {e.targetType}
-                    <span className="meta"> {e.targetId}</span>
-                  </>
-                ),
-              },
-            ]}
-            rows={data.items}
-            getRowId={(e) => e.id}
-            emptyMessage={
-              hasFilters ? 'No events match these filters.' : 'No activity has been recorded yet.'
-            }
-          />
+          {data.items.length === 0 ? (
+            <p className="empty-state">
+              {hasFilters ? 'No events match these filters.' : 'No activity has been recorded yet.'}
+            </p>
+          ) : (
+            <section className="feed" aria-labelledby="feed-heading">
+              <h2 id="feed-heading" className="visually-hidden">
+                Audit events
+              </h2>
+              <p className="feed-note">Newest first. This record cannot be edited.</p>
+              {byDay(data.items).map((day) => (
+                <section key={day.key} className="feed-day" aria-labelledby={`day-${day.key}`}>
+                  <h3 id={`day-${day.key}`} className="feed-day-head">
+                    {day.label}
+                    <span>{pluralize(day.events.length, 'event')}</span>
+                  </h3>
+                  <ol className="feed-events">
+                    {day.events.map((e) => (
+                      <li key={e.id} className="feed-event" data-target={e.targetType}>
+                        <span className="feed-peg" aria-hidden="true" />
+                        <div className="feed-text">
+                          <p>
+                            <strong>{humanize(e.action)}</strong>
+                            {/* Name first, because "who" is the question this screen is read for.
+                                The role is the authority they acted with *at the time*, stored on
+                                the event, so it is not looked up from the member list — a later
+                                promotion must not rewrite the record. The id is the fallback for an
+                                actor the member list does not cover: someone who has since left,
+                                or, past ACTOR_LIMIT, someone not on the loaded page. No id at all is
+                                an event no person caused (SCRUM-205: an expired approval), shown by
+                                its role label. */}
+                            {e.actorId ? (
+                              <>
+                                {' by '}
+                                <span className="feed-actor">
+                                  {actorNameById.get(e.actorId) ?? e.actorId}
+                                </span>{' '}
+                                <span className="feed-role">
+                                  {ROLE_LABELS[e.actorRole] ?? e.actorRole}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {' '}
+                                <span className="feed-role">
+                                  {ROLE_LABELS[e.actorRole] ?? e.actorRole}
+                                </span>
+                              </>
+                            )}
+                          </p>
+                          <p className="feed-target">
+                            {TARGET_LABELS[e.targetType] ?? e.targetType}{' '}
+                            <span className="meta">{e.targetId}</span>
+                          </p>
+                        </div>
+                        <time dateTime={e.timestamp}>
+                          {Number.isNaN(new Date(e.timestamp).getTime())
+                            ? '—'
+                            : timeOfDay.format(new Date(e.timestamp))}
+                        </time>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))}
+            </section>
+          )}
           {lastPage > 1 ? (
             <nav className="pagination" aria-label="Audit log pages">
               <button

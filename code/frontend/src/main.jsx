@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~80% (Vite template base)
-// AI-Assisted Areas: mount point
+// AI-Assisted Areas: mount point; self-hosted redesign fonts (SCRUM-241)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -16,6 +16,10 @@
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+// SCRUM-241: the redesign's typefaces, self-hosted from npm (OFL-1.1) so no request leaves for a font
+// CDN. Imported before index.css so the stylesheet's font-family names resolve on first paint.
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/instrument-sans';
 import App from './App';
 import './index.css';
 const container = document.getElementById('root');

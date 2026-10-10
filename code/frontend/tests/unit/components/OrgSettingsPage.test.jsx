@@ -90,4 +90,15 @@ describe('OrgSettingsPage (SCRUM-148)', () => {
     await userEvent.click(await screen.findByRole('button', { name: /retry|try again/i }));
     expect(await screen.findByRole('radio', { name: 'Require an approver' })).toBeChecked();
   });
+
+  it('shows what a request goes through, skipping the decision when approval is automatic', async () => {
+    renderWithAuth(<OrgSettingsPage />, { user: adminUser });
+    const auto = await screen.findByRole('radio', { name: 'Approve automatically' });
+    await userEvent.click(screen.getByRole('radio', { name: 'Require an approver' }));
+    const flow = screen.getByRole('list', { name: 'What a request goes through' });
+    expect(flow).toHaveTextContent('An approver decides');
+    expect(flow).not.toHaveTextContent('(skipped)');
+    await userEvent.click(auto);
+    expect(flow).toHaveTextContent('An approver decides (skipped)');
+  });
 });

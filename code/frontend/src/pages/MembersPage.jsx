@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
-// AI-Assisted Areas: Members screen: list, invite form (admin-set initial password) with field-level API errors, per-row role change
+// AI-Assisted Areas: Members screen: list, invite form (admin-set initial password) with field-level API errors, per-row role change; SCRUM-241 redesign: a roster board with a column per role (drag a card or use its role control), invite and password reset in a side panel
 // Human Contributions: pending team review
 // Notes: InviteForm and ResetPasswordForm live in src/components. Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
 
@@ -27,11 +27,17 @@
  * can still do it. This is a usability guard, not a security control; the API enforces the rules.
  *
  * **The list stays on screen while it refreshes.** After an invite or a role change the page reloads
- * the list, but keeps showing the previous rows until the new ones arrive, so the control the admin
- * just used does not vanish from under their keyboard focus.
+ * the list, but keeps showing the previous cards until the new ones arrive, so the control the admin
+ * just used does not vanish from under their keyboard focus. A role change moves the card to its new
+ * column; the page puts focus back on that card's role control when it lands.
+ *
+ * **SCRUM-241: a roster board.** One column per role, each saying what the role can do. A card's role
+ * control is the way to change a role from the keyboard; dragging a card to another column does the
+ * same thing for a mouse. Inviting someone and setting a password open in a side panel.
  */
-import { useCallback, useMemo, useState } from 'react';
-import { DataTable } from '../components/DataTable';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Avatar } from '../components/Avatar';
+import { Drawer } from '../components/Drawer';
 import { ErrorState } from '../components/ErrorState';
 import { InviteForm } from '../components/InviteForm';
 import { LoadingState } from '../components/LoadingState';
@@ -40,8 +46,27 @@ import { useAuth } from '../hooks/useAuth';
 import { useMembers } from '../hooks/useMembers';
 import { errorMessage } from '../services/api';
 import * as usersApi from '../services/users.api';
-import { MEMBERS_PAGE_SIZE, ROLE_LABELS, ROLE_OPTIONS } from '../utils/constants';
+import { MEMBERS_PAGE_SIZE, ROLE_LABELS, ROLE_OPTIONS, ROLES } from '../utils/constants';
 import { formatDate, pluralize } from '../utils/format';
+
+/** The roster's columns, most authority first, each with what the role can do. */
+const ROLE_COLUMNS = Object.freeze([
+  Object.freeze({
+    role: ROLES.ORG_ADMIN,
+    title: 'Organization admins',
+    blurb: 'Run the organization: people, groups, equipment and settings.',
+  }),
+  Object.freeze({
+    role: ROLES.APPROVER,
+    title: 'Approvers',
+    blurb: 'Decide requests and record handoffs and returns.',
+  }),
+  Object.freeze({
+    role: ROLES.MEMBER,
+    title: 'Members',
+    blurb: 'Browse the catalog and request equipment.',
+  }),
+]);
 
 /**
  * Render the members screen.
@@ -58,12 +83,16 @@ export function MembersPage() {
   const [notice, setNotice] = useState(null);
   const [changingId, setChangingId] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
+  const [inviting, setInviting] = useState(false);
+  const [dropRole, setDropRole] = useState(null);
+  const [refocusId, setRefocusId] = useState(null);
   const params = useMemo(() => ({ page, limit: MEMBERS_PAGE_SIZE }), [page]);
   const { status, data, error, reload } = useMembers(params);
 
   const onInvited = useCallback(
     ({ user }) => {
       const code = organization?.slug;
+      setInviting(false);
       setNotice({
         tone: 'success',
         message:
@@ -111,6 +140,9 @@ export function MembersPage() {
 
   const onChangeRole = useCallback(
     async (member, role) => {
+      if (member.id === me?.id || member.role === role) {
+        return;
+      }
       setChangingId(member.id);
       setNotice(null);
       try {
@@ -119,6 +151,7 @@ export function MembersPage() {
           tone: 'success',
           message: `${result.user.name} is now ${ROLE_LABELS[result.user.role]}.`,
         });
+        setRefocusId(member.id);
         reload();
       } catch (err) {
         setNotice({ tone: 'error', message: errorMessage(err) });
@@ -126,29 +159,53 @@ export function MembersPage() {
         setChangingId(null);
       }
     },
-    [reload],
+    [me, reload],
   );
+
+  // A role change moves the card to another column, which mounts a new role control; put focus back
+  // on it once the refreshed list has landed, so a keyboard user carries on from where they were.
+  useEffect(() => {
+    if (!refocusId || status !== 'success') return;
+    const control = document.getElementById(`role-${refocusId}`);
+    if (control && document.activeElement !== control) control.focus();
+  }, [data, refocusId, status]);
 
   const total = data?.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / MEMBERS_PAGE_SIZE));
+  const items = data?.items ?? [];
+
+  const onDrop = (role) => (event) => {
+    event.preventDefault();
+    setDropRole(null);
+    const member = items.find((m) => m.id === event.dataTransfer.getData('text/plain'));
+    if (member) onChangeRole(member, role);
+  };
 
   return (
     <>
-      <h1>Users</h1>
-      <p className="hint">
-        The people in your organization and what they can do. Every invitation and role change is
-        recorded in the audit log.
-      </p>
-
-      <InviteForm onInvited={onInvited} />
+      <header className="page-header">
+        <div>
+          <h1>Users</h1>
+          <p className="subtitle">
+            The people in your organization and what they can do. Drag someone to another column, or
+            use their role control, to change their role. Every invitation and role change is
+            recorded in the audit log.
+          </p>
+        </div>
+        <div className="actions">
+          <button type="button" onClick={() => setInviting(true)}>
+            Invite someone
+          </button>
+        </div>
+      </header>
 
       {notice ? (
         <div
           role={notice.tone === 'error' ? 'alert' : 'status'}
-          className={notice.tone === 'error' ? 'alert' : 'notice'}
+          className={notice.tone === 'error' ? 'alert alert--inline' : 'notice notice--inline'}
         >
           <p>{notice.message}</p>
-          <button type="button" className="secondary" onClick={() => setNotice(null)}>
+          <button type="button" className="secondary small" onClick={() => setNotice(null)}>
             Dismiss
           </button>
         </div>
@@ -161,75 +218,57 @@ export function MembersPage() {
       {status !== 'error' && data ? (
         <>
           <p className="hint">{pluralize(total, 'member')}</p>
-          <DataTable
-            caption="Members of your organization, oldest first."
-            columns={[
-              {
-                key: 'name',
-                header: 'Name',
-                render: (m) => (
-                  <>
-                    {m.name}
-                    {m.id === me?.id ? <span className="meta"> (you)</span> : null}
-                  </>
-                ),
-              },
-              { key: 'email', header: 'Email', render: (m) => m.email },
-              {
-                key: 'role',
-                header: 'Role',
-                render: (m) =>
-                  m.id === me?.id ? (
-                    ROLE_LABELS[m.role]
-                  ) : (
-                    <select
-                      aria-label={`Role for ${m.name}`}
-                      value={m.role}
-                      disabled={changingId === m.id}
-                      onChange={(e) => onChangeRole(m, e.target.value)}
-                    >
-                      {ROLE_OPTIONS.map((role) => (
-                        <option key={role} value={role}>
-                          {ROLE_LABELS[role]}
-                        </option>
-                      ))}
-                    </select>
-                  ),
-              },
-              { key: 'joined', header: 'Joined', render: (m) => formatDate(m.createdAt) },
-              {
-                key: 'password',
-                header: 'Password',
-                render: (m) =>
-                  m.id === me?.id ? (
-                    // An admin resets their own password through the change-password screen; the
-                    // API refuses this route aimed at yourself (SCRUM-36).
-                    <span className="hint">—</span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={changingId === m.id}
-                      aria-expanded={resetTarget?.id === m.id}
-                      onClick={() => setResetTarget(resetTarget?.id === m.id ? null : m)}
-                    >
-                      {m.mustChangePassword ? 'Set again' : 'Reset password'}
-                    </button>
-                  ),
-              },
-            ]}
-            rows={data.items}
-            getRowId={(m) => m.id}
-            emptyMessage="There are no members yet."
-          />
-          {resetTarget ? (
-            <ResetPasswordForm
-              member={resetTarget}
-              pending={changingId === resetTarget.id}
-              onCancel={() => setResetTarget(null)}
-              onSubmit={onResetPassword}
-            />
-          ) : null}
+          {items.length === 0 ? (
+            <p className="empty-state">There are no members yet.</p>
+          ) : (
+            <div className="roster">
+              {ROLE_COLUMNS.map((column) => {
+                const people = items.filter((m) => m.role === column.role);
+                const headingId = `roster-${column.role}`;
+                return (
+                  <section
+                    key={column.role}
+                    className="roster-col"
+                    aria-labelledby={headingId}
+                    data-drop={dropRole === column.role ? 'true' : undefined}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDropRole(column.role);
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setDropRole(null);
+                    }}
+                    onDrop={onDrop(column.role)}
+                  >
+                    <header>
+                      <div>
+                        <h2 id={headingId}>{column.title}</h2>
+                        <p className="roster-blurb">{column.blurb}</p>
+                      </div>
+                      <span className="board-count">{people.length}</span>
+                    </header>
+                    {people.length ? (
+                      <ul className="board-list">
+                        {people.map((m) => (
+                          <PersonCard
+                            key={m.id}
+                            member={m}
+                            isMe={m.id === me?.id}
+                            busy={changingId === m.id}
+                            resetOpen={resetTarget?.id === m.id}
+                            onRole={onChangeRole}
+                            onReset={() => setResetTarget(resetTarget?.id === m.id ? null : m)}
+                          />
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="board-none">No one has this role on this page.</p>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
           {lastPage > 1 ? (
             <nav className="pagination" aria-label="Members pages">
               <button
@@ -255,6 +294,101 @@ export function MembersPage() {
           ) : null}
         </>
       ) : null}
+
+      {inviting ? (
+        <Drawer
+          title="Invite a member"
+          description="They sign in with the password you set here."
+          onClose={() => setInviting(false)}
+        >
+          <InviteForm onInvited={onInvited} inPanel />
+        </Drawer>
+      ) : null}
+      {resetTarget ? (
+        <Drawer
+          title={`Set a password for ${resetTarget.name}`}
+          onClose={() => setResetTarget(null)}
+        >
+          <ResetPasswordForm
+            member={resetTarget}
+            pending={changingId === resetTarget.id}
+            onCancel={() => setResetTarget(null)}
+            onSubmit={onResetPassword}
+            inPanel
+          />
+        </Drawer>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * One person on the roster: who they are, when they joined, their role control and their password
+ * action. The viewer's own card has neither control (see the page's notes) and cannot be dragged.
+ * @param {{ member: object, isMe: boolean, busy: boolean, resetOpen: boolean,
+ *   onRole: (member: object, role: string) => void, onReset: () => void }} props
+ * @returns {JSX.Element}
+ */
+function PersonCard({ member: m, isMe, busy, resetOpen, onRole, onReset }) {
+  return (
+    <li
+      className="person-card"
+      draggable={!isMe && !busy}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/plain', m.id);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+    >
+      <div className="person-head">
+        <Avatar name={m.name} role={m.role} />
+        <div className="person-text">
+          <strong>
+            {m.name}
+            {isMe ? <span className="meta"> (you)</span> : null}
+          </strong>
+          <span>{m.email}</span>
+        </div>
+      </div>
+      <p className="person-meta">
+        Joined {formatDate(m.createdAt)}
+        {m.mustChangePassword ? (
+          <span className="badge" data-tone="warn">
+            Temporary password
+          </span>
+        ) : null}
+      </p>
+      <div className="person-controls">
+        {isMe ? (
+          <span className="person-role">{ROLE_LABELS[m.role]}</span>
+        ) : (
+          <select
+            id={`role-${m.id}`}
+            aria-label={`Role for ${m.name}`}
+            value={m.role}
+            disabled={busy}
+            onChange={(e) => onRole(m, e.target.value)}
+          >
+            {ROLE_OPTIONS.map((role) => (
+              <option key={role} value={role}>
+                {ROLE_LABELS[role]}
+              </option>
+            ))}
+          </select>
+        )}
+        {isMe ? null : (
+          // An admin resets their own password through the change-password screen; the API refuses
+          // this route aimed at yourself (SCRUM-36).
+          <button
+            type="button"
+            className="secondary small"
+            disabled={busy}
+            aria-expanded={resetOpen}
+            onClick={onReset}
+          >
+            {m.mustChangePassword ? 'Set again' : 'Reset password'}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }

@@ -16,7 +16,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { GroupsPage } from '../../../src/pages/GroupsPage';
-import { adminUser, errorResponse, groups } from '../../mocks/handlers';
+import { adminUser, assets, errorResponse, groups, memberUser } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 
@@ -30,19 +30,102 @@ const renderGroups = () =>
     ],
   });
 
+/** Open the create panel. */
+async function openCreate(user = userEvent.setup()) {
+  await user.click(await screen.findByRole('button', { name: 'New group' }));
+  return screen.findByRole('dialog', { name: 'Create a group' });
+}
+
 describe('GroupsPage', () => {
   it('lists the groups with their member counts, each linking to its page', async () => {
     renderGroups();
 
-    const table = await screen.findByRole('table', { name: /groups/i });
-    const rows = within(table).getAllByRole('row').slice(1);
-    expect(rows).toHaveLength(groups.length);
-    expect(within(rows[0]).getByRole('link', { name: groups[0].name })).toHaveAttribute(
-      'href',
-      `/admin/groups/${groups[0].id}`,
+    const table = await screen.findByRole('table', { name: 'Groups in your organization' });
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(groups.length + 1);
+    const first = within(table).getByRole('link', { name: new RegExp(groups[0].name) });
+    expect(first).toHaveAttribute('href', `/admin/groups/${groups[0].id}`);
+    expect(first).toHaveTextContent('1 member');
+    expect(within(table).getByRole('link', { name: new RegExp(groups[1].name) })).toHaveTextContent(
+      '0 members',
     );
-    expect(within(rows[0]).getByText('1')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('0')).toBeInTheDocument();
+  });
+
+  it('shows who is in which group as pressed pegs', async () => {
+    renderGroups();
+    expect(
+      await screen.findByRole('button', { name: `${memberUser.name} in ${groups[0].name}` }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      screen.getByRole('button', { name: `${memberUser.name} in ${groups[1].name}` }),
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('adds someone to a group from the grid, says so and reloads', async () => {
+    const added = [];
+    server.use(
+      http.post('*/api/groups/:id/members', async ({ params, request }) => {
+        added.push({ group: params.id, ...(await request.json()) });
+        return HttpResponse.json({ group: { ...groups[1], memberIds: [memberUser.id] } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderGroups();
+    await user.click(
+      await screen.findByRole('button', { name: `${memberUser.name} in ${groups[1].name}` }),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Added ${memberUser.name} to ${groups[1].name}.`,
+    );
+    expect(added).toEqual([{ group: groups[1].id, userId: memberUser.id }]);
+  });
+
+  it('removes someone from a group from the grid', async () => {
+    const removed = [];
+    server.use(
+      http.delete('*/api/groups/:id/members/:userId', ({ params }) => {
+        removed.push(params);
+        return HttpResponse.json({ group: { ...groups[0], memberIds: [] } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderGroups();
+    await user.click(
+      await screen.findByRole('button', { name: `${memberUser.name} in ${groups[0].name}` }),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Removed ${memberUser.name} from ${groups[0].name}.`,
+    );
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toMatchObject({ id: groups[0].id, userId: memberUser.id });
+  });
+
+  it("names each group's restricted equipment and says who can borrow what", async () => {
+    server.use(
+      http.get('*/api/assets', () =>
+        HttpResponse.json({
+          items: [
+            {
+              ...assets[0],
+              allowedGroups: [{ id: groups[0].id, name: groups[0].name }],
+              restricted: true,
+            },
+            assets[1],
+          ],
+          total: 2,
+          page: 1,
+          limit: 100,
+        }),
+      ),
+    );
+    renderGroups();
+    const table = await screen.findByRole('table', { name: 'Groups in your organization' });
+    expect(await within(table).findByRole('link', { name: assets[0].name })).toHaveAttribute(
+      'href',
+      `/assets/${assets[0].id}`,
+    );
+    const access = screen.getByRole('region', { name: 'Who can borrow what' });
+    expect(within(access).getByRole('link', { name: assets[0].name })).toBeInTheDocument();
+    expect(access).toHaveTextContent('1 other asset');
   });
 
   it('shows an explicit empty state when there are no groups yet', async () => {
@@ -78,6 +161,7 @@ describe('GroupsPage', () => {
       }),
     );
     renderGroups();
+    await openCreate();
 
     await userEvent.type(await screen.findByLabelText('Name'), '  Film Dept Staff ');
     await userEvent.type(screen.getByLabelText('Description'), 'Faculty and TAs');
@@ -101,6 +185,7 @@ describe('GroupsPage', () => {
       ),
     );
     renderGroups();
+    await openCreate();
 
     const name = await screen.findByLabelText('Name');
     await userEvent.type(name, 'certified drone pilots');
@@ -118,6 +203,7 @@ describe('GroupsPage messages (UI rework)', () => {
     );
     const user = userEvent.setup();
     renderGroups();
+    await openCreate(user);
     await user.type(await screen.findByLabelText('Name'), 'Film Dept Staff');
     await user.click(screen.getByRole('button', { name: 'Create group' }));
     const form = screen.getByRole('form', { name: 'Create a group' });
@@ -136,26 +222,11 @@ describe('GroupsPage messages (UI rework)', () => {
     expect(screen.queryByText('Deleted Film Dept Staff.')).not.toBeInTheDocument();
   });
 
-  it('pages a long list of groups ten at a time', async () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({
-      ...groups[0],
-      id: `group-${i}`,
-      name: `Group ${String(i).padStart(2, '0')}`,
-    }));
-    server.use(
-      http.get('*/api/groups', () =>
-        HttpResponse.json({ items: many, total: many.length, page: 1, limit: 100 }),
-      ),
-    );
+  it('opens the create form in a side panel that Escape closes', async () => {
     const user = userEvent.setup();
     renderGroups();
-    const table = await screen.findByRole('table', { name: 'Groups in your organization' });
-    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(10);
-    await user.click(
-      within(
-        screen.getByRole('navigation', { name: 'Groups in your organization pages' }),
-      ).getByRole('button', { name: 'Next' }),
-    );
-    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2);
+    await openCreate(user);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
