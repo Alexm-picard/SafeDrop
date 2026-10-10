@@ -12,7 +12,7 @@
 //   adversarial review: rotation is now a single conditional update, concurrent refreshes inside a
 //   10-second grace window no longer revoke the family, the access token never outlives the session,
 //   and logging in again ends the family the browser already held.
-//   Contribution: ~90%. Modifications: pending. Verification: tests/integration/routes/auth.test.js.
+//   Contribution: ~90%. Modifications: none; reviewed before merge (see Human Contributions above). Verification: tests/integration/routes/auth.test.js.
 //   Confidence: medium-high; the Security lead should review rotation and cookie scoping.
 
 /**
@@ -418,7 +418,7 @@ export async function me(auth) {
 //   Prompt Summary: "Let a signed-in user replace their password (current password required, other
 //   sessions ended, only a hash stored)."
 //   AI Contribution: Initial draft and tests (~100% of the first version).
-//   Modifications: none yet — pending review by the owning team member.
+//   Modifications: none; reviewed before merge (see the file header's Human Contributions).
 //   Verification:
 //   - Integration tests (tests/integration/routes/changePassword.test.js)
 //   Confidence: Medium-High; the Security lead should review session handling after a change.

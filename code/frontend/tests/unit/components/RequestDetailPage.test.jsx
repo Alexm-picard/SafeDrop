@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: tests for the request detail screen: rendering, role- and state-driven actions, the 404 path, and a 409 surfaced readably
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #32, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-123. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the request detail screen (SCRUM-123).

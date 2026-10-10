@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: unit tests for the member-lifecycle building blocks: role ordering, invite/role/change-password schemas, repository additions, service edge cases
-// Human Contributions: pending team review
-// Notes: Complements tests/integration/routes/users.test.js, which covers the HTTP behaviour. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and merged by Alex Picard (PR #19, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Complements tests/integration/routes/users.test.js, which covers the HTTP behaviour. Reviewed before merge; see Human Contributions.
 
 /**
  * Unit tests for the pieces the member-lifecycle service is built from.

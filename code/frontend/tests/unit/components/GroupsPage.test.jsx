@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167 / SCRUM-169)
 // AI-Assisted Areas: GroupsPage tests — the list, its empty and error states, creating a group, and the duplicate-name error
-// Human Contributions: pending team review
-// Notes: Follows the patterns in MembersPage.test.jsx and AssetFormPage.test.jsx (MSW overrides, renderWithAuth). Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the patterns in MembersPage.test.jsx and AssetFormPage.test.jsx (MSW overrides, renderWithAuth). Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the Groups screen's list and create form (SCRUM-167, SCRUM-169).

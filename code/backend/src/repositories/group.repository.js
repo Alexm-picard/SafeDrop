@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: tenant-scoped persistence for the usergroups collection, including race-safe membership changes (SCRUM-149); findByIds and isMemberOfAny for restricted equipment (SCRUM-150)
-// Human Contributions: pending review
-// Notes: Written from the ticket's acceptance criteria and design notes. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written from the ticket's acceptance criteria and design notes. Reviewed before merge; see Human Contributions.
 //
 // Every function takes orgId first. A group from another tenant is simply never matched, so the
 // service layer turns `null` into a 404 (never a 403, which would confirm the id exists).

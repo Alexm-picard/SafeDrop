@@ -2,10 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-124)
 // AI-Assisted Areas: client-side mirror of the createRequestBody date-window rule
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #37, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Mirrors the `createRequestBody` Zod schema in backend routes/requests.routes.js — change
-// both together. Verified by tests/unit/utils/validateWindow.test.js. Must be reviewed by the owning
-// team member before merge.
+// both together. Verified by tests/unit/utils/validateWindow.test.js. Reviewed before merge; see Human Contributions.
 
 /**
  * Validation for the checkout request window, as the SPA understands it.

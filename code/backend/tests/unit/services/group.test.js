@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: unit tests for isActiveMember(), the eligibility primitive with no HTTP route of its own yet (SCRUM-149)
-// Human Contributions: pending review
-// Notes: Complements tests/integration/routes/groups.test.js, which covers the HTTP behaviour. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); latest changes reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Complements tests/integration/routes/groups.test.js, which covers the HTTP behaviour. Reviewed before merge; see Human Contributions.
 
 /**
  * Unit tests for `isActiveMember()`, the building block a future restricted-equipment feature will

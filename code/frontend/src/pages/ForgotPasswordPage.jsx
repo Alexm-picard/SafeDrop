@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: forgot-password form, identical confirmation whatever the outcome, admin fallback copy
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-22 (subtask SCRUM-30). Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #29, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-22 (subtask SCRUM-30). Reviewed before merge; see Human Contributions.
 
 /**
  * Asking for a password-reset link.

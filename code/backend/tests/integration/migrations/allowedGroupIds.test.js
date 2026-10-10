@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-150 ticket)
 // AI-Assisted Areas: tests for the requiredGroupId -> allowedGroupIds data migration
-// Human Contributions: pending team review
-// Notes: Follows the migration tests in tests/integration/routes/approvalSettings.test.js. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the migration tests in tests/integration/routes/approvalSettings.test.js. Reviewed before merge; see Human Contributions.
 
 /**
  * The `20261003100000-allowed-group-ids` migration (SCRUM-150): assets written by SCRUM-149 with a

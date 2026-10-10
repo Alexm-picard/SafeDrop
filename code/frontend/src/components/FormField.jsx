@@ -2,9 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-122)
 // AI-Assisted Areas: labelled form control with an accessible field-level error message
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generalises the field markup written inline in OrgSetupPage and MembersPage. Verified by
-// tests/unit/components/primitives.test.jsx. Must be reviewed by the owning team member before merge.
+// tests/unit/components/primitives.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * One labelled form control and its error message.

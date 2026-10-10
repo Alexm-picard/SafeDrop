@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-150 ticket)
 // AI-Assisted Areas: the Restricted badge on a restricted asset, including one whose groups were all deleted (SCRUM-203)
-// Human Contributions: pending team review
-// Notes: Verified by tests/unit/components/AssetDetailPage.test.jsx and CatalogPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Verified by tests/unit/components/AssetDetailPage.test.jsx and CatalogPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * Restricted equipment (SCRUM-150, AT-4): the badge on a restricted asset. The sentence that explains

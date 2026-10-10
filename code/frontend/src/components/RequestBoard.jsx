@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: requests as a board with a column per stage, and the one-click next steps on each card
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Which buttons a card offers comes from actionsFor() in utils/requestState.js, the same rules the request page uses; the API enforces them regardless (SR-1).
 
 /**

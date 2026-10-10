@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: public landing page at `/`: hero, how-it-works, feature summary, sign-in/sign-up calls to action; SCRUM-241 redesign: page title on the board
-// Human Contributions:
+// Human Contributions: reviewed and approved by Mateus Silva (PR #36, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**

@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 1 of 2 commits co-authored by Claude Code)
+// AI-Assisted Areas: SCRUM-186/188 the "Similar items available now" section (SCRUM-151, SCRUM-186)
+// Human Contributions: reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * Comparable items available right now (SCRUM-151).
  *

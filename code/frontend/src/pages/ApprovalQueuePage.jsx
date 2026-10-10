@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: approval queue (SCRUM-119, SCRUM-120); SCRUM-205 actions moved to the request detail page, every row links there; UI rework: requester/asset/unit names, state badges, state filter buttons, ?state= deep links; Overdue view uses the dashboard's past-due rule; SCRUM-241 redesign: the queue as a board by stage, approve/deny/handoff on the card (same actionsFor() rules as the request page), Everyone's/Mine switch
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * The approval queue: every request in the organisation an approver/admin may need to act on.

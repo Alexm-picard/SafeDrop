@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167 / SCRUM-169)
 // AI-Assisted Areas: GroupDetailPage tests — members, adding and removing a member, renaming (incl. duplicate name), deleting
-// Human Contributions: pending team review
-// Notes: Follows the patterns in AssetDetailPage.test.jsx (route params through extraRoutes, MSW overrides). Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); latest changes reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the patterns in AssetDetailPage.test.jsx (route params through extraRoutes, MSW overrides). Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for one group's page (SCRUM-167, SCRUM-169): who is in it, adding and removing members,

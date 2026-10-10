@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code)
 // AI-Assisted Areas: acceptance and security tests for POST /api/auth/change-password
-// Human Contributions: pending team review
-// Notes: Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and merged by Alex Picard (PR #19, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Reviewed before merge; see Human Contributions.
 
 /**
  * Integration tests for `POST /api/auth/change-password`: a signed-in user replacing their own password.

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-122)
 // AI-Assisted Areas: tests for fieldErrorsOf, covering both API error shapes
-// Human Contributions: pending team review
-// Notes: Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #44, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for `fieldErrorsOf` (SCRUM-122).

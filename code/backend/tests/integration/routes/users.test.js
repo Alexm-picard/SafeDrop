@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: acceptance tests for GET /api/users, POST /api/users/invite, PATCH /api/users/:id/role — permissions, tenant isolation, audit, atomicity, last-admin rule, concurrency
-// Human Contributions: pending team review
-// Notes: Each test states the requirement it proves. The two rollback tests and the mutual-demotion test were checked to fail when the behaviour they guard is removed. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and approved by Alex Picard (PR #59, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Each test states the requirement it proves. The two rollback tests and the mutual-demotion test were checked to fail when the behaviour they guard is removed. Reviewed before merge; see Human Contributions.
 
 /**
  * Integration tests for member lifecycle: list, invite, change role (SDD OD-3, SR-1, SR-2, OD-2).

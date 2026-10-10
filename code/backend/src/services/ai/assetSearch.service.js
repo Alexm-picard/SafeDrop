@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 10 of 16 commits co-authored by Claude Code)
+// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185)
+// Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * AI-assisted asset search (SCRUM-103).
  *

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: role → permission matrix from SDD §6.4 / SR-1; public-route allowlist; password:self permission; groups:manage permission (SCRUM-149)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); groups:manage pending review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the member-lifecycle work and the user-groups ticket.
 //
 // This file is the single authorization policy. Routes declare a permission (never a role); the

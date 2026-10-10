@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (skeleton generated from team design documents)
+// AI-Assisted Areas: asset list / detail resource hooks (SCRUM-115)
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 693110f).
+
 /**
  * Data hooks for the asset catalogue.
  *

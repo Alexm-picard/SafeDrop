@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: tests for the forced change-password screen, the guard that redirects to it, and the admin reset action
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-22 / SCRUM-36. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #29, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-22 / SCRUM-36. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for what happens when a password was chosen by somebody else (SCRUM-22, SCRUM-36).

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: member-list resource hook
-// Human Contributions: pending team review
-// Notes: Same shape as useAuditEvents. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Same shape as useAuditEvents. Reviewed before merge; see Human Contributions.
 
 /**
  * Data hook for the organisation's member list.

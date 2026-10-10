@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: Members screen tests: list, invite (admin-set initial password), field-level errors, role change, failure paths, pagination
-// Human Contributions: pending team review
-// Notes: Runs against the MSW mock of the real API contract. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Runs against the MSW mock of the real API contract. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the members screen (member-lifecycle ticket).

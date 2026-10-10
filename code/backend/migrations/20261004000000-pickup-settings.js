@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code)
 // AI-Assisted Areas: backfills the pickup grace period (SCRUM-205) on existing organisations
-// Human Contributions: design (48-hour default) from the SCRUM-205 story; pending team review
+// Human Contributions: design (48-hour default) from the SCRUM-205 story; reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Data-only migration, no indexes. Idempotent: it only touches documents missing the field.
 
 /**

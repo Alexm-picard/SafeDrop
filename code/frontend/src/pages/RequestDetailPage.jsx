@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: request detail screen: summary, timeline, and actions driven by the state machine rather than hard-coded state checks; SCRUM-148 auto-approved label; SCRUM-205 borrower pickup, start/confirm/reject return; every approver action lives here (the approval queue links in)
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #32, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-123. Reviewed before merge; see Human Contributions.
 
 /**
  * One checkout request, in full (SCRUM-123).

@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 1 of 3 commits co-authored by Claude Code)
+// AI-Assisted Areas: Microsoft Foundry transport and configuration (SCRUM-103)
+// Human Contributions: reviewed and approved by Alex Picard (PR #45, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * Unit tests for the Foundry transport (SCRUM-103).
  *

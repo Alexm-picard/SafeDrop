@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code)
 // AI-Assisted Areas: backfills the configurable-approval fields (SCRUM-148) on existing organisations and assets
-// Human Contributions: design (REQUIRED / INHERIT defaults) from the SCRUM-148 story by Orelmis Toribio; pending team review
+// Human Contributions: design (REQUIRED / INHERIT defaults) from the SCRUM-148 story by Orelmis Toribio; reviewed and approved by Alex Picard (PR #52, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Data-only migration, no indexes. Idempotent: it only touches documents missing the field.
 
 /**

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: the overview's loan timeline (every live request on its dates, against today)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Reads the organisation-wide request list the approval board already uses; nothing new is computed on the server.
 
 /**

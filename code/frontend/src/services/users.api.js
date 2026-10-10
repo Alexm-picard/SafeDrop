@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: API client for member list, invite and role change
-// Human Contributions: pending team review
-// Notes: Verified through MembersPage.test.jsx against the MSW mock of the real contract. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and merged by Mateus Silva (PR #29, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Verified through MembersPage.test.jsx against the MSW mock of the real contract. Reviewed before merge; see Human Contributions.
 
 /**
  * Member-management endpoints (ORG_ADMIN only): list, invite, change role.

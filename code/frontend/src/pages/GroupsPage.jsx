@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167)
 // AI-Assisted Areas: Groups screen: the organisation's groups with member counts, and the create form with a field-level duplicate-name error; UI rework: list panel beside the create form; SCRUM-241 redesign: a membership grid (people by groups, a peg per membership to toggle), each group's restricted equipment in its column, "who can borrow what", create in a side panel
-// Human Contributions: pending team review
-// Notes: Follows the patterns in MembersPage (list, single notice area) and AssetFormPage (FormField, field errors). Verified by tests/unit/components/GroupsPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the patterns in MembersPage (list, single notice area) and AssetFormPage (FormField, field errors). Verified by tests/unit/components/GroupsPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * The Groups screen (ORG_ADMIN only, SCRUM-167): the organisation's user groups and a form to create

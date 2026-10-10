@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the invitation-link request)
 // AI-Assisted Areas: unique index on the invitation token hash
-// Human Contributions: pending team review
-// Notes: Follows the pattern of the initial-indexes migration. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the pattern of the initial-indexes migration. Reviewed before merge; see Human Contributions.
 
 /**
  * Migration: index the invitation token so accepting an invitation is a lookup, not a scan.

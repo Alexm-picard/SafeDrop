@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100%
 // AI-Assisted Areas: Previous / Page x of y / Next control for paged panels (UI rework)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Previous / "Page 2 of 3" / Next. Renders nothing when everything fits on one page, so a short list

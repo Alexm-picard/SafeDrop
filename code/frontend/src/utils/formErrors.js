@@ -2,10 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-122)
 // AI-Assisted Areas: shared mapping from an ApiError to per-field form messages
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Lifted verbatim from the local copy in MembersPage.jsx, which now imports it, so the two
-// cannot drift. Verified by tests/unit/utils/formErrors.test.js. Must be reviewed by the owning team
-// member before merge.
+// cannot drift. Verified by tests/unit/utils/formErrors.test.js. Reviewed before merge; see Human Contributions.
 
 /**
  * Turning API errors into messages that sit beside the input that caused them.

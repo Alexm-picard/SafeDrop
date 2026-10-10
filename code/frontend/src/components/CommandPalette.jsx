@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: the ⌘K "jump to" palette (pages for the viewer's role and every asset in the catalog)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Navigation only. It offers the same pages as the rail, filtered by the same role rules, so it never shows a page the viewer cannot open.
 
 /**

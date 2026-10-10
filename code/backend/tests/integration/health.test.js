@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: GET /health database check: healthy, connection closed, and ping failing while readyState still reads connected
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-133. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #17, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-133. Reviewed before merge; see Human Contributions.
 
 /**
  * Integration tests for GET /health and its database check (SCRUM-133).

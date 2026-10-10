@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-150 ticket)
 // AI-Assisted Areas: API client for SCRUM-149's /api/groups: list (the SCRUM-150 picker), and read, create, rename, delete and membership for the Groups screen (SCRUM-167)
-// Human Contributions: pending team review
-// Notes: Verified through AssetFormPage.test.jsx, GroupsPage.test.jsx and GroupDetailPage.test.jsx against the MSW mock. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Verified through AssetFormPage.test.jsx, GroupsPage.test.jsx and GroupDetailPage.test.jsx against the MSW mock. Reviewed before merge; see Human Contributions.
 
 /**
  * User-group endpoints (ORG_ADMIN only, `groups:manage`).

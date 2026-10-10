@@ -2,9 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-36; moved out of MembersPage.jsx unchanged)
 // AI-Assisted Areas: admin set-password form with show-password option and field-level API error; SCRUM-241: inPanel rendering for the side panel
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Mateus Silva (PR #58, 2026-10-03); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Moved verbatim from MembersPage.jsx to follow the SPPP coding standard (components live in
-// src/components). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
+// src/components). Verified by tests/unit/components/MembersPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 import { useState } from 'react';
 import { errorMessage, isApiError } from '../services/api';

@@ -2,10 +2,10 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-124 ticket)
 // AI-Assisted Areas: checkout request form — date window mirroring createRequestBody, with field-level API errors
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #37, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Fields mirror the `createRequestBody` Zod schema in backend routes/requests.routes.js; the
 // window rule itself lives in utils/requestWindow.js — change it and the schema together. Verified by
-// tests/unit/components/RequestCreation.test.jsx. Must be reviewed by the owning team member before merge.
+// tests/unit/components/RequestCreation.test.jsx. Reviewed before merge; see Human Contributions.
 
 import { useState } from 'react';
 import { errorMessage, isApiError } from '../services/api';

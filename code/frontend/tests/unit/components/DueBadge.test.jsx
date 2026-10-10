@@ -4,9 +4,9 @@
 // AI-Assisted Areas: tests for the due badge on the two screens that show it — the Due column on my
 // requests, the badge beside the due date on request detail, and the requirement that colour is
 // never the only thing carrying the message
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #48, 2026-09-28); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Written test-first for SCRUM-143 (Lab 3, TDD). Written and watched to fail before either
-// page rendered a badge. Must be reviewed by the owning team member before merge.
+// page rendered a badge. Reviewed before merge; see Human Contributions.
 
 /**
  * The due badge, on the two screens that show it (SCRUM-143).

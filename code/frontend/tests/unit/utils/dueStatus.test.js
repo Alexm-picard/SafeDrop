@@ -3,9 +3,9 @@
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-143 ticket)
 // AI-Assisted Areas: test-first specification of the due badge's logic, including the calendar-day
 // and timezone decision the ticket left to the implementer
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #48, 2026-09-28); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Written test-first for SCRUM-143 (Lab 3, TDD). Every test here was written and watched to
-// fail before src/utils/dueStatus.js existed. Must be reviewed by the owning team member before merge.
+// fail before src/utils/dueStatus.js existed. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the due-date badge's logic (SCRUM-143).

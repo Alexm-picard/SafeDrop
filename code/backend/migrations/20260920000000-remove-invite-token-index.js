@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code)
 // AI-Assisted Areas: removes the invitation-token index and fields left by the link-based invite
-// Human Contributions: pending team review
-// Notes: A new migration rather than an edit to 20260919000000, which may already have run somewhere. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #19, 2026-09-19); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: A new migration rather than an edit to 20260919000000, which may already have run somewhere. Reviewed before merge; see Human Contributions.
 
 /**
  * Migration: remove the invitation-link leftovers from `users`.

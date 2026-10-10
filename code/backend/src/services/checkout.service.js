@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: SCRUM-148 submit() asks the approval policy and can create a request APPROVED (unit HELD); the single F4 state-transition table + assertTransition guard with unit side-effects; submit()/approve()/deny()/cancel()/list()/get() implemented; submit() now reserves the unit (AVAILABLE -> REQUESTED) with a compare-and-set, and deny()/cancel() release it back; submit() now enforces restricted-equipment eligibility via group.service.isActiveMember (SCRUM-149); submit() and approve() both check group.service.isEligible over allowedGroupIds (SCRUM-150, AT-3); SCRUM-205 custody confirmation: borrower-recorded pickup, initiateReturn/rejectReturn, canConfirmReturn on every return path, expireApprovals with a system-actor audit entry
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); SCRUM-149 eligibility check pending review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Mateus Silva (PR #64, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**

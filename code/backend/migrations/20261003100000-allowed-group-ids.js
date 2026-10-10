@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-150 ticket)
 // AI-Assisted Areas: converts the single requiredGroupId (SCRUM-149) on assets into the allowedGroupIds list (SCRUM-150)
-// Human Contributions: any-of-several-groups design decided by Alex Picard (2026-10-03); pending team review
+// Human Contributions: any-of-several-groups design decided by Alex Picard (2026-10-03); reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Data-only migration, no indexes. Idempotent: it only touches assets still carrying requiredGroupId or missing allowedGroupIds.
 
 /**

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-124)
 // AI-Assisted Areas: tests pinning the client-side mirror of the createRequestBody window rule
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #37, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Tests for `validateWindow` (SCRUM-124).

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: frontend mirror of the checkout state machine and the actions each role may take; SCRUM-205 RETURN_PENDING/EXPIRED, borrower pickup and return, confirm/reject return
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-123. Mirrors the backend's checkout.service.js TRANSITIONS — change both together. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #32, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-123. Mirrors the backend's checkout.service.js TRANSITIONS — change both together. Reviewed before merge; see Human Contributions.
 
 /**
  * The checkout state machine, as the SPA understands it (SDD §2.4, arch review F4).

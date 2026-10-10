@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (acceptance tests written from the SCRUM-205 story)
 // AI-Assisted Areas: integration tests for custody confirmation (SCRUM-205): AT-1..AT-8, the pickup-settings endpoint, the pending-returns scope, and the migration
-// Human Contributions: user story, acceptance criteria and answers to its open questions by Orelmis Toribio; pending team review
+// Human Contributions: user story, acceptance criteria and answers to its open questions by Orelmis Toribio; reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Each describe block is one acceptance test from the story, named by its AT number.
 
 /**

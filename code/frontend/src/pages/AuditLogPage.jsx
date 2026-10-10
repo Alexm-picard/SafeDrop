@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: audit log screen (SCRUM-51), actor filter and names (SCRUM-46); SCRUM-241 redesign: the trail as a feed grouped by day, one line per event, target filter as chips
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * The audit log (ORG_ADMIN only) — SCRUM-51.

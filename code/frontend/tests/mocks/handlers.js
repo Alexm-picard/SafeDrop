@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (skeleton generated from team design documents)
+// AI-Assisted Areas: MSW fixtures and default happy-path handlers for every endpoint, plus helpers to override per test
+// Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Reviewed before merge; see Human Contributions. Header restored for SCRUM-216 (removed by mistake in 59f009f).
+
 /**
  * The mock API: fixture data and the default MSW handlers.
  *

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: HTTP layer for /api/groups (SCRUM-149)
-// Human Contributions: pending review
-// Notes: Written from the ticket's acceptance criteria. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written from the ticket's acceptance criteria. Reviewed before merge; see Human Contributions.
 
 /**
  * HTTP layer for `/api/groups`: named cohorts and their membership.

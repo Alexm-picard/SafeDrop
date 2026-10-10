@@ -2,9 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code against the SCRUM-143 tests)
 // AI-Assisted Areas: the shared due badge rendered by MyRequestsPage and RequestDetailPage
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #48, 2026-09-28); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: The green half of the Lab 3 red-green-refactor cycle for SCRUM-143; the tests were written
-// first and watched to fail. Must be reviewed by the owning team member before merge.
+// first and watched to fail. Reviewed before merge; see Human Contributions.
 
 /**
  * A request's deadline, at a glance (SCRUM-143).
