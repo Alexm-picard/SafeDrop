@@ -13,7 +13,7 @@
     "seed": "npm run seed --prefix backend"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.6"
   },
   "dependencies": {
     "mongodb": "^7.6.0"
