@@ -2,10 +2,10 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
 // AI-Assisted Areas: one page serving both /admin/assets/new and /assets/:id/edit, with field-level API errors; approval mode select (SCRUM-148); group picker restricting who can request it (SCRUM-150, SCRUM-176); SCRUM-241 redesign: a live preview of the catalog card beside the form
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Follows the form patterns in OrgSetupPage and MembersPage. Fields mirror the `assetBody`
 // Zod schema in backend routes/assets.routes.js. Verified by
-// tests/unit/components/AssetFormPage.test.jsx. Must be reviewed by the owning team member before merge.
+// tests/unit/components/AssetFormPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * Create or edit an asset (ORG_ADMIN only).

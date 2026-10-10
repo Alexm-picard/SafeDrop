@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-148 story)
 // AI-Assisted Areas: OrgSettingsPage tests — current value shown, save sends the new default, errors surfaced
-// Human Contributions: story and acceptance criteria by Orelmis Toribio; pending team review
+// Human Contributions: story and acceptance criteria by Orelmis Toribio; reviewed and approved by Alex Picard (PR #52, 2026-10-03); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Backend behaviour (403 for non-admins, audit, non-retroactivity) is covered by backend approvalSettings.test.js.
 
 /**

@@ -183,7 +183,7 @@ export async function listUsers(orgId, query = {}) {
 //   initial password the admin sets and shares out of band; append USER_INVITED in the same
 //   transaction; duplicate email in the org is a 409." (no email service, no invitation link)
 //   AI Contribution: Initial draft and tests (~100% of the first version).
-//   Modifications: none yet — pending review by the owning team member.
+//   Modifications: none; reviewed before merge (see the file header's Human Contributions).
 //   Verification:
 //   - Integration tests (tests/integration/routes/users.test.js)
 //   - Unit tests (tests/unit/services/userManagement.test.js)
@@ -273,7 +273,7 @@ export async function inviteUser(orgId, actor, input, { requestId } = {}) {
 //   Prompt Summary: "Implement change-role: re-read the actor's role from the DB, append
 //   USER_ROLE_CHANGED with before/after in the same transaction, refuse to demote the last ORG_ADMIN."
 //   AI Contribution: Initial draft and tests (~100% of the first version).
-//   Modifications: none yet — pending review by the owning team member.
+//   Modifications: none; reviewed before merge (see the file header's Human Contributions).
 //   Verification:
 //   - Integration tests (tests/integration/routes/users.test.js), including a concurrent
 //     mutual-demotion test for the last-admin rule

@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: UserGroup schema — named cohorts of members, the building block the restricted-equipment story will gate access on (SCRUM-149)
-// Human Contributions: pending review
-// Notes: Written from the ticket's design notes (model shape, nameLower for case-insensitive per-organisation uniqueness). Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written from the ticket's design notes (model shape, nameLower for case-insensitive per-organisation uniqueness). Reviewed before merge; see Human Contributions.
 
 /**
  * The `usergroups` collection: a named set of members within one organisation (SCRUM-149).

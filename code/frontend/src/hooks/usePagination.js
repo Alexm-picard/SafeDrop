@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100%
 // AI-Assisted Areas: client-side paging for lists already loaded in full (UI rework)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 import { useState } from 'react';
 

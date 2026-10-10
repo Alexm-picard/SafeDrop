@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: staged acceptance-criteria placeholders for screens with no UI yet (SCRUM-128)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Mateus Silva (PR #33, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #37, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Staged acceptance criteria for screens that do not exist yet — the frontend's equivalent of the

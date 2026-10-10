@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (Lab 3 TDD walkthrough; test written before the endpoint exists)
 // AI-Assisted Areas: acceptance test for AC2 of the deactivate-member story (a deactivated member cannot log in)
-// Human Contributions: pending review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #47, 2026-09-28); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Written test-first as part of CS673 Lab 3 (TDD/BDD). This is the RED step: no deactivation
 //   field or login check exists yet, so this test is expected to fail until they are added. Structure
 //   and assertion style follow tests/integration/routes/auth.test.js's existing POST /api/auth/login

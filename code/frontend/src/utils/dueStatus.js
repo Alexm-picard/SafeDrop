@@ -3,9 +3,9 @@
 // Overall AI Contribution: ~100% (written by Claude Code against the SCRUM-143 tests)
 // AI-Assisted Areas: calendar-day arithmetic for the due badge, written to turn the pre-existing
 // tests in tests/unit/utils/dueStatus.test.js green
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #48, 2026-09-28); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: The green half of the Lab 3 red-green-refactor cycle for SCRUM-143; the tests were written
-// first and watched to fail. Must be reviewed by the owning team member before merge.
+// first and watched to fail. Reviewed before merge; see Human Contributions.
 
 /**
  * How a borrowed item's deadline reads at a glance (SCRUM-143).

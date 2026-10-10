@@ -2,8 +2,8 @@
 # Tools: Claude Code
 # Overall AI Contribution: ~90%
 # AI-Assisted Areas: scheduled OWASP ZAP baseline scan of staging, report artifacts, severity gate; scan on every published GitHub release, with the reports attached to it
-# Human Contributions: pending team review
-# Notes: Written for SCRUM-126 (SPPP DAST; SR-5, SR-6, SR-13). Must be reviewed and tested by the owning team member before merge.
+# Human Contributions: reviewed and merged by Orelmis Toribio (PR #26, 2026-09-19); latest changes reviewed and approved by Mateus Silva (PR #66, 2026-10-06); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+# Notes: Written for SCRUM-126 (SPPP DAST; SR-5, SR-6, SR-13). Reviewed before merge; see Human Contributions.
 #
 # Dynamic application security testing (SPPP §5a DAST).
 #

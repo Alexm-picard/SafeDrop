@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: indexes for the new usergroups collection (SCRUM-149)
-// Human Contributions: pending review
-// Notes: Written for the user-groups ticket. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for the user-groups ticket. Reviewed before merge; see Human Contributions.
 
 /**
  * Migration: index the `usergroups` collection.

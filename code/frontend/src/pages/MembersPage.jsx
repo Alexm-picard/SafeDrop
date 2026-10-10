@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the member-lifecycle ticket)
 // AI-Assisted Areas: Members screen: list, invite form (admin-set initial password) with field-level API errors, per-row role change; SCRUM-241 redesign: a roster board with a column per role (drag a card or use its role control), invite and password reset in a side panel
-// Human Contributions: pending team review
-// Notes: InviteForm and ResetPasswordForm live in src/components. Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and merged by Alex Picard (PR #15, 2026-09-19); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: InviteForm and ResetPasswordForm live in src/components. Follows the patterns in OrgSetupPage (form) and AuditLogPage (list, pagination). Verified by tests/unit/components/MembersPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * The members screen (ORG_ADMIN only): see who is in the organisation, invite people, change roles.

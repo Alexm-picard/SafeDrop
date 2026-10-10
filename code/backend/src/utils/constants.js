@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149); MAX_ALLOWED_GROUPS (SCRUM-150)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); GROUP_* additions pending review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the user-groups ticket.
 
 /**

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: the side panel that holds a page's secondary forms (invite, reset a password, create a group)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * A side panel: a modal dialog that slides in from the right edge, with a pegboard header.

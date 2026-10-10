@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: a person's initials in a ring coloured by their role
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * A person's initials in a circle, ringed in their role's colour. Decorative: the name always sits

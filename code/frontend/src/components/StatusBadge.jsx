@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100%
 // AI-Assisted Areas: shared pill badge for request states and unit statuses (UI rework)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 import { humanize } from '../utils/format';
 import { REQUEST_STATE_TONE, UNIT_STATUS_TONE } from '../utils/statusTone';

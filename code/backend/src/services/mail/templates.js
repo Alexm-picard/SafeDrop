@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: password-reset email copy, plain-text and HTML, with HTML escaping
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-22. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #29, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-22. Reviewed before merge; see Human Contributions.
 
 /**
  * The messages SafeDrop sends, as plain data.

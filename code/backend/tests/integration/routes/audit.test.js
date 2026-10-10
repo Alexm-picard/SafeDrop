@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 1 of 1 commits co-authored by Claude Code)
+// AI-Assisted Areas: integration tests for GET /api/audit (SCRUM-52)
+// Human Contributions: reviewed and approved by Alex Picard (PR #42, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * Integration tests for `GET /api/audit` (SCRUM-46, user story 4).
  *

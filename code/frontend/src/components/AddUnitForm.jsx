@@ -2,9 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
 // AI-Assisted Areas: add-unit form with a duplicate-tag 409 rendered under the tag input
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Fields mirror the `unitBody` Zod schema in backend routes/assets.routes.js. Verified by
-// tests/unit/components/AssetDetailPage.test.jsx. Must be reviewed by the owning team member before merge.
+// tests/unit/components/AssetDetailPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 import { useState } from 'react';
 import { errorMessage, isApiError } from '../services/api';

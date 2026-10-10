@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents; write path added for SCRUM-134)
 // AI-Assisted Areas: asset catalogue read path (list + get, SCRUM-115) and write path (create/update/retire/addUnit, SCRUM-134); approvalMode on create (SCRUM-148); requiredGroupId validation for restricted equipment (SCRUM-149); allowedGroupIds validation, allowedGroups names and caller eligibility on reads (SCRUM-150); restricted flag (SCRUM-203); restrictionsOf shared with search (SCRUM-202)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); allowedGroupIds validation pending review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**

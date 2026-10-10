@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (skeleton generated from team design documents)
+// AI-Assisted Areas: roles, route paths and the Sprint 1 ticket ids that own each placeholder page
+// Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Reviewed before merge; see Human Contributions. Header restored for SCRUM-216 (removed by mistake in 59f009f).
+
 /**
  * Values shared across the SPA: the app name, roles and their labels, route paths, and ticket ids.
  *

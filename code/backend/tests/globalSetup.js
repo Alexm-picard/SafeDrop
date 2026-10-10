@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents; TEST_MONGODB_URI fallback added later)
 // AI-Assisted Areas: one in-memory MongoDB replica set for the whole run (transactions need a replica set); opt-in TEST_MONGODB_URI fallback so the suite can run inside the Alpine-based backend container (Lab 3)
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); TEST_MONGODB_URI fallback pending review
+// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Amber Rastella (PR #47, 2026-09-28); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. TEST_MONGODB_URI added after discovering mongodb-memory-server cannot download a binary on Alpine (no official build for its C library) while satisfying Lab 3's "run tests inside the container" requirement. Unset by default; changes nothing for host or CI runs.
 
 /**

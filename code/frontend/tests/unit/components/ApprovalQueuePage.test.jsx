@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: ApprovalQueuePage tests — loading, the state filter, each row linking to its detail page, errors; SCRUM-241 redesign: the board, its cards and their one-click actions
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Mateus Silva (PR #18, 2026-09-19); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Tests for the approval queue (SCRUM-119, SCRUM-120, SCRUM-205).

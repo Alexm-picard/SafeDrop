@@ -2,9 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-122 ticket)
 // AI-Assisted Areas: AssetFormPage tests — create success and error path, edit prefill and PATCH, cancel; group picker (SCRUM-150, SCRUM-176)
-// Human Contributions: pending team review
-// Notes: Follows the patterns in MembersPage.test.jsx (MSW overrides, renderWithAuth). Must be
-// reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the patterns in MembersPage.test.jsx (MSW overrides, renderWithAuth). Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the asset create and edit form (SCRUM-122).

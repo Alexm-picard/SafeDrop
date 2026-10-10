@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: reset-password form driven by the ?token= query parameter, field-level API errors, redirect to sign in
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-22 (subtask SCRUM-31). Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #29, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-22 (subtask SCRUM-31). Reviewed before merge; see Human Contributions.
 
 /**
  * Choosing a new password from a mailed link.

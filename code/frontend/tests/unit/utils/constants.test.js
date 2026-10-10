@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: unit tests for landingFor(), the post-sign-in destination map (SCRUM-21)
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-21. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alexa Stein (PR #24, 2026-09-19); latest changes reviewed and approved by Mateus Silva (PR #36, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-21. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the role → landing-screen map used after signing in (SCRUM-21).

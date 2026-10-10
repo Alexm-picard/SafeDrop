@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: SCRUM-241 redesign: the catalog's gallery card, also the live preview on the asset form
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Presentation only. Every field it shows is one the catalogue list or search already returns.
 
 /**

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
 // AI-Assisted Areas: LoanTimeline tests (SCRUM-241): which requests it draws, how a late loan reads, and that every row is a labelled link
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Tests for the overview's loan timeline.

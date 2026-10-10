@@ -2,10 +2,9 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-124 ticket)
 // AI-Assisted Areas: request creation flow tests — affordance gating, client-side window validation, happy path, the unavailable-unit race, and the request appearing on MyRequestsPage
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #37, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: The real tests for SCRUM-124; replaces the staged describe.skip block that was in
-// pendingScreens.test.jsx (see code/docs/staged-acceptance-tests.md). Must be reviewed by the
-// owning team member before merge.
+// pendingScreens.test.jsx (see code/docs/staged-acceptance-tests.md). Reviewed before merge; see Human Contributions.
 
 /**
  * The request creation flow, from the asset detail page (SCRUM-124).

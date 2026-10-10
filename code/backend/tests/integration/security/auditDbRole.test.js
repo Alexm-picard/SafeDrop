@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90-100% (assumed: no record in the PR or commit history)
+// AI-Assisted Areas: define the insert-only database role for the audit collection (SCRUM-125)
+// Human Contributions: reviewed and approved by Alex Picard (PR #44, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * The database half of audit-log immutability (SR-8, SCRUM-125).
  *

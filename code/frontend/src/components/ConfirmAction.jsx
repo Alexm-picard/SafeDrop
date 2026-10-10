@@ -2,9 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code for SCRUM-122)
 // AI-Assisted Areas: two-step confirmation for a destructive action, without a modal dialog; SCRUM-241: the opening button is an outlined danger pill, the solid one only confirms
-// Human Contributions: pending team review
-// Notes: Verified by tests/unit/components/AssetDetailPage.test.jsx (the retire confirmation). Must
-// be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #31, 2026-09-20); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Verified by tests/unit/components/AssetDetailPage.test.jsx (the retire confirmation). Reviewed before merge; see Human Contributions.
 
 import { useState } from 'react';
 

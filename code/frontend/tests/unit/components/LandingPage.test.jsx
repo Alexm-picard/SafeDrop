@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: landing page tests: public at `/`, sign-in/sign-up calls to action, signed-in variant, heading structure
-// Human Contributions:
+// Human Contributions: reviewed and approved by Mateus Silva (PR #36, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**

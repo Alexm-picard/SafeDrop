@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: SCRUM-135/approve/deny/list — submit, approve and deny a checkout request, list requests. SCRUM-120/return (record a physical handoff, OD-4). SCRUM-123 (request detail). SCRUM-150 restricted equipment: any-of-several groups, AT-3 re-check at approval
-// Human Contributions: pending team review
+// Human Contributions: reviewed and merged by Mateus Silva (PR #18, 2026-09-19); latest changes reviewed and approved by Alex Picard (PR #69, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Integration tests for `/api/requests` — the pieces of the checkout workflow that are implemented.

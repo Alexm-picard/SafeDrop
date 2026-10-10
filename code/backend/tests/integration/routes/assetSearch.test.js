@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 2 of 2 commits co-authored by Claude Code)
+// AI-Assisted Areas: GET /api/assets/search route, and plain-search fallback on a Foundry outage (SCRUM-200)
+// Human Contributions: reviewed and approved by Alex Picard (PR #56, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * Integration tests for `GET /api/assets/search` (SCRUM-200).
  *

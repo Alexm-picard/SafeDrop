@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: group CRUD, atomic membership changes, and the active-membership eligibility helper the restricted-equipment story will call (SCRUM-149); isEligible() over an asset's allowedGroupIds (SCRUM-150); restrictedAssets on getGroup (SCRUM-204)
-// Human Contributions: pending review
-// Notes: Written from the ticket's acceptance criteria (AT-1..AT-4) and design notes, including both answered open questions (groups-only scope; deactivated members excluded automatically at eligibility checks, not removed from the group). Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written from the ticket's acceptance criteria (AT-1..AT-4) and design notes, including both answered open questions (groups-only scope; deactivated members excluded automatically at eligibility checks, not removed from the group). Reviewed before merge; see Human Contributions.
 
 /**
  * Named groups of members within one organisation (SCRUM-149).

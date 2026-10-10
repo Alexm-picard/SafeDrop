@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-205 story)
 // AI-Assisted Areas: UI tests for custody confirmation: borrower pickup and return on the detail page, confirm/reject, the pickup-window setting, and the self-recorded history note
-// Human Contributions: story and acceptance criteria by Orelmis Toribio; pending team review
+// Human Contributions: story and acceptance criteria by Orelmis Toribio; reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Backend rules (403s, the sole-confirmer count, audit entries) are covered by backend custodyConfirmation.test.js.
 
 /**

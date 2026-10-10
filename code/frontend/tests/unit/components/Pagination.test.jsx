@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100%
 // AI-Assisted Areas: DataTable client-side paging and the usePagination clamp; Pagination and StatusBadge (UI rework)
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Tests for paging a long in-memory list (DataTable `pageSize`, usePagination).

@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: activity chart tests: one bar per active day, geometry inside the canvas, table view, empty series (SCRUM-102)
-// Human Contributions:
+// Human Contributions: reviewed and approved by Mateus Silva (PR #35, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**

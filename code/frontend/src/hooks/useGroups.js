@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-150 ticket)
 // AI-Assisted Areas: data hooks for the organisation's user groups and for one group (SCRUM-150, SCRUM-167)
-// Human Contributions: pending team review
-// Notes: Follows useMembers.js and useAssets.js. Verified through AssetFormPage.test.jsx, GroupsPage.test.jsx and GroupDetailPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows useMembers.js and useAssets.js. Verified through AssetFormPage.test.jsx, GroupsPage.test.jsx and GroupDetailPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * Data hooks for the organisation's user groups (SCRUM-149): the list, read by the asset form's group

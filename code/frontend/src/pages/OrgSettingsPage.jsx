@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-148 story)
 // AI-Assisted Areas: organisation settings page with the approval default (REQUIRED / AUTO); SCRUM-205 pickup grace period and on-demand expiry; SCRUM-241 redesign: each setting written as a rule in a sentence, the approval choice as two tiles over a diagram of what a request goes through, the pickup window as an inline number over a bar
-// Human Contributions: story, acceptance criteria and the "auto-approval still needs a handoff" decision by Orelmis Toribio; pending team review
+// Human Contributions: story, acceptance criteria and the "auto-approval still needs a handoff" decision by Orelmis Toribio; reviewed and approved by Alex Picard (PR #52, 2026-10-03); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Follows the load/seed pattern in AssetFormPage. Verified by tests/unit/components/OrgSettingsPage.test.jsx.
 
 /**

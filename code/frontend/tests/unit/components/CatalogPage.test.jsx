@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
+// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states
+// Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
+// Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 8554904).
+
 /**
  * Tests for the catalogue page (SCRUM-115) and its search bar (SCRUM-201).
  *

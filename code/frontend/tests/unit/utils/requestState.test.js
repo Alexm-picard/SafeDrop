@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: unit tests for the frontend state-machine mirror and the action rules it drives; SCRUM-205 custody-confirmation actions
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-123. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #32, 2026-09-20); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-123. Reviewed before merge; see Human Contributions.
 
 /**
  * Tests for the frontend copy of the checkout state machine (SCRUM-123).

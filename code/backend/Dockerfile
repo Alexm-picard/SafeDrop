@@ -3,7 +3,7 @@
 # Overall AI Contribution: ~90% (skeleton generated from team design documents; original by Alex Picard)
 # AI-Assisted Areas: Node 22 base, production default command, dev override via docker-compose; the
 #   dev stage carrying devDependencies so the test suite runs in the container (Lab 3, SCRUM-141)
-# Human Contributions: reviewed by Amber Rastella (PR #6, 2026-09-14); dev stage pending review
+# Human Contributions: reviewed by Amber Rastella (PR #6, 2026-09-14); dev stage reviewed and approved by Alex Picard (PR #51, 2026-09-29)
 # Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 #
 # Two images from one file:

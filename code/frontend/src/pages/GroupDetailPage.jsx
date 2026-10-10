@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from SCRUM-167)
 // AI-Assisted Areas: one group's page: rename and redescribe, its members with remove, add a member from the organisation, delete with confirmation; the equipment it restricts, named in the delete confirmation (SCRUM-204); UI rework: header with Edit details and Delete, members (with an add bar) and equipment as equal fixed-height panels
-// Human Contributions: pending team review
-// Notes: Follows the patterns in AssetDetailPage (single notice area, content kept on screen while it reloads, ConfirmAction) and MembersPage. Verified by tests/unit/components/GroupDetailPage.test.jsx. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Mateus Silva (PR #60, 2026-10-03); latest changes reviewed and approved by Alex Picard (PR #62, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Follows the patterns in AssetDetailPage (single notice area, content kept on screen while it reloads, ConfirmAction) and MembersPage. Verified by tests/unit/components/GroupDetailPage.test.jsx. Reviewed before merge; see Human Contributions.
 
 /**
  * One user group (ORG_ADMIN only, SCRUM-167): who is in it, and the controls to change that.

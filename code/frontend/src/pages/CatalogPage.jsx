@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards
-// Human Contributions: pending team review
+// Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * The catalogue: the landing page for every signed-in user.

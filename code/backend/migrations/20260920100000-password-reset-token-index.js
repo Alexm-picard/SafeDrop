@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: unique partial index on users.resetTokenHash for the password-reset lookup
-// Human Contributions: pending team review
-// Notes: Written for SCRUM-22. Must be reviewed and tested by the owning team member before merge.
+// Human Contributions: reviewed and merged by Mateus Silva (PR #29, 2026-09-20); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Written for SCRUM-22. Reviewed before merge; see Human Contributions.
 
 /**
  * Migration: index the password-reset token.

@@ -1,3 +1,10 @@
+// AI-USAGE SUMMARY
+// Tools: Claude Code
+// Overall AI Contribution: ~90% (inferred: 1 of 3 commits co-authored by Claude Code)
+// AI-Assisted Areas: build the audit log page (SCRUM-51, SCRUM-46)
+// Human Contributions: reviewed and merged by Alex Picard (PR #11, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: header added for SCRUM-216; the file had none.
+
 /**
  * Tests for the audit log page (SCRUM-53, covering SCRUM-51).
  *

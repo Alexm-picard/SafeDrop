@@ -2,8 +2,8 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the user-groups ticket)
 // AI-Assisted Areas: acceptance tests for /api/groups — AT-1..AT-4, tenant isolation, permissions, audit, atomicity, idempotent membership, the deactivated-member design decision (SCRUM-149)
-// Human Contributions: pending review
-// Notes: Each test states the requirement it proves. The rollback, race and last-admin-style guard tests were checked to fail when the behaviour they guard is removed. Must be reviewed by the owning team member before merge.
+// Human Contributions: reviewed and approved by Alex Picard (PR #59, 2026-10-03); latest changes reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Notes: Each test states the requirement it proves. The rollback, race and last-admin-style guard tests were checked to fail when the behaviour they guard is removed. Reviewed before merge; see Human Contributions.
 
 /**
  * Integration tests for user groups: create, read, rename, delete, and add/remove one member at a time
