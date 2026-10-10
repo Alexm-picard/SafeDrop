@@ -39,7 +39,7 @@ import { useRequest } from '../hooks/useRequests';
 import { errorMessage, isApiError } from '../services/api';
 import * as requestsApi from '../services/requests.api';
 import { ROLES, ROUTES, UNIT_CONDITIONS } from '../utils/constants';
-import { formatDate, humanize } from '../utils/format';
+import { formatDate, formatDateOnly, humanize } from '../utils/format';
 import { actionsFor } from '../utils/requestState';
 
 /**
@@ -220,7 +220,7 @@ export function RequestDetailPage() {
               </dd>
               <dt>Needed</dt>
               <dd>
-                {formatDate(request.neededFrom)} – {formatDate(request.neededTo)}
+                {formatDateOnly(request.neededFrom)} – {formatDateOnly(request.neededTo)}
               </dd>
               {request.dueAt ? (
                 <>

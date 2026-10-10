@@ -20,7 +20,7 @@ import { LoadingState } from '../components/LoadingState';
 import { Link } from 'react-router';
 import { useRequests } from '../hooks/useRequests';
 import { ROUTES } from '../utils/constants';
-import { formatDate, humanize } from '../utils/format';
+import { formatDateOnly, humanize } from '../utils/format';
 /**
  * Render the member's requests as a table.
  *
@@ -58,8 +58,8 @@ export function MyRequestsPage() {
                 </Link>
               ),
             },
-            { key: 'from', header: 'Needed from', render: (r) => formatDate(r.neededFrom) },
-            { key: 'to', header: 'Needed until', render: (r) => formatDate(r.neededTo) },
+            { key: 'from', header: 'Needed from', render: (r) => formatDateOnly(r.neededFrom) },
+            { key: 'to', header: 'Needed until', render: (r) => formatDateOnly(r.neededTo) },
             {
               key: 'due',
               header: 'Due',

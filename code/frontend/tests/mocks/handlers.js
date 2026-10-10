@@ -404,6 +404,8 @@ export function assetHistoryPage(search, events = assetHistoryEvents) {
  * until it has been handed over. That makes it the row the due badge (SCRUM-143) appears on, and the
  * others the rows that prove it stays away.
  */
+// Request windows are UTC instants for the start and end of the picked days in America/New_York, the
+// zone vitest.config.js pins: what the request form now sends (SCRUM-240).
 export const checkoutRequests = [
   {
     id: '6aab2a45c6e457e01ac0973a',
@@ -411,8 +413,8 @@ export const checkoutRequests = [
     unitId: '6aab2a45c6e457e01ac0972a',
     requesterId: memberUser.id,
     state: 'PENDING',
-    neededFrom: '2026-10-01T00:00:00.000Z',
-    neededTo: '2026-10-15T00:00:00.000Z',
+    neededFrom: '2026-10-01T04:00:00.000Z',
+    neededTo: '2026-10-16T03:59:59.999Z',
     note: '',
     decidedBy: null,
     decidedAt: null,
@@ -427,8 +429,8 @@ export const checkoutRequests = [
     unitId: '6aab2a45c6e457e01ac0972b',
     requesterId: memberUser.id,
     state: 'APPROVED',
-    neededFrom: '2026-09-20T00:00:00.000Z',
-    neededTo: '2026-09-30T00:00:00.000Z',
+    neededFrom: '2026-09-20T04:00:00.000Z',
+    neededTo: '2026-10-01T03:59:59.999Z',
     note: '',
     decidedBy: approverUser.id,
     decidedAt: '2026-09-19T00:00:00.000Z',
@@ -443,8 +445,8 @@ export const checkoutRequests = [
     unitId: '6aab2a45c6e457e01ac0972c',
     requesterId: memberUser.id,
     state: 'CHECKED_OUT',
-    neededFrom: '2026-09-01T00:00:00.000Z',
-    neededTo: '2026-09-14T00:00:00.000Z',
+    neededFrom: '2026-09-01T04:00:00.000Z',
+    neededTo: '2026-09-15T03:59:59.999Z',
     note: '',
     decidedBy: approverUser.id,
     decidedAt: '2026-08-31T00:00:00.000Z',
@@ -461,8 +463,8 @@ export const checkoutRequests = [
     unitId: '6aab2a45c6e457e01ac0972a',
     requesterId: memberUser.id,
     state: 'DENIED',
-    neededFrom: '2026-08-01T00:00:00.000Z',
-    neededTo: '2026-08-10T00:00:00.000Z',
+    neededFrom: '2026-08-01T04:00:00.000Z',
+    neededTo: '2026-08-11T03:59:59.999Z',
     note: '',
     decidedBy: approverUser.id,
     decidedAt: '2026-07-31T00:00:00.000Z',
