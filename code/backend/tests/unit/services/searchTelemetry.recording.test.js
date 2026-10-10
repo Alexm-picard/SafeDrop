@@ -214,6 +214,91 @@ describe('SCRUM-206 AT-1: alternatives (SCRUM-151) are recorded the same way', (
     expect(String(row.assetId)).toBe(r6.id);
   });
 
+  it('AI on and answering: fallbackReason is null, and a made-up id is not counted as a result', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    const r6 = await assetWithUnits({ name: 'Canon R6', category: 'camera' }, [UNIT_STATUS.OUT]);
+    const a7 = await assetWithUnits({ name: 'Sony A7', category: 'camera' }, [
+      UNIT_STATUS.AVAILABLE,
+    ]);
+    foundry.foundryRequest.mockResolvedValue(
+      foundryReply({
+        matches: [
+          { assetId: a7.id, reason: 'Comparable full-frame body, on the shelf now.' },
+          // Never offered to the model, so it is dropped — and must not inflate resultCount.
+          { assetId: '6aab2a45c6e457e01ac09fff', reason: 'Hallucinated.' },
+        ],
+        clarification: null,
+      }),
+    );
+
+    const result = await getAlternatives(ORG, MEMBER, r6.id);
+
+    expect(result.aiAssisted).toBe(true);
+    const row = await oneRow();
+    expect(row).toMatchObject({
+      kind: 'alternatives',
+      aiAssisted: true,
+      fallbackReason: null,
+      candidateCount: 1,
+      resultCount: 1,
+    });
+    expect(String(row.assetId)).toBe(r6.id);
+  });
+
+  it('Foundry down: records unavailable, and the member still gets the unranked suggestions', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    const r6 = await assetWithUnits({ name: 'Canon R6', category: 'camera' }, [UNIT_STATUS.OUT]);
+    await assetWithUnits({ name: 'Sony A7', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+    foundry.foundryRequest.mockRejectedValue(new ServiceUnavailableError('down'));
+
+    const result = await getAlternatives(ORG, MEMBER, r6.id);
+
+    expect(result.alternatives.map((a) => a.name)).toEqual(['Sony A7']);
+    expect(await oneRow()).toMatchObject({
+      kind: 'alternatives',
+      aiAssisted: false,
+      fallbackReason: 'unavailable',
+      candidateCount: 1,
+      resultCount: 1,
+    });
+  });
+
+  it('model broke the output contract: records contract, and the member still gets suggestions', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    const r6 = await assetWithUnits({ name: 'Canon R6', category: 'camera' }, [UNIT_STATUS.OUT]);
+    await assetWithUnits({ name: 'Sony A7', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+    foundry.foundryRequest.mockResolvedValue(foundryReply('You could try the Sony A7 instead!'));
+
+    const result = await getAlternatives(ORG, MEMBER, r6.id);
+
+    expect(result.alternatives.map((a) => a.name)).toEqual(['Sony A7']);
+    expect(await oneRow()).toMatchObject({
+      kind: 'alternatives',
+      aiAssisted: false,
+      fallbackReason: 'contract',
+      candidateCount: 1,
+      resultCount: 1,
+    });
+  });
+
+  it('a bug in the lookup records nothing, rather than reporting it as a fallback', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    const r6 = await assetWithUnits({ name: 'Canon R6', category: 'camera' }, [UNIT_STATUS.OUT]);
+    await assetWithUnits({ name: 'Sony A7', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+    foundry.foundryRequest.mockRejectedValue(new TypeError('a programming error'));
+
+    await expect(getAlternatives(ORG, MEMBER, r6.id)).rejects.toThrow(TypeError);
+    expect(searchLogRepo.append).not.toHaveBeenCalled();
+  });
+
+  it('records nothing for an asset that does not exist (a 404, not a lookup)', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+
+    await expect(getAlternatives(ORG, MEMBER, '6aab2a45c6e457e01ac09fff')).rejects.toThrow();
+
+    expect(searchLogRepo.append).not.toHaveBeenCalled();
+  });
+
   it('records nothing when the asset is not a dead end, because the pipeline never ran', async () => {
     foundry.isFoundryEnabled.mockReturnValue(true);
     const a7 = await assetWithUnits({ name: 'Sony A7', category: 'camera' }, [
