@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149); MAX_ALLOWED_GROUPS (SCRUM-150)
+// AI-Assisted Areas: domain enums shared by models, services, validation schemas (SDD §2.4); UserGroup target type and GROUP_* audit actions (SCRUM-149); MAX_ALLOWED_GROUPS (SCRUM-150); AI_MAX_CANDIDATES shared with search telemetry (OD-10)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18); reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; extended for the user-groups ticket.
 
@@ -179,6 +179,17 @@ export const SEARCH_KIND_LIST = Object.freeze(Object.values(SEARCH_KIND));
  * two agree. 90 days is the story's proposal and still an open question for the team.
  */
 export const SEARCH_LOG_RETENTION_DAYS = 90;
+
+/**
+ * The most catalogue entries sent to the model in one AI search (SCRUM-103). Each costs tokens on
+ * every search, so this bounds both cost and how much of a tenant's data leaves the backend per
+ * request.
+ *
+ * Shared because search telemetry counts the searches that reached it (`candidateCapHits`): a search
+ * sends the whole catalogue up to this cap, so reaching it means that organisation's catalogue was cut
+ * off, which is the trigger for semantic retrieval (OD-10, SCRUM-147).
+ */
+export const AI_MAX_CANDIDATES = 100;
 
 export const ASSET_CONDITION = freezeEnum(['NEW', 'GOOD', 'FAIR', 'POOR']);
 export const ASSET_CONDITION_LIST = Object.freeze(Object.keys(ASSET_CONDITION));

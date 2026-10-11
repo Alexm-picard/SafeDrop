@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-206 story)
-// AI-Assisted Areas: recordSearch never throws or blocks (AT-6); summarize window defaults and rates (AT-4)
+// AI-Assisted Areas: recordSearch never throws or blocks (AT-6); summarize window defaults and rates (AT-4); candidate-cap passthrough (OD-10)
 // Human Contributions: pending review
 // Notes: Written for SCRUM-206. Must be reviewed and tested by the owning team member before merge.
 
@@ -70,6 +70,7 @@ describe('summarize (AT-4)', () => {
     total: 10,
     aiAssisted: 6,
     zeroResults: 2,
+    candidateCapHits: 3,
     fallbacks: { disabled: 1, unavailable: 2, contract: 1 },
     latencyMs: { avg: 400, p50: 350, p95: 900, max: 1200 },
     ...overrides,
@@ -112,6 +113,8 @@ describe('summarize (AT-4)', () => {
       fallbackRate: 0.4,
       zeroResults: 2,
       zeroResultRate: 0.2,
+      candidateCapHits: 3,
+      candidateCap: 100,
       latencyMs: { avg: 400, p50: 350, p95: 900, max: 1200 },
       kind: null,
     });

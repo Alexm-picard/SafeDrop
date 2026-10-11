@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-206 story)
-// AI-Assisted Areas: integration tests for SCRUM-206 — no query text or reversible hash stored (AT-2), no user id (AT-3), GET /api/search-telemetry permission and tenant scoping (AT-4), TTL retention (AT-5)
+// AI-Assisted Areas: integration tests for SCRUM-206 — no query text or reversible hash stored (AT-2), no user id (AT-3), GET /api/search-telemetry permission and tenant scoping (AT-4), TTL retention (AT-5); candidate-cap count (OD-10)
 // Human Contributions: pending review
 // Notes: Written for SCRUM-206. Must be reviewed and tested by the owning team member before merge.
 
@@ -217,6 +217,8 @@ describe('SCRUM-206 AT-4: GET /api/search-telemetry', () => {
     expect(Object.keys(res.body).sort()).toEqual(
       [
         'aiAssisted',
+        'candidateCap',
+        'candidateCapHits',
         'fallbackRate',
         'fallbacks',
         'from',
@@ -228,6 +230,19 @@ describe('SCRUM-206 AT-4: GET /api/search-telemetry', () => {
         'zeroResults',
       ].sort(),
     );
+  });
+
+  it('counts the searches whose catalogue was cut off at the candidate cap (OD-10)', async () => {
+    await collection().insertMany([
+      rawRow(seed.a.orgId, { candidateCount: 100 }),
+      rawRow(seed.a.orgId, { candidateCount: 99 }),
+      rawRow(seed.a.orgId, { candidateCount: 0 }),
+      rawRow(seed.b.orgId, { candidateCount: 100 }),
+    ]);
+
+    const res = await getAs(seed.a.admin, PATH);
+
+    expect(res.body).toMatchObject({ total: 3, candidateCapHits: 1, candidateCap: 100 });
   });
 
   it('ignores an orgId smuggled in the query string (SR-2)', async () => {
@@ -262,6 +277,7 @@ describe('SCRUM-206 AT-4: GET /api/search-telemetry', () => {
       total: 0,
       fallbackRate: null,
       zeroResultRate: null,
+      candidateCapHits: 0,
       fallbacks: { disabled: 0, unavailable: 0, contract: 0 },
       latencyMs: { avg: null, p50: null, p95: null, max: null },
     });

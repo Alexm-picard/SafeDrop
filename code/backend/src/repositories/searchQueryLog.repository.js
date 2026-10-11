@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-206 story)
-// AI-Assisted Areas: append one telemetry row; tenant-scoped aggregate summary (SCRUM-206 AT-1, AT-4)
+// AI-Assisted Areas: append one telemetry row; tenant-scoped aggregate summary (SCRUM-206 AT-1, AT-4); candidate-cap count (OD-10)
 // Human Contributions: pending review
 // Notes: Written for SCRUM-206. Must be reviewed and tested by the owning team member before merge.
 
@@ -16,7 +16,7 @@
  */
 import mongoose from 'mongoose';
 import { SearchQueryLog } from '../models/SearchQueryLog.js';
-import { SEARCH_FALLBACK_REASON_LIST } from '../utils/constants.js';
+import { AI_MAX_CANDIDATES, SEARCH_FALLBACK_REASON_LIST } from '../utils/constants.js';
 
 /**
  * Append one telemetry row.
@@ -69,6 +69,10 @@ export async function summarize(orgId, { from, to, kind }) {
               total: { $sum: 1 },
               aiAssisted: { $sum: { $cond: ['$aiAssisted', 1, 0] } },
               zeroResults: { $sum: { $cond: [{ $eq: ['$resultCount', 0] }, 1, 0] } },
+              // Searches whose catalogue was cut off at the candidate cap (OD-10's trigger).
+              candidateCapHits: {
+                $sum: { $cond: [{ $gte: ['$candidateCount', AI_MAX_CANDIDATES] }, 1, 0] },
+              },
               avg: { $avg: '$latencyMs' },
               max: { $max: '$latencyMs' },
               // `$percentile` needs MongoDB 7.0+, which docker-compose and the test server both run.
@@ -98,6 +102,7 @@ export async function summarize(orgId, { from, to, kind }) {
     total: totals?.total ?? 0,
     aiAssisted: totals?.aiAssisted ?? 0,
     zeroResults: totals?.zeroResults ?? 0,
+    candidateCapHits: totals?.candidateCapHits ?? 0,
     fallbacks,
     latencyMs: {
       avg: round(totals?.avg),

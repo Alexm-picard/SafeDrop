@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~100% (written by Claude Code from the SCRUM-206 story)
-// AI-Assisted Areas: fire-and-forget telemetry write that can never fail a search (AT-6); admin summary with rates (AT-4)
+// AI-Assisted Areas: fire-and-forget telemetry write that can never fail a search (AT-6); admin summary with rates (AT-4); candidate-cap count for the dashboard's AI search card (OD-10)
 // Human Contributions: pending review
 // Notes: Written for SCRUM-206. Must be reviewed and tested by the owning team member before merge.
 
@@ -20,6 +20,7 @@
  * Exports: `recordSearch(orgId, row)`, `summarize(orgId, filters)`.
  */
 import * as searchLogRepo from '../../repositories/searchQueryLog.repository.js';
+import { AI_MAX_CANDIDATES } from '../../utils/constants.js';
 import { logger } from '../../utils/logger.js';
 
 const log = logger.child({ component: 'search-telemetry' });
@@ -56,7 +57,8 @@ export function recordSearch(orgId, row) {
  * settled by the route's `audit:read` permission, so there is no role logic here.
  *
  * Rates are fractions between 0 and 1, and `null` when there were no searches — "no data" is not the
- * same thing as "0% fell back".
+ * same thing as "0% fell back". `candidateCapHits` counts searches that sent the model the full
+ * `candidateCap` candidates, i.e. whose catalogue was cut off (OD-10).
  * @param {string} orgId the caller's organisation, from the access token
  * @param {{ from?: Date, to?: Date, kind?: string }} [filters]
  * @param {{ now?: Date }} [options] injectable clock for tests
@@ -77,6 +79,9 @@ export async function summarize(orgId, { from, to, kind } = {}, { now = new Date
     fallbackRate: rate(fallbackTotal),
     zeroResults: stats.zeroResults,
     zeroResultRate: rate(stats.zeroResults),
+    // A count, not a rate: one search reaching the cap already means that catalogue is being cut off.
+    candidateCapHits: stats.candidateCapHits,
+    candidateCap: AI_MAX_CANDIDATES,
     latencyMs: stats.latencyMs,
   };
 }

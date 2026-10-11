@@ -1,7 +1,7 @@
 /* AI-USAGE SUMMARY
    Tools: Claude Code
    Overall AI Contribution: ~90% (skeleton generated from team design documents)
-   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150); UI rework: page headers, panels, detail grids, status badges, linked stat tiles, timeline, table polish; SCRUM-241 redesign: Pegboard Daylight tokens, fonts and pill controls; the pegboard side rail, top bar and ⌘K palette; the overview strip and loan timeline; catalogue gallery; request board; side panel; users roster, groups grid, audit feed, settings rules, asset form preview
+   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150); UI rework: page headers, panels, detail grids, status badges, linked stat tiles, timeline, table polish; SCRUM-241 redesign: Pegboard Daylight tokens, fonts and pill controls; the pegboard side rail, top bar and ⌘K palette; the overview strip and loan timeline; catalogue gallery; request board; side panel; users roster, groups grid, audit feed, settings rules, asset form preview; AI search card, "Ranked by AI" badge and search placeholder cards (SCRUM-206)
    Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
    Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. */
 
@@ -3468,5 +3468,147 @@ th.numeric {
   }
   .peg-toggle:active:not([disabled])::before {
     transform: none;
+  }
+}
+
+/* AI search, made visible (SCRUM-206 card, "Ranked by AI" / "Suggested by AI" labels). */
+.ai-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+.search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.search-meta .hint {
+  margin: 0;
+}
+.search-pending {
+  color: var(--text-2);
+}
+
+/* Placeholder cards while a search runs: the gallery's shape, with a slow sheen and no content. */
+.skeleton-card {
+  aspect-ratio: 16 / 15;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: linear-gradient(
+      100deg,
+      transparent 30%,
+      color-mix(in srgb, var(--surface) 70%, transparent) 50%,
+      transparent 70%
+    )
+    var(--surface-2);
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.4s linear infinite;
+}
+@keyframes skeleton-sheen {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-card {
+    animation: none;
+  }
+}
+
+/* The dashboard's AI search card: sits under the activity chart, styled as its sibling cards. */
+.ai-health {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+.ai-health-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+}
+.ai-health-head h2,
+.ai-health-head .hint,
+.ai-health-note,
+.ai-health-cap {
+  margin: 0;
+}
+.ai-health-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.ai-health-error .hint {
+  margin: 0;
+}
+.ai-health-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.ai-health-figures .stat + .stat {
+  border-left: 1px solid var(--border);
+}
+.ai-health-figures .stat dd {
+  font-size: 2.25rem;
+}
+.ai-health-figures .stat dd.stat-detail {
+  margin: 0;
+  font: 500 0.8125rem/1.4 var(--sans);
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.ai-health-outcomes {
+  display: grid;
+  gap: var(--space-3);
+}
+.ai-health-outcomes .hint {
+  margin: 0;
+}
+[data-swatch='ai-ranked'] {
+  background: var(--ok);
+}
+[data-swatch='ai-off'] {
+  background: var(--neutral);
+}
+[data-swatch='ai-down'] {
+  background: var(--danger);
+}
+[data-swatch='ai-unusable'] {
+  background: #d08a12;
+}
+@media (max-width: 48rem) {
+  .ai-health-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ai-health-figures .stat + .stat {
+    border-left: 0;
+  }
+  .ai-health-figures .stat:nth-child(even) {
+    border-left: 1px solid var(--border);
+  }
+  .ai-health-figures .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
   }
 }

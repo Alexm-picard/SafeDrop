@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-102 AC2);
+// AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-102 AC2);; the AI search card is on the page
 //   overdue/pending tiles and the 30-day activity chart (SCRUM-102 AT1); SCRUM-241: the attention tiles are their own list on the board
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
@@ -49,6 +49,14 @@ describe('AdminDashboardPage', () => {
       String(summary.pendingRequests),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('shows the AI search card, below the dashboard’s own figures', async () => {
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+
+    const card = await screen.findByRole('region', { name: 'AI search' });
+    // Its own figures arrive from its own request; the details are AiSearchHealth.test.jsx's job.
+    expect(await within(card).findByLabelText('AI search summary')).toBeInTheDocument();
   });
 
   it('shows how many units are in maintenance (SCRUM-141)', async () => {

@@ -190,6 +190,25 @@ export const similarItems = {
   aiAssisted: true,
 };
 
+/**
+ * What `GET /api/search-telemetry` answers (SCRUM-206), internally consistent the way the API's own
+ * numbers are: `aiAssisted` plus the three fallbacks is `total`, and the rates are those counts over it.
+ */
+export const searchTelemetrySummary = {
+  from: '2026-09-11T12:00:00.000Z',
+  to: '2026-10-11T12:00:00.000Z',
+  kind: null,
+  total: 40,
+  aiAssisted: 30,
+  fallbacks: { disabled: 0, unavailable: 6, contract: 4 },
+  fallbackRate: 0.25,
+  zeroResults: 2,
+  zeroResultRate: 0.05,
+  candidateCapHits: 0,
+  candidateCap: 100,
+  latencyMs: { avg: 4800, p50: 4600, p95: 6900, max: 7400 },
+};
+
 /** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */
 export const assetUnits = {
   [assets[0].id]: [
@@ -683,6 +702,7 @@ export const handlers = [
     return HttpResponse.json({ graceHours });
   }),
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
+  http.get('*/api/search-telemetry', () => HttpResponse.json(searchTelemetrySummary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
   ),

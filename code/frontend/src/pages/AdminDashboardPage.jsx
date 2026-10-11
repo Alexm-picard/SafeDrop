@@ -4,7 +4,8 @@
 // AI-Assisted Areas: admin dashboard with stat tiles from GET /api/dashboard/summary; ErrorState + retry on failure (SCRUM-102);
 //   pending/overdue tiles and the 30-day checkout activity chart (SCRUM-102); a Requested tile for reserved units;
 //   UI rework: tiles grouped by purpose, each linking to the screen that answers it, quick actions;
-//   SCRUM-241: the Overview — an attention strip with the inventory as one stacked bar, the loan timeline, the activity chart
+//   SCRUM-241: the Overview — an attention strip with the inventory as one stacked bar, the loan timeline, the activity chart;
+//   the AI search card from search telemetry (SCRUM-206, OD-10)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -14,7 +15,8 @@
  *
  * SCRUM-241: the figures sit in one strip under the title — the three that ask the admin to act, then
  * the inventory as a single stacked bar with its counts as the legend — and below it the loan timeline
- * (every live request on its dates, against today) and the checkout chart.
+ * (every live request on its dates, against today) and the checkout chart. Last, the AI search card
+ * (`AiSearchHealth`), which loads its own figures so it never delays the rest.
  *
  * Nine figures and one chart, from a single `GET /api/dashboard/summary`. One request rather than
  * one per number, so every tile on the screen describes the same moment.
@@ -30,6 +32,7 @@
  * the alarm is never colour alone (NFR-12).
  */
 import { Link } from 'react-router';
+import { AiSearchHealth } from '../components/AiSearchHealth';
 import { CheckoutActivityChart } from '../components/CheckoutActivityChart';
 import { LoanTimeline } from '../components/LoanTimeline';
 import { ErrorState } from '../components/ErrorState';
@@ -200,6 +203,7 @@ export function AdminDashboardPage() {
             <h2 id="activity-heading">Checkout activity</h2>
             <CheckoutActivityChart activity={data.activity} />
           </section>
+          <AiSearchHealth />
         </>
       ) : null}
     </>
