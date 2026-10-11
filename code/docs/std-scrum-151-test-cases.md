@@ -147,10 +147,47 @@ Stated so the STD does not imply more coverage than exists.
 
 For the STD's traceability column, and for updating SCRUM-151 itself.
 
-| AC          | As written                                               | As built, and why                                                                                                                                                                                                                                                                                                                 |
-| :---------- | :------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AT-3        | "up to five available assets from the **same category**" | Up to five from the **same candidate set as the AI path** — the whole catalogue, narrowed by the AT-2 filters. Foundry can be up for one request and down for the next, and a fallback scoped more narrowly would make the section's contents change kind rather than just lose their ranking. Agreed with the Requirements lead. |
-| AT-1        | "a link to **request** it"                               | A link to the recommended asset's own page, labelled "View <name>". Requesting needs a unit and a date range, which that page already asks for; a one-click Request here would promise something it cannot finish. Same journey, named for what the link does.                                                                    |
-| Design note | `GET /api/assets/:assetId/alternatives`                  | `GET /api/assets/:id/alternatives`, reusing the shared `idParams` schema like the other nine routes on that router. The ticket called the path a proposal.                                                                                                                                                                        |
-| —           | Not stated                                               | The AI path is also capped at five. The model's output contract allows ten, so without the cap the section would hold ten options with Foundry up and five with it down.                                                                                                                                                          |
-| —           | Not stated                                               | The section is offered to every role, not only members: anyone who can browse the catalogue can be stuck in front of a dead end.                                                                                                                                                                                                  |
+| AC          | As written                                               | As built, and why                                                                                                                                                                                                                                                                                                                                                                     |
+| :---------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AT-3        | "up to five available assets from the **same category**" | **Superseded by SCRUM-184 (Iteration 3); see §10.** Up to five from the **same candidate set as the AI path** — the whole catalogue, narrowed by the AT-2 filters. Foundry can be up for one request and down for the next, and a fallback scoped more narrowly would make the section's contents change kind rather than just lose their ranking. Agreed with the Requirements lead. |
+| AT-1        | "a link to **request** it"                               | A link to the recommended asset's own page, labelled "View <name>". Requesting needs a unit and a date range, which that page already asks for; a one-click Request here would promise something it cannot finish. Same journey, named for what the link does.                                                                                                                        |
+| Design note | `GET /api/assets/:assetId/alternatives`                  | `GET /api/assets/:id/alternatives`, reusing the shared `idParams` schema like the other nine routes on that router. The ticket called the path a proposal.                                                                                                                                                                                                                            |
+| —           | Not stated                                               | The AI path is also capped at five. The model's output contract allows ten, so without the cap the section would hold ten options with Foundry up and five with it down.                                                                                                                                                                                                              |
+| —           | Not stated                                               | The section is offered to every role, not only members: anyone who can browse the catalogue can be stuck in front of a dead end.                                                                                                                                                                                                                                                      |
+
+## 10. Addendum: SCRUM-184 (Iteration 3)
+
+Added after this document was completed, so the counts above are unchanged.
+
+The AT-3 deviation in §9 was reversed. Run against the live agent, the fallback's candidate set, "the
+same candidate set as the AI path", turned out to be the catalogue in name order. The alternatives
+query ("Laptop b laptop") was regex-matched like a typed search, matched nothing, and fell through to
+the alphabetical page. The live model then recommended a camera and a projector for a laptop. As
+built now:
+
+- The candidates are the asset's category first (case-insensitive), then the rest of the catalogue.
+- The model is asked for a substitute, not a search for the asset's own words.
+- The fallback is the **same-category** part of the AT-2-filtered candidates: AT-3 as written.
+
+File: `code/backend/tests/unit/services/assetAlternatives.test.js` (6 new cases, 21 in the file)
+
+| #   | Covers    | Case                                                                                       | Expected result                                                             |
+| :-- | :-------- | :----------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| 30  | AT-3      | Foundry off, failing, or off-contract; two spare cameras and two available projectors      | Every path offers only cameras, never a projector                           |
+| 31  | AT-3      | Foundry off; no other camera, but an available projector                                   | `{ alternatives: [], aiAssisted: false }`, not the projector                |
+| 32  | AT-3      | Foundry off; a spare filed as `Camera` (capitalised) for a stuck `camera` — **regression** | Offered: the category matches ignoring case                                 |
+| 33  | SCRUM-184 | 100 other-category assets sorting before the only spare camera                             | The camera is sent to the model; the tripods never are (no AVAILABLE unit)  |
+| 34  | SCRUM-184 | A camcorder (`Canon XA11`) and a camera (`Sony A7 IV`) available                           | Sent in that order: camera first, camcorder still sent                      |
+| 35  | SCRUM-184 | Any dead end                                                                               | The query names the asset and its category, and asks what to borrow instead |
+
+Cases 30, 31 and 33–35 were run against the Iteration 2 service code first and failed. Case 32 passed
+there only because the old fallback offered everything. It guards the new filter.
+
+Endpoint case 16 changed with it. Org A's laptop used to be "rescued" by the seeded camera. The case
+now stocks a spare laptop and expects only that, with the camera explicitly absent.
+
+**Manual check against the live Foundry agent** (seeded `org-b`): no suggestion for a laptop while only
+a camera and a projector were available; a Chromebook filed under `Computer` offered with a reason; a
+`Laptop`-category Dell ranked first once added; with Foundry unreachable, only the Dell, `reason: null`.
+
+Full suite at the time of the addendum: backend 1165 passed, 6 skipped, 0 failed (48 files).

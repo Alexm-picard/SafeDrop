@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped Asset persistence (SDD §2.4)
+// AI-Assisted Areas: tenant-scoped Asset persistence (SDD §2.4); case-insensitive category lookup for alternatives (SCRUM-184)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 0ce2729).
 
@@ -98,6 +98,23 @@ export async function list(orgId, { includeRetired = false, category, page = 1, 
     Asset.countDocuments(filter),
   ]);
   return { items, total, page, limit };
+}
+
+/**
+ * The tenant's assets in exactly `category`, ignoring case, sorted by name (SCRUM-184).
+ *
+ * The first place to look for a substitute: an unavailable camera is most likely replaced by another
+ * camera. Case-insensitive because categories are free text typed per asset, so "Camera" and "camera"
+ * are the same shelf to a member. Anchored and escaped, so it is an exact match and never a pattern.
+ * Retired assets are left out, as in `search()`.
+ * @param {string} orgId
+ * @param {string} category
+ * @param {{ limit?: number }} [options]
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function listByCategory(orgId, category, { limit = 50 } = {}) {
+  const pattern = new RegExp(`^${escapeRegExp(category)}$`, 'i');
+  return Asset.find({ orgId, retiredAt: null, category: pattern }).sort({ name: 1 }).limit(limit);
 }
 
 /**

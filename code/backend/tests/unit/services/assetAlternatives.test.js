@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~85% (test-first pairing session; each test written and run red before its production code)
-// AI-Assisted Areas: unit tests for AI-recommended alternatives (SCRUM-151) — AT-1 to AT-4
+// AI-Assisted Areas: unit tests for AI-recommended alternatives (SCRUM-151) — AT-1 to AT-4; same-category fallback and substitute pool (SCRUM-184)
 // Human Contributions: acceptance criteria, test ordering and the red/green decisions by Mateus Silva
 // Notes: Reuses the SCRUM-103 harness: Foundry mocked, repositories real against the per-file in-memory database.
 
@@ -342,12 +342,12 @@ describe('SCRUM-151 AT-2: recommendations respect every boundary', () => {
 /**
  * AT-3, the fallback. Three different upstream failures, one behaviour: the section still renders.
  *
- * **Deviation from AT-3 as written, agreed with the Requirements lead.** The criterion says "up to
- * five available assets from the same category". The fallback here instead uses the *same* candidate
- * set as the AI path — the whole catalogue, narrowed by the AT-2 filters — capped at five. The reason
- * is that Foundry can be up for one request and down for the next, and a fallback scoped more narrowly
- * than the AI path would make the section's contents visibly change kind rather than just lose their
- * ranking. The ticket and the Iteration 2 STD need updating to match.
+ * **AT-3 as written (SCRUM-184): "up to five available assets from the same category".** Iteration 2
+ * shipped a deviation, where the fallback used the AI path's whole candidate set, so the section would
+ * not change kind when Foundry flapped. Run against the live agent, that set turned out to be the
+ * catalogue in name order, and it offered a projector to someone stuck on a laptop. The fallback is now
+ * the same-category part of the AI path's candidates. Same-category items also lead the model's pool,
+ * so the two paths still mostly agree.
  *
  * Fallback entries carry `reason: null`. Without the model there is no explanation to show, and
  * writing a plausible-sounding one in the service would put words in the model's mouth.
@@ -474,6 +474,146 @@ describe('SCRUM-151 AT-3: graceful fallback without AI', () => {
 
     // A dead-end page needs a handful of options, not a second catalogue.
     expect(result.alternatives).toHaveLength(5);
+  });
+
+  it('offers only the same category, whichever way the AI failed (SCRUM-184)', async () => {
+    // Available, eligible, and earlier in the alphabet than the camera: the old fallback offered it.
+    const projector = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Acer Projector', category: 'projector', description: 'Classroom projector' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+    const failures = [
+      () => foundry.isFoundryEnabled.mockReturnValue(false),
+      () => {
+        foundry.isFoundryEnabled.mockReturnValue(true);
+        foundry.foundryRequest.mockRejectedValue(new ServiceUnavailableError('timeout'));
+      },
+      () => {
+        foundry.isFoundryEnabled.mockReturnValue(true);
+        foundry.foundryRequest.mockResolvedValue(foundryReply('not json'));
+      },
+    ];
+
+    for (const fail of failures) {
+      fail();
+      const result = await alternativesFor();
+
+      // The seed's own "Projector A" is available too, so two cross-category items are on offer here.
+      expect(result.aiAssisted).toBe(false);
+      expect(result.alternatives.map((a) => a.assetId)).toContain(String(onTheShelf._id));
+      expect(result.alternatives.map((a) => a.assetId)).not.toContain(String(projector._id));
+      expect(result.alternatives.every((a) => a.category === 'camera')).toBe(true);
+    }
+  });
+
+  it('offers nothing rather than another category when the category has no spare', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(false);
+    // Every other camera goes, the seed's included; the seed's projector stays available.
+    for (const camera of await assetRepo.listByCategory(seed.a.orgId, 'camera')) {
+      if (String(camera._id) !== String(stuckOn._id)) {
+        await assetRepo.retire(seed.a.orgId, String(camera._id));
+      }
+    }
+    await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Acer Projector', category: 'projector', description: 'Classroom projector' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+
+    const result = await alternativesFor();
+
+    expect(result).toEqual({ alternatives: [], aiAssisted: false });
+  });
+
+  it('matches the category ignoring case, since categories are typed per asset', async () => {
+    foundry.isFoundryEnabled.mockReturnValue(false);
+    const capitalised = await assetWithUnits(
+      seed.a.orgId,
+      { name: 'Nikon Z6', category: ' Camera ', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+
+    const ids = (await alternativesFor()).alternatives.map((a) => a.assetId);
+
+    expect(ids).toEqual(expect.arrayContaining([String(onTheShelf._id), String(capitalised._id)]));
+  });
+});
+
+describe('SCRUM-184: what the model is shown', () => {
+  // No two-org seed here: its own camera and projector would sit in every pool, and these tests pin
+  // the pool's exact order. Tenant isolation of the pool is AT-2's job, above.
+  let stuckOn;
+
+  beforeEach(async () => {
+    foundry.isFoundryEnabled.mockReturnValue(true);
+    foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+    stuckOn = await assetWithUnits(
+      ORG,
+      { name: 'Canon EOS R6', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.OUT],
+    );
+  });
+
+  const alternativesFor = () => getAlternatives(ORG, MEMBER, String(stuckOn._id));
+
+  function sentToModel() {
+    const [, body] = foundry.foundryRequest.mock.calls[0];
+    return JSON.parse(body.input);
+  }
+
+  it('sends the same category even when a full page of other assets sorts before it', async () => {
+    // The Iteration 2 pool was the catalogue in name order, capped at 100: in an organisation with a
+    // hundred tripods named "A…", the one camera that could stand in for the R6 never reached the model.
+    await Promise.all(
+      Array.from({ length: 100 }, (_, i) =>
+        assetRepo.create(ORG, {
+          name: `A tripod ${String(i).padStart(3, '0')}`,
+          category: 'tripod',
+        }),
+      ),
+    );
+    const sony = await assetWithUnits(
+      ORG,
+      { name: 'Sony A7 IV', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+
+    await alternativesFor();
+
+    expect(sentToModel().assets.map((asset) => asset.id)).toEqual([String(sony._id)]);
+  });
+
+  it('puts the same category first, and still lets the model see other categories', async () => {
+    const camcorder = await assetWithUnits(
+      ORG,
+      { name: 'Canon XA11', category: 'camcorder', description: 'Compact camcorder' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+    const sony = await assetWithUnits(
+      ORG,
+      { name: 'Sony A7 IV', category: 'camera', description: 'Full-frame mirrorless' },
+      [UNIT_STATUS.AVAILABLE],
+    );
+
+    await alternativesFor();
+
+    // "Canon XA11" sorts before "Sony A7 IV"; category, not the alphabet, decides who leads.
+    expect(sentToModel().assets.map((asset) => asset.id)).toEqual([
+      String(sony._id),
+      String(camcorder._id),
+    ]);
+  });
+
+  it('asks for a substitute, not a search for the asset’s own words', async () => {
+    await assetWithUnits(ORG, { name: 'Sony A7 IV', category: 'camera' }, [UNIT_STATUS.AVAILABLE]);
+
+    await alternativesFor();
+
+    const { query } = sentToModel();
+    expect(query).toContain('"Canon EOS R6"');
+    expect(query).toContain('category: camera');
+    expect(query).toMatch(/instead/);
   });
 });
 
