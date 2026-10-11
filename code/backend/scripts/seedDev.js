@@ -4,7 +4,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
 // AI-Assisted Areas: `npm run seed` CLI wrapper — connects, wipes/reseeds org-a and org-b, prints credentials
-// Human Contributions: reviewed by Mateus Silva (PR #12, 2026-09-19)
+// Human Contributions: seed script added and extended to match unit states by Orelmis Toribio (SCRUM-109); reviewed by Mateus Silva (PR #12, 2026-09-19); follow-up seed requests merged by Mateus Silva (PR #13, 2026-09-19); later changes merged by Alexa Stein (PR #22, 2026-09-19); latest changes reviewed and approved by Alex Picard (PR #41, 2026-09-21)
 
 /**
  * `npm run seed`: wipes and reseeds the two demo organizations (see seedTwoOrgs), then prints

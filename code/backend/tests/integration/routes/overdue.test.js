@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~100% (written by Claude Code for the mark-overdue story, Lab 3)
 // AI-Assisted Areas: markOverdue against real MongoDB: which requests move, the dueAt boundary,
 //   idempotence, tenant isolation, agreement with the dashboard count, and the admin endpoint
-// Human Contributions: written by Orelmis Toribio; reviewed and approved by Alex Picard (PR #50, 2026-09-29); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Human Contributions: story owned, prompted and committed by Orelmis Toribio; reviewed and approved by Alex Picard (PR #50, 2026-09-29); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Integration tests for marking late checkouts OVERDUE (mark-overdue story).

@@ -3,7 +3,7 @@
 // Overall AI Contribution: ~100% (written by Claude Code for the mark-overdue story, Lab 3)
 // AI-Assisted Areas: the service contract of markOverdue — `now` is passed in, the tenant is
 //   required, and the count comes back from the repository unchanged
-// Human Contributions: written by Orelmis Toribio; reviewed and approved by Alex Picard (PR #50, 2026-09-29); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
+// Human Contributions: story owned, prompted and committed by Orelmis Toribio; reviewed and approved by Alex Picard (PR #50, 2026-09-29); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
  * Unit tests for `checkout.service.markOverdue` (mark-overdue story).
