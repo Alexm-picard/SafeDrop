@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 1 of 3 commits co-authored by Claude Code)
-// AI-Assisted Areas: Microsoft Foundry transport and configuration (SCRUM-103)
+// AI-Assisted Areas: Microsoft Foundry transport and configuration (SCRUM-103); one retry on a fast transient failure (SCRUM-244)
 // Human Contributions: reviewed and approved by Alex Picard (PR #45, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -250,5 +250,94 @@ describe('foundryRequest', () => {
     expect(serialised).not.toContain('Dell XPS');
     // And the credential, which would survive in the log long after the key was rotated.
     expect(serialised).not.toContain('test-key-not-a-real-secret');
+  });
+});
+
+describe('foundryRequest: one retry on a fast transient failure (SCRUM-244)', () => {
+  /** A response object for `fetch` to resolve with. */
+  const answer = (status, body = {}) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  });
+
+  it('retries a 503 once and returns the second answer', async () => {
+    configureFoundry();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(answer(503))
+      .mockResolvedValueOnce(answer(200, { ok: 1 }));
+
+    await expect(foundryRequest(ORG_ID, {})).resolves.toEqual({ ok: 1 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // The blip is still visible to operators, with its status.
+    expect(logLines.join('\n')).toContain('retrying once');
+  });
+
+  it('retries a 429 and a network error the same way', async () => {
+    configureFoundry();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(answer(429))
+      .mockResolvedValueOnce(answer(200, { a: 1 }));
+    await expect(foundryRequest(ORG_ID, {})).resolves.toEqual({ a: 1 });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    fetchSpy.mockReset();
+    fetchSpy
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(answer(200, { b: 2 }));
+    await expect(foundryRequest(ORG_ID, {})).resolves.toEqual({ b: 2 });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries only once: two failures in a row still end in a 503', async () => {
+    configureFoundry();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(503));
+
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a 400: the same request would be refused again', async () => {
+    configureFoundry();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(400));
+
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a timeout: the deadline is already spent', async () => {
+    configureFoundry();
+    const timeout = Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(timeout);
+
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('never starts the retry after the deadline, so the wait cannot grow', async () => {
+    // 50 ms is shorter than the pause before a retry, so the deadline fires while waiting.
+    configureFoundry({ FOUNDRY_TIMEOUT_MS: 50 });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(503));
+    const started = Date.now();
+
+    await expect(foundryRequest(ORG_ID, {})).rejects.toMatchObject({ status: 503 });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+
+  it('gives both attempts the same deadline signal', async () => {
+    configureFoundry();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(answer(502))
+      .mockResolvedValueOnce(answer(200));
+
+    await foundryRequest(ORG_ID, {});
+
+    expect(fetchSpy.mock.calls[0][1].signal).toBe(fetchSpy.mock.calls[1][1].signal);
   });
 });
