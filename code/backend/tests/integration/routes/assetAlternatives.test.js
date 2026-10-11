@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~85% (test-first pairing session; written and run red before the route existed)
-// AI-Assisted Areas: integration tests for GET /api/assets/:id/alternatives (SCRUM-151, SCRUM-185)
+// AI-Assisted Areas: integration tests for GET /api/assets/:id/alternatives (SCRUM-151, SCRUM-185); same-category fallback (SCRUM-184)
 // Human Contributions: acceptance criteria and the red/green decisions by Mateus Silva
 // Notes: The service's own behaviour is covered in tests/unit/services/assetAlternatives.test.js.
 
@@ -14,7 +14,8 @@
  *
  * The fixture is doing real work here. `seedTwoOrgs` leaves org A's laptop with its three units
  * REQUESTED, OUT and HELD — a genuine dead end, with no setup needed — while the camera and projector
- * both have an AVAILABLE unit to recommend.
+ * both have an AVAILABLE unit. Neither is a substitute for a laptop, so the fallback must not offer
+ * them (SCRUM-184); the first test stocks a spare laptop for it to find.
  *
  * Foundry is mocked and off by default, so these tests exercise the route against the fallback path
  * and need no live endpoint.
@@ -32,6 +33,9 @@ const { default: app } = await import('../../../src/app.js');
 const foundry = await import('../../../src/services/ai/foundry.client.js');
 const { accessCookieFor } = await import('../../helpers/authAs.js');
 const { seedTwoOrgs } = await import('../../helpers/seedTwoOrgs.js');
+const assetRepo = await import('../../../src/repositories/asset.repository.js');
+const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
+const { UNIT_STATUS } = await import('../../../src/utils/constants.js');
 
 let seed;
 /** Org A's laptop: every unit REQUESTED, OUT or HELD, which is the dead end this feature answers. */
@@ -52,15 +56,25 @@ function alternatives(user, assetId) {
 
 describe('GET /api/assets/:id/alternatives (SCRUM-151)', () => {
   it('offers a member something they can borrow instead', async () => {
+    const spare = await assetRepo.create(seed.a.orgId, {
+      name: 'Spare laptop',
+      category: 'laptop',
+    });
+    await unitRepo.create(seed.a.orgId, {
+      assetId: spare._id,
+      tag: 'spare-1',
+      status: UNIT_STATUS.AVAILABLE,
+    });
+
     const res = await alternatives(seed.a.member, stuckOn._id);
 
     expect(res.status).toBe(200);
     expect(res.body.aiAssisted).toBe(false);
-    // The camera and the projector each have an AVAILABLE unit; the laptop itself must not appear.
+    // The spare laptop, and not the laptop itself. Nor the camera or the projector: both have an
+    // AVAILABLE unit, but without the model only the same category is offered (SCRUM-184).
     const ids = res.body.alternatives.map((a) => a.assetId);
-    expect(ids.length).toBeGreaterThan(0);
-    expect(ids).not.toContain(String(stuckOn._id));
-    expect(ids).toContain(String(seed.a.extraAssets[0].asset._id));
+    expect(ids).toEqual([String(spare._id)]);
+    expect(ids).not.toContain(String(seed.a.extraAssets[0].asset._id));
   });
 
   it('answers 404, never 403, for another organisation’s asset id (SR-2)', async () => {
