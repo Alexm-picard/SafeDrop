@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 10 of 16 commits co-authored by Claude Code)
-// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185); category-first substitutes and same-category fallback (SCRUM-184); word-match candidate pick (SCRUM-243)
+// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185); category-first substitutes and same-category fallback (SCRUM-184); word-match candidate pick (SCRUM-243); word-matching plain-search fallback (SCRUM-244)
 // Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -491,9 +491,22 @@ export function queryWords(query) {
   return [...new Set(words)].slice(0, MAX_QUERY_WORDS);
 }
 
-/** The catalogue fallback: a case-insensitive match on name, description and category. */
+/**
+ * The catalogue fallback, and the whole search when AI is off: assets containing the query as typed,
+ * then assets containing its words, the most words first, up to `PLAIN_SEARCH_LIMIT` (SCRUM-244).
+ *
+ * The phrase match alone answered "something to record a lecture" with "No assets match", because no
+ * asset contains that sentence. That was the screen members saw whenever the AI failed, so a transient
+ * Foundry error looked like an empty catalogue. Word matches ("record" in "Recorder", "lecture" in its
+ * description) give a fallback worth showing. Phrase matches still come first, so a member who types an
+ * asset's name sees it at the top exactly as before.
+ */
 async function plainSearch(orgId, query) {
-  const assets = await assetRepo.search(orgId, query, { limit: PLAIN_SEARCH_LIMIT });
+  const [phrase, byWord] = await Promise.all([
+    assetRepo.search(orgId, query, { limit: PLAIN_SEARCH_LIMIT }),
+    assetRepo.searchAnyWord(orgId, queryWords(query), { limit: PLAIN_SEARCH_LIMIT }),
+  ]);
+  const assets = uniqueById([...phrase, ...byWord]).slice(0, PLAIN_SEARCH_LIMIT);
   const restrictions = await restrictionsOf(orgId, assets);
   return {
     matches: assets.map((asset, i) => ({

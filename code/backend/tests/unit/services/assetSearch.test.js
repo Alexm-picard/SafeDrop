@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 6 of 16 commits co-authored by Claude Code)
-// AI-Assisted Areas: AC1 plain search when AI is off (SCRUM-103, SCRUM-145, SCRUM-146, SCRUM-200); word-match candidate pick (SCRUM-243)
+// AI-Assisted Areas: AC1 plain search when AI is off (SCRUM-103, SCRUM-145, SCRUM-146, SCRUM-200); word-match candidate pick (SCRUM-243); word-matching plain search (SCRUM-244)
 // Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -136,6 +136,47 @@ describe('SCRUM-103 AC1: plain search when AI is off', () => {
     expect(names).toHaveLength(50);
     // Capped after sorting, so the cut is predictable rather than whatever order Mongo returned.
     expect(names).not.toContain('Asset 050');
+  });
+
+  it('SCRUM-244: finds items by the words of a sentence that matches nothing as a phrase', async () => {
+    // What members saw on staging whenever the AI failed: "No assets match".
+    const recorder = await assetRepo.create(ORG, {
+      name: 'Zoom H1n Recorder',
+      category: 'Audio',
+      description: 'Pocket recorder for simple lecture capture',
+    });
+    await assetRepo.create(ORG, { name: 'Tripod', category: 'Camera Support' });
+
+    const result = await searchAssets(ORG, 'something to record a lecture');
+
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
+    expect(result.aiAssisted).toBe(false);
+  });
+
+  it('SCRUM-244: still puts a phrase match first, then word matches by how many words they hit', async () => {
+    const oneWord = await assetRepo.create(ORG, { name: 'Audio Recorder', category: 'Audio' });
+    const twoWords = await assetRepo.create(ORG, {
+      name: 'Field Recorder',
+      category: 'Audio',
+      description: 'For lecture capture',
+    });
+    const phrase = await assetRepo.create(ORG, {
+      name: 'Kit',
+      category: 'Misc',
+      description: 'Use it to record a lecture anywhere',
+    });
+
+    const result = await searchAssets(ORG, 'record a lecture');
+
+    expect(result.matches.map((m) => m.assetId)).toEqual([phrase.id, twoWords.id, oneWord.id]);
+  });
+
+  it("SCRUM-244: never returns another organisation's asset through a word match", async () => {
+    await assetRepo.create(OTHER_ORG, { name: 'Zoom H1n Recorder', category: 'Audio' });
+
+    const result = await searchAssets(ORG, 'something to record a lecture');
+
+    expect(result.matches).toEqual([]);
   });
 });
 
@@ -427,6 +468,23 @@ describe('SCRUM-103 AC4: unusable model output falls back to plain search', () =
     expect(warnings[0].orgId).toBe(ORG);
     // The member's words stay out of the log (services/ai/README.md).
     expect(logLines.join('\n').toLowerCase()).not.toContain('recorder');
+  });
+
+  it('SCRUM-244: an outage falls back to word matches, not "No assets match"', async () => {
+    // The staging failure: a sentence query, Foundry briefly down, and an empty page in return.
+    const recorder = await assetRepo.create(ORG, {
+      name: 'Tascam DR-40X Recorder',
+      category: 'Audio',
+      description: 'Records panel sessions and lectures',
+    });
+    foundry.foundryRequest.mockRejectedValue(
+      new ServiceUnavailableError('The AI service is unavailable'),
+    );
+
+    const result = await searchAssets(ORG, 'something to record a lecture');
+
+    expect(result.aiAssisted).toBe(false);
+    expect(result.matches.map((m) => m.assetId)).toEqual([recorder.id]);
   });
 
   // Regression guard, not a red: nothing caught anything before the outage fallback. It exists to stop

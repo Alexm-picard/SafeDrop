@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 1 of 3 commits co-authored by Claude Code)
-// AI-Assisted Areas: Microsoft Foundry transport and configuration (SCRUM-103)
+// AI-Assisted Areas: Microsoft Foundry transport and configuration (SCRUM-103); one retry on a fast transient failure within the same deadline (SCRUM-244)
 // Human Contributions: reviewed and approved by Alex Picard (PR #45, 2026-09-21); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -81,6 +81,10 @@ export function promptFingerprint(prompt) {
  *
  * The timeout is enforced with `AbortSignal.timeout`, so a hung upstream releases the connection at
  * `FOUNDRY_TIMEOUT_MS` instead of holding a request open until the client gives up.
+ *
+ * A fast, transient failure (network error, 429, 5xx) is retried once after a short pause, within
+ * that same deadline (SCRUM-244): on staging, members hit failures that came back in under three
+ * seconds and succeeded when repeated, which is what a retry absorbs without them noticing.
  * @param {string} orgId the calling organisation, from the verified token — first, as in every repository
  * @param {object} body the request payload, already built by the calling feature
  * @param {{ signal?: AbortSignal, prompt?: string }} [options] `prompt` is used only to compute the log fingerprint
@@ -110,27 +114,29 @@ export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
     deployment: env.FOUNDRY_DEPLOYMENT,
     promptHash: prompt ? promptFingerprint(prompt) : undefined,
   };
+  // One deadline for the whole call, retry included (SCRUM-244), so a retry can never make a member
+  // wait longer than FOUNDRY_TIMEOUT_MS.
+  const deadline = signal ?? AbortSignal.timeout(env.FOUNDRY_TIMEOUT_MS);
 
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Key auth. Swap for an Entra bearer token here and nowhere else if the team moves to
-        // managed identity — this is the only place the credential is attached.
-        'api-key': env.FOUNDRY_API_KEY,
-      },
-      body: JSON.stringify(body),
-      signal: signal ?? AbortSignal.timeout(env.FOUNDRY_TIMEOUT_MS),
-    });
-  } catch (err) {
-    // Network failure, DNS, or the timeout firing. `err` carries the detail; the caller gets a 503.
-    log.warn({ ...fields, latencyMs: Date.now() - startedAt, err }, 'foundry request failed');
-    throw new ServiceUnavailableError('The AI service is unavailable', err);
+  let outcome = await attempt(url, body, deadline);
+  if (outcome.retryable) {
+    log.warn(
+      { ...fields, latencyMs: Date.now() - startedAt, status: outcome.response?.status },
+      'foundry call failed fast; retrying once',
+    );
+    await pause(RETRY_DELAY_MS, deadline);
+    if (!deadline.aborted) {
+      outcome = await attempt(url, body, deadline);
+    }
   }
 
   const latencyMs = Date.now() - startedAt;
+  if (outcome.error) {
+    // Network failure, DNS, or the timeout firing. `err` carries the detail; the caller gets a 503.
+    log.warn({ ...fields, latencyMs, err: outcome.error }, 'foundry request failed');
+    throw new ServiceUnavailableError('The AI service is unavailable', outcome.error);
+  }
+  const { response } = outcome;
   if (!response.ok) {
     // The upstream body is deliberately neither logged nor forwarded. Foundry's error responses quote
     // the offending request back, prompt included, so writing one to the log would put a tenant's
@@ -154,4 +160,61 @@ export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
 
   log.info({ ...fields, latencyMs, status: response.status }, 'foundry request completed');
   return parsed;
+}
+
+/**
+ * How long to wait before the one retry. Long enough for a momentary blip or a per-second rate limit
+ * to clear, short enough that a member does not notice it on top of a 4-7 second answer.
+ */
+const RETRY_DELAY_MS = 400;
+
+/** Statuses that mean "try again shortly": rate limited, or the upstream briefly unwell. */
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+/**
+ * One call to Foundry, classified (SCRUM-244). Returns `{ response }` for any HTTP answer, or
+ * `{ error }` when the request never got one, plus whether it is worth a second try.
+ *
+ * Retryable: a 429 or a 5xx, and a network error that was not our own deadline firing. Not retryable:
+ * any other 4xx (the request itself is wrong, and will be wrong again) and a timeout (the deadline is
+ * spent, so there is no time left to try in). Measured on staging, the failures members hit came back
+ * in under three seconds, which is this first kind.
+ */
+async function attempt(url, body, deadline) {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Key auth. Swap for an Entra bearer token here and nowhere else if the team moves to
+        // managed identity — this is the only place the credential is attached.
+        'api-key': env.FOUNDRY_API_KEY,
+      },
+      body: JSON.stringify(body),
+      signal: deadline,
+    });
+    return { response, retryable: RETRYABLE_STATUS.has(response.status) };
+  } catch (error) {
+    const timedOut = deadline.aborted || ['TimeoutError', 'AbortError'].includes(error?.name);
+    return { error, retryable: !timedOut };
+  }
+}
+
+/** Wait `ms`, or less if `signal` aborts first. Never rejects. */
+function pause(ms, signal) {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
 }
