@@ -219,6 +219,7 @@ describe('SCRUM-206 AT-4: GET /api/search-telemetry', () => {
         'aiAssisted',
         'candidateCap',
         'candidateCapHits',
+        'daily',
         'fallbackRate',
         'fallbacks',
         'from',
@@ -243,6 +244,46 @@ describe('SCRUM-206 AT-4: GET /api/search-telemetry', () => {
     const res = await getAs(seed.a.admin, PATH);
 
     expect(res.body).toMatchObject({ total: 3, candidateCapHits: 1, candidateCap: 100 });
+  });
+
+  it('splits the range into zero-filled UTC days, ranked against fallen back (SCRUM-242)', async () => {
+    await collection().insertMany([
+      rawRow(seed.a.orgId, {
+        timestamp: new Date('2026-10-02T09:00:00Z'),
+        aiAssisted: true,
+        fallbackReason: null,
+      }),
+      rawRow(seed.a.orgId, { timestamp: new Date('2026-10-02T23:30:00Z') }),
+      rawRow(seed.a.orgId, {
+        timestamp: new Date('2026-10-04T01:00:00Z'),
+        aiAssisted: true,
+        fallbackReason: null,
+      }),
+      // Another organisation's row on a counted day: it must not show up in that day's bar.
+      rawRow(seed.b.orgId, { timestamp: new Date('2026-10-02T12:00:00Z') }),
+    ]);
+
+    const res = await getAs(
+      seed.a.admin,
+      `${PATH}?from=2026-10-01T00:00:00Z&to=2026-10-04T12:00:00Z`,
+    );
+
+    expect(res.body.daily).toEqual([
+      { date: '2026-10-01', aiAssisted: 0, fallback: 0 },
+      { date: '2026-10-02', aiAssisted: 1, fallback: 1 },
+      { date: '2026-10-03', aiAssisted: 0, fallback: 0 },
+      { date: '2026-10-04', aiAssisted: 1, fallback: 0 },
+    ]);
+  });
+
+  it('leaves out the daily series for a range longer than 92 days', async () => {
+    const res = await getAs(
+      seed.a.admin,
+      `${PATH}?from=2026-01-01T00:00:00Z&to=2026-10-01T00:00:00Z`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.daily).toBeNull();
   });
 
   it('ignores an orgId smuggled in the query string (SR-2)', async () => {

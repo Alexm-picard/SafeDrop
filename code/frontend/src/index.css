@@ -1,7 +1,7 @@
 /* AI-USAGE SUMMARY
    Tools: Claude Code
    Overall AI Contribution: ~90% (skeleton generated from team design documents)
-   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150); UI rework: page headers, panels, detail grids, status badges, linked stat tiles, timeline, table polish; SCRUM-241 redesign: Pegboard Daylight tokens, fonts and pill controls; the pegboard side rail, top bar and ⌘K palette; the overview strip and loan timeline; catalogue gallery; request board; side panel; users roster, groups grid, audit feed, settings rules, asset form preview; AI search card, "Ranked by AI" badge and search placeholder cards (SCRUM-206)
+   AI-Assisted Areas: minimal accessible stylesheet: landmarks, visible focus, tablet-friendly layout (NFR-9, NFR-12); .notice, .invite-form and .checkbox for the members screen; .restricted-badge (SCRUM-150); UI rework: page headers, panels, detail grids, status badges, linked stat tiles, timeline, table polish; SCRUM-241 redesign: Pegboard Daylight tokens, fonts and pill controls; the pegboard side rail, top bar and ⌘K palette; the overview strip and loan timeline; catalogue gallery; request board; side panel; users roster, groups grid, audit feed, settings rules, asset form preview; AI search page, trend legend and notice, "Ranked by AI" badge and search placeholder cards (SCRUM-242)
    Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
    Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members-screen styles added for the member-lifecycle ticket. */
 
@@ -3528,42 +3528,58 @@ th.numeric {
   }
 }
 
-/* The dashboard's AI search card: sits under the activity chart, styled as its sibling cards. */
-.ai-health {
+/* The AI search page (SCRUM-242): a status line, the daily trend, then the figures. */
+.ai-search-page {
   display: grid;
-  gap: var(--space-5);
-  margin: var(--space-6) 0;
-  padding: var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  gap: var(--space-6);
 }
-.ai-health-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-4);
+.ai-search-page h2 {
+  margin-top: 0;
 }
-.ai-health-head h2,
-.ai-health-head .hint,
-.ai-health-note,
-.ai-health-cap {
+.ai-search-page > .notice,
+.ai-search-page > .hint {
   margin: 0;
 }
-.ai-health-error {
+.ai-status p:last-child {
+  margin: 0;
+}
+.ai-trend-card .chart {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.chart-legend {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+.chart-legend li {
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
-.ai-health-error .hint {
-  margin: 0;
+.chart-bar[data-swatch='ai-ranked'] {
+  fill: var(--ok);
+}
+.chart-bar[data-swatch='ai-fell-back'] {
+  fill: #d08a12;
+}
+[data-swatch='ai-ranked'] {
+  background: var(--ok);
+}
+[data-swatch='ai-fell-back'] {
+  background: #d08a12;
 }
 .ai-health-figures {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
@@ -3579,24 +3595,26 @@ th.numeric {
   letter-spacing: 0;
   color: var(--muted);
 }
-.ai-health-outcomes {
+.ai-reasons {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
 }
-.ai-health-outcomes .hint {
+.ai-reasons > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: 32rem;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.ai-reasons dd {
   margin: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
-[data-swatch='ai-ranked'] {
-  background: var(--ok);
-}
-[data-swatch='ai-off'] {
-  background: var(--neutral);
-}
-[data-swatch='ai-down'] {
-  background: var(--danger);
-}
-[data-swatch='ai-unusable'] {
-  background: #d08a12;
+.ai-alert {
+  margin-bottom: var(--space-5);
 }
 @media (max-width: 48rem) {
   .ai-health-figures {

@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: smoke test: every route renders its heading for an ORG_ADMIN; placeholders show their ticket; AuthProvider bootstraps from /me
+// AI-Assisted Areas: smoke test: every route renders its heading for an ORG_ADMIN; placeholders show their ticket; AuthProvider bootstraps from /me; /admin/ai-search (SCRUM-242)
 // Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Reviewed before merge; see Human Contributions. Header restored for SCRUM-216 (removed by mistake in 59f009f).
 
@@ -51,6 +51,8 @@ describe('routes', () => {
     // The audit log has no ticket: SCRUM-46 shipped the endpoint and SCRUM-51 the screen, so it
     // renders real data rather than a placeholder. AuditLogPage.test.jsx covers it properly.
     ['/admin/audit', 'Audit log', null],
+    // SCRUM-242: AiSearchPage.test.jsx covers the page itself.
+    ['/admin/ai-search', 'AI search', null],
   ])('%s renders "%s" for an ORG_ADMIN', async (route, heading, ticket) => {
     renderApp(route, authenticatedState(adminUser));
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument();

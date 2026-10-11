@@ -86,6 +86,17 @@ export async function summarize(orgId, { from, to, kind }) {
           { $match: { fallbackReason: { $ne: null } } },
           { $group: { _id: '$fallbackReason', count: { $sum: 1 } } },
         ],
+        // Per UTC day, for the AI search page's trend (SCRUM-242). UTC rather than local days, as the
+        // dashboard's checkout chart does, so the same rows chart the same way wherever the server runs.
+        byDay: [
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+              total: { $sum: 1 },
+              aiAssisted: { $sum: { $cond: ['$aiAssisted', 1, 0] } },
+            },
+          },
+        ],
       },
     },
   ]);
@@ -97,6 +108,10 @@ export async function summarize(orgId, { from, to, kind }) {
   for (const { _id, count } of result?.byReason ?? []) {
     fallbacks[_id] = count;
   }
+  // Keyed by `YYYY-MM-DD`; days with no rows are absent here and zero-filled by the service.
+  const byDay = Object.fromEntries(
+    (result?.byDay ?? []).map(({ _id, total, aiAssisted }) => [_id, { total, aiAssisted }]),
+  );
   const round = (value) => (typeof value === 'number' ? Math.round(value) : null);
   return {
     total: totals?.total ?? 0,
@@ -104,6 +119,7 @@ export async function summarize(orgId, { from, to, kind }) {
     zeroResults: totals?.zeroResults ?? 0,
     candidateCapHits: totals?.candidateCapHits ?? 0,
     fallbacks,
+    byDay,
     latencyMs: {
       avg: round(totals?.avg),
       p50: round(totals?.percentiles?.[0]),

@@ -191,22 +191,37 @@ export const similarItems = {
 };
 
 /**
- * What `GET /api/search-telemetry` answers (SCRUM-206), internally consistent the way the API's own
- * numbers are: `aiAssisted` plus the three fallbacks is `total`, and the rates are those counts over it.
+ * 30 days of AI search, one entry per UTC day: mostly ranked by AI, with three fallbacks late in the
+ * month. The summary below is computed from it, so the fixture is internally consistent the way the
+ * API's numbers are: the daily bars add up to the totals, and the fallback reasons add up to the days'
+ * fallbacks.
+ */
+export const searchTelemetryDaily = Array.from({ length: 30 }, (_, i) => ({
+  date: new Date(Date.UTC(2026, 8, 12) + i * 86_400_000).toISOString().slice(0, 10),
+  aiAssisted: i % 4 === 0 ? 2 : 1,
+  fallback: [20, 25, 27].includes(i) ? 1 : 0,
+}));
+
+const sum = (key) => searchTelemetryDaily.reduce((n, day) => n + day[key], 0);
+
+/**
+ * What `GET /api/search-telemetry` answers (SCRUM-206, SCRUM-242): a healthy month. 41 searches, 38
+ * ranked by AI; the 3 fallbacks are 2 unavailable and 1 unusable answer.
  */
 export const searchTelemetrySummary = {
   from: '2026-09-11T12:00:00.000Z',
   to: '2026-10-11T12:00:00.000Z',
   kind: null,
-  total: 40,
-  aiAssisted: 30,
-  fallbacks: { disabled: 0, unavailable: 6, contract: 4 },
-  fallbackRate: 0.25,
+  total: sum('aiAssisted') + sum('fallback'),
+  aiAssisted: sum('aiAssisted'),
+  fallbacks: { disabled: 0, unavailable: 2, contract: 1 },
+  fallbackRate: sum('fallback') / (sum('aiAssisted') + sum('fallback')),
   zeroResults: 2,
-  zeroResultRate: 0.05,
+  zeroResultRate: 2 / (sum('aiAssisted') + sum('fallback')),
   candidateCapHits: 0,
   candidateCap: 100,
   latencyMs: { avg: 4800, p50: 4600, p95: 6900, max: 7400 },
+  daily: searchTelemetryDaily,
 };
 
 /** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */

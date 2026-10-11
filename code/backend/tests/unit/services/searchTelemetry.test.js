@@ -120,6 +120,19 @@ describe('summarize (AT-4)', () => {
     });
   });
 
+  it('returns one zero-filled entry per UTC day of the default window', async () => {
+    repo.summarize.mockResolvedValue(
+      stats({ byDay: { '2026-10-10': { total: 3, aiAssisted: 2 } } }),
+    );
+
+    const result = await summarize(ORG, {}, { now: new Date('2026-10-10T12:00:00Z') });
+
+    // 30 days back from midday lands mid-day on 9/10, so the window touches 31 UTC days.
+    expect(result.daily).toHaveLength(31);
+    expect(result.daily[0]).toEqual({ date: '2026-09-10', aiAssisted: 0, fallback: 0 });
+    expect(result.daily.at(-1)).toEqual({ date: '2026-10-10', aiAssisted: 2, fallback: 1 });
+  });
+
   it('reports rates as null, not 0, when there were no searches', async () => {
     repo.summarize.mockResolvedValue(
       stats({

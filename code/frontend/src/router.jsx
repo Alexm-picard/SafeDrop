@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members; /admin/settings (SCRUM-148); /admin/groups and /admin/groups/:id (SCRUM-167)
+// AI-Assisted Areas: route table with RequireAuth/RequireRole guards; createAppRouter for the browser, `routes` for tests; /admin/members; /admin/settings (SCRUM-148); /admin/groups and /admin/groups/:id (SCRUM-167); the AI search page (SCRUM-242)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; members route added for the member-lifecycle ticket.
 
@@ -27,6 +27,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { AssetDetailPage } from './pages/AssetDetailPage';
 import { AssetFormPage } from './pages/AssetFormPage';
+import { AiSearchPage } from './pages/AiSearchPage';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
@@ -85,6 +86,8 @@ export const routes = [
               { path: 'admin/groups', element: <GroupsPage /> },
               { path: 'admin/groups/:id', element: <GroupDetailPage /> },
               { path: 'admin/audit', element: <AuditLogPage /> },
+              // SCRUM-242: AI search status, trend and figures, from search telemetry (`audit:read`).
+              { path: 'admin/ai-search', element: <AiSearchPage /> },
               // SCRUM-148: organisation-wide settings (the approval default), `org:settings`.
               { path: 'admin/settings', element: <OrgSettingsPage /> },
               // Asset writing is ORG_ADMIN-only (`assets:write`), so both forms sit inside this

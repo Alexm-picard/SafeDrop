@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members, Groups (SCRUM-167) and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12); UI rework: two-line session block; SCRUM-241 redesign: the pegboard side rail, Primary and Manage navigation, top bar with breadcrumb and the ⌘K palette, phone tab bar with a More sheet
+// AI-Assisted Areas: app shell with landmarks, skip link, role-aware navigation (incl. Members, Groups (SCRUM-167) and Settings (SCRUM-148) for ORG_ADMIN), sign-out (NFR-9, NFR-12); UI rework: two-line session block; SCRUM-241 redesign: the pegboard side rail, Primary and Manage navigation, top bar with breadcrumb and the ⌘K palette, phone tab bar with a More sheet; "AI search" in the Manage group (SCRUM-242)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog; Members link added for the member-lifecycle ticket.
 
@@ -44,6 +44,7 @@ function sectionOf(pathname, canApprove) {
   if (pathname.startsWith(ROUTES.users)) return { key: 'users', label: 'Users' };
   if (pathname.startsWith(ROUTES.groups)) return { key: 'groups', label: 'Groups' };
   if (pathname.startsWith(ROUTES.auditLog)) return { key: 'audit', label: 'Audit log' };
+  if (pathname.startsWith(ROUTES.aiSearch)) return { key: 'ai-search', label: 'AI search' };
   if (pathname.startsWith(ROUTES.settings)) return { key: 'settings', label: 'Settings' };
   return { key: 'catalog', label: 'Catalog' };
 }
@@ -162,6 +163,9 @@ export function Layout() {
                   </RailLink>
                   <RailLink to={ROUTES.auditLog} current={section.key === 'audit'}>
                     Audit log
+                  </RailLink>
+                  <RailLink to={ROUTES.aiSearch} current={section.key === 'ai-search'}>
+                    AI search
                   </RailLink>
                   <RailLink to={ROUTES.settings} current={section.key === 'settings'}>
                     Settings

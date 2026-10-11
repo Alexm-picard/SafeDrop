@@ -26,7 +26,38 @@ import { logger } from '../../utils/logger.js';
 const log = logger.child({ component: 'search-telemetry' });
 
 /** The default summary window when the caller gives none: the last 30 days. */
-const DEFAULT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_WINDOW_MS = 30 * DAY_MS;
+
+/**
+ * The longest range that gets a per-day series. The route accepts any range, and a year of daily
+ * buckets is not something the AI search page draws; past this, `daily` is null and the totals stand
+ * alone.
+ */
+const DAILY_MAX_DAYS = 92;
+
+/** Midnight UTC on the day `date` falls in. */
+const startOfUtcDay = (date) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+/**
+ * Every UTC day from `start` to `end`, both included, with its counts, zero-filled: a day nobody
+ * searched is a zero in the chart, not a gap that reads as missing data. `byDay` is the repository's
+ * `{ 'YYYY-MM-DD': { total, aiAssisted } }`.
+ * @returns {Array<{ date: string, aiAssisted: number, fallback: number }>|null}
+ */
+function dailySeries(start, end, byDay) {
+  const first = startOfUtcDay(start);
+  const days = Math.round((startOfUtcDay(end) - first) / DAY_MS) + 1;
+  if (days > DAILY_MAX_DAYS) {
+    return null;
+  }
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(first.getTime() + index * DAY_MS).toISOString().slice(0, 10);
+    const { total = 0, aiAssisted = 0 } = byDay[date] ?? {};
+    return { date, aiAssisted, fallback: total - aiAssisted };
+  });
+}
 
 /**
  * Record one search, without waiting and without ever throwing.
@@ -58,7 +89,8 @@ export function recordSearch(orgId, row) {
  *
  * Rates are fractions between 0 and 1, and `null` when there were no searches — "no data" is not the
  * same thing as "0% fell back". `candidateCapHits` counts searches that sent the model the full
- * `candidateCap` candidates, i.e. whose catalogue was cut off (OD-10).
+ * `candidateCap` candidates, i.e. whose catalogue was cut off (OD-10). `daily` splits the window into
+ * UTC days for the AI search page's trend (SCRUM-242), or is null for a range over 92 days.
  * @param {string} orgId the caller's organisation, from the access token
  * @param {{ from?: Date, to?: Date, kind?: string }} [filters]
  * @param {{ now?: Date }} [options] injectable clock for tests
@@ -83,5 +115,7 @@ export async function summarize(orgId, { from, to, kind } = {}, { now = new Date
     candidateCapHits: stats.candidateCapHits,
     candidateCap: AI_MAX_CANDIDATES,
     latencyMs: stats.latencyMs,
+    // Per UTC day: searches the model ranked, and searches that fell back for any reason.
+    daily: dailySeries(start, end, stats.byDay ?? {}),
   };
 }

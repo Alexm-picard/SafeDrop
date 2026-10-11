@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out; SCRUM-241 redesign: Primary and Manage navigation, Requests destination by role, the ⌘K palette
+// AI-Assisted Areas: Layout tests: landmarks, role-aware navigation, sign out; SCRUM-241 redesign: Primary and Manage navigation, Requests destination by role, the ⌘K palette; AI search in the Manage group (SCRUM-242)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -69,7 +69,7 @@ describe('Layout', () => {
       within(manage)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Users', 'Groups', 'Audit log', 'Settings']);
+    ).toEqual(['Users', 'Groups', 'Audit log', 'AI search', 'Settings']);
     unmount();
     for (const person of [memberUser, approverUser]) {
       const view = renderLayout(person);
