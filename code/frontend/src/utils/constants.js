@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: roles, route paths and the Sprint 1 ticket ids that own each placeholder page
+// AI-Assisted Areas: roles, route paths and the Sprint 1 ticket ids that own each placeholder page; ROUTES.aiSearch (SCRUM-242)
 // Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and approved by Alex Picard (PR #61, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Reviewed before merge; see Human Contributions. Header restored for SCRUM-216 (removed by mistake in 59f009f).
 
@@ -65,6 +65,8 @@ export const ROUTES = Object.freeze({
   groups: '/admin/groups',
   group: (id) => `/admin/groups/${id}`,
   auditLog: '/admin/audit',
+  // SCRUM-242: how AI search is doing; `audit:read`, like the audit log it sits beside.
+  aiSearch: '/admin/ai-search',
   settings: '/admin/settings',
 });
 

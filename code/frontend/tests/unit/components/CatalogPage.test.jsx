@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states
+// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states; "Ranked by AI" / text-match labels and the AI search wait
 // Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 8554904).
 
@@ -209,6 +209,44 @@ describe('CatalogPage search (SCRUM-201)', () => {
     const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByText('Full-frame camera that records video.')).toBeVisible();
     expect(screen.getByText('Do you need video, or stills only?')).toBeVisible();
+    // Said in words, not only by the reasons' presence: these results are the model's ranking.
+    expect(screen.getByText('Ranked by AI')).toBeVisible();
+    expect(screen.queryByText(/Showing text matches/)).not.toBeInTheDocument();
+  });
+
+  it('says plain results are text matches, never presenting them as the AI’s', async () => {
+    recordSearches();
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'camera');
+
+    await screen.findByRole('list', { name: 'Search results' });
+    expect(screen.getByText('Showing text matches for “camera”.')).toBeVisible();
+    expect(screen.queryByText('Ranked by AI')).not.toBeInTheDocument();
+  });
+
+  it('shows placeholder cards while searching, and explains a long wait', async () => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    recordSearches(async ({ request }) => {
+      await gate;
+      return HttpResponse.json(plainSearch(new URL(request.url).searchParams));
+    });
+    const { user, box } = await renderCatalog();
+
+    await user.type(box, 'canon');
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Searching…');
+    expect(document.querySelectorAll('.skeleton-card')).toHaveLength(3);
+    // The model takes seconds; past a second and a half the wait is explained rather than spun.
+    expect(
+      await screen.findByText(/Still searching… the AI is comparing/, {}, { timeout: 3000 }),
+    ).toBeVisible();
+    release();
+    await screen.findByRole('list', { name: 'Search results' });
+    expect(document.querySelector('.skeleton-card')).toBeNull();
   });
 
   it('shows plain-search results with no reason and no error (SCRUM-103 AT2)', async () => {
@@ -221,7 +259,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
     // No reason line on a plain match: there is no model to give one.
     expect(results.querySelector('.asset-reason')).toBeNull();
-    // A fallback is invisible to the member: same results list, no alert.
+    // A fallback is not an error to the member: same results list, no alert.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 

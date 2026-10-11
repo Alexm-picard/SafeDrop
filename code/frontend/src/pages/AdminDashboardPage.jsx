@@ -4,7 +4,8 @@
 // AI-Assisted Areas: admin dashboard with stat tiles from GET /api/dashboard/summary; ErrorState + retry on failure (SCRUM-102);
 //   pending/overdue tiles and the 30-day checkout activity chart (SCRUM-102); a Requested tile for reserved units;
 //   UI rework: tiles grouped by purpose, each linking to the screen that answers it, quick actions;
-//   SCRUM-241: the Overview — an attention strip with the inventory as one stacked bar, the loan timeline, the activity chart
+//   SCRUM-241: the Overview — an attention strip with the inventory as one stacked bar, the loan timeline, the activity chart;
+//   an AI search notice shown only when it needs attention (SCRUM-242)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -15,6 +16,10 @@
  * SCRUM-241: the figures sit in one strip under the title — the three that ask the admin to act, then
  * the inventory as a single stacked bar with its counts as the legend — and below it the loan timeline
  * (every live request on its dates, against today) and the checkout chart.
+ *
+ * AI search appears here only as `AiSearchAlert`, under the title, when something needs the admin
+ * (SCRUM-242). Its figures live on their own page: they are monitoring, and this page is for the
+ * things an admin acts on.
  *
  * Nine figures and one chart, from a single `GET /api/dashboard/summary`. One request rather than
  * one per number, so every tile on the screen describes the same moment.
@@ -30,6 +35,7 @@
  * the alarm is never colour alone (NFR-12).
  */
 import { Link } from 'react-router';
+import { AiSearchAlert } from '../components/AiSearchAlert';
 import { CheckoutActivityChart } from '../components/CheckoutActivityChart';
 import { LoanTimeline } from '../components/LoanTimeline';
 import { ErrorState } from '../components/ErrorState';
@@ -111,6 +117,7 @@ export function AdminDashboardPage() {
           </Link>
         </div>
       </header>
+      <AiSearchAlert />
       {status === 'loading' ? <LoadingState label="Loading inventory summary…" /> : null}
       {status === 'error' ? (
         <ErrorState error={error} title="Could not load the summary" onRetry={reload} />

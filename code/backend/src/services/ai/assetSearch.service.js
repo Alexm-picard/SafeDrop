@@ -30,7 +30,12 @@
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
 import { z } from 'zod';
-import { SEARCH_FALLBACK_REASON, SEARCH_KIND, UNIT_STATUS } from '../../utils/constants.js';
+import {
+  AI_MAX_CANDIDATES as MAX_CANDIDATES,
+  SEARCH_FALLBACK_REASON,
+  SEARCH_KIND,
+  UNIT_STATUS,
+} from '../../utils/constants.js';
 import { NotFoundError, ServiceUnavailableError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import { restrictionsOf } from '../asset.service.js';
@@ -50,13 +55,6 @@ const answerSchema = z.object({
   matches: z.array(z.object({ assetId: z.string(), reason: z.string() })).max(10),
   clarification: z.string().nullable(),
 });
-
-/**
- * The most catalogue entries sent to the model in one call. Each costs tokens on every search (about
- * 250 with its units, measured against the live agent), so this bounds both cost and how much of a
- * tenant's data leaves the backend per request.
- */
-const MAX_CANDIDATES = 100;
 
 /**
  * The most results a plain search returns (SCRUM-146). Results are ranked by name, so a member who

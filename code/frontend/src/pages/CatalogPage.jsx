@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards
+// AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards; "Ranked by AI" line and the AI search loading state
 // Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
@@ -19,8 +19,13 @@
  * SCRUM-150: a restricted asset stays in the list — and in search results (SCRUM-202) — with a
  * Restricted badge naming its groups on hover, rather than being hidden, so a member learns what they
  * would need instead of wondering where it went.
+ *
+ * AI search, made visible: results the model ranked say so ("Ranked by AI"), and results from the
+ * plain-text fallback say "text matches", so a member is never shown the fallback as if it were the
+ * AI's answer. The wait, which is several seconds when the model ranks, shows placeholder cards and,
+ * once it runs long, says why.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { AssetCard } from '../components/AssetCard';
 import { ErrorState } from '../components/ErrorState';
@@ -149,10 +154,24 @@ function SearchResults({ q, status, data, error, reload }) {
     return <ErrorState error={error} title="Could not search the catalog" onRetry={reload} />;
   }
   if (status === 'loading' || data?.q !== q) {
-    return <LoadingState label="Searching…" />;
+    return <SearchPending />;
   }
   return (
     <>
+      {data.matches.length > 0 ? (
+        <p className="search-meta">
+          {data.aiAssisted ? (
+            <>
+              <span className="badge ai-badge" data-tone="info">
+                <span aria-hidden="true">✦</span>Ranked by AI
+              </span>
+              <span className="hint">Each result says why it matches.</span>
+            </>
+          ) : (
+            <span className="hint">Showing text matches for “{q}”.</span>
+          )}
+        </p>
+      ) : null}
       {data.clarification ? (
         <p className="hint search-clarification">{data.clarification}</p>
       ) : null}
@@ -176,6 +195,39 @@ function SearchResults({ q, status, data, error, reload }) {
           ))}
         </ul>
       )}
+    </>
+  );
+}
+
+/** After this long, the wait is explained: plain search answers well inside it; the model does not. */
+const SLOW_SEARCH_MS = 1500;
+
+/**
+ * The wait for a search: placeholder cards where the results will appear, and a status line that,
+ * once the wait runs past `SLOW_SEARCH_MS`, says why. The AI's ranking takes several seconds, and a
+ * bare spinner for that long reads as "stuck".
+ *
+ * The status line is the only thing announced; the placeholder cards are hidden from screen readers.
+ * @returns {JSX.Element}
+ */
+function SearchPending() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), SLOW_SEARCH_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <>
+      <p role="status" aria-live="polite" className="search-meta search-pending">
+        {slow
+          ? 'Still searching… the AI is comparing your request with the catalog.'
+          : 'Searching…'}
+      </p>
+      <ul className="gallery skeleton-gallery" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <li key={i} className="skeleton-card" />
+        ))}
+      </ul>
     </>
   );
 }

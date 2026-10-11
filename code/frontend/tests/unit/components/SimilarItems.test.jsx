@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~85% (test-first pairing session; written and run red before the component existed)
-// AI-Assisted Areas: tests for the "Similar items available now" section (SCRUM-151, subtask SCRUM-188)
+// AI-Assisted Areas: tests for the "Similar items available now" section (SCRUM-151, subtask SCRUM-188); "Suggested by AI" marker
 // Human Contributions: acceptance criteria and the red/green decisions by Mateus Silva
 // Notes: The page-level condition (shown only when nothing is available) is covered in AssetDetailPage.test.jsx.
 
@@ -92,6 +92,15 @@ describe('SimilarItems (SCRUM-151)', () => {
     const section = await screen.findByRole('region', { name: 'Similar items available now' });
     expect(within(section).getByText('Nikon Z6')).toBeInTheDocument();
     expect(within(section).getByText('Available now')).toBeInTheDocument();
+    // The fallback is the same category, unranked: not the model's judgement, so not labelled as it.
+    expect(within(section).queryByText('Suggested by AI')).not.toBeInTheDocument();
+  });
+
+  it('marks the list as suggested by AI when the model chose it', async () => {
+    renderSection();
+
+    const section = await screen.findByRole('region', { name: 'Similar items available now' });
+    expect(within(section).getByText('Suggested by AI')).toBeVisible();
   });
 
   it('renders nothing when there is nothing to suggest', async () => {

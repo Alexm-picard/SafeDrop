@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 1 of 2 commits co-authored by Claude Code)
-// AI-Assisted Areas: SCRUM-186/188 the "Similar items available now" section (SCRUM-151, SCRUM-186)
+// AI-Assisted Areas: SCRUM-186/188 the "Similar items available now" section (SCRUM-151, SCRUM-186); "Suggested by AI" marker
 // Human Contributions: reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -20,6 +20,10 @@
  * **`enabled` decides whether to ask at all.** The page passes false while any unit is available. The
  * API would answer an empty list anyway (AT-4), but the point of that criterion is that the feature
  * costs nothing when nobody is stuck, and one request per asset page view would undo it.
+ *
+ * **"Suggested by AI" appears only when the model chose and ordered the list** (`aiAssisted`). The
+ * fallback list is the same category, unranked, and says "Available now" on each item instead, so it
+ * is never presented as the AI's judgement.
  */
 import { Link } from 'react-router';
 import { useAssetAlternatives } from '../hooks/useAssets';
@@ -53,7 +57,14 @@ export function SimilarItems({ assetId, enabled }) {
 
   return (
     <section aria-labelledby={HEADING_ID}>
-      <h2 id={HEADING_ID}>Similar items available now</h2>
+      <div className="section-head">
+        <h2 id={HEADING_ID}>Similar items available now</h2>
+        {data.aiAssisted ? (
+          <span className="badge ai-badge" data-tone="info">
+            <span aria-hidden="true">✦</span>Suggested by AI
+          </span>
+        ) : null}
+      </div>
       <ul className="similar-items">
         {items.map((item) => (
           <li key={item.assetId}>

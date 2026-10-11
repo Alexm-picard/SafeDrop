@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~95%
-// AI-Assisted Areas: SCRUM-241 redesign: the ⌘K "jump to" palette (pages for the viewer's role and every asset in the catalog)
+// AI-Assisted Areas: SCRUM-241 redesign: the ⌘K "jump to" palette (pages for the viewer's role and every asset in the catalog); AI search page entry (SCRUM-242)
 // Human Contributions: reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: Navigation only. It offers the same pages as the rail, filtered by the same role rules, so it never shows a page the viewer cannot open.
 
@@ -40,6 +40,7 @@ function pagesFor(role) {
     isAdmin && { label: 'Users', hint: 'Page', to: ROUTES.users },
     isAdmin && { label: 'Groups', hint: 'Page', to: ROUTES.groups },
     isAdmin && { label: 'Audit log', hint: 'Page', to: ROUTES.auditLog },
+    isAdmin && { label: 'AI search', hint: 'Page', to: ROUTES.aiSearch },
     isAdmin && { label: 'Settings', hint: 'Page', to: ROUTES.settings },
     { label: 'Change password', hint: 'Page', to: ROUTES.changePassword },
   ].filter(Boolean);

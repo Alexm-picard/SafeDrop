@@ -75,11 +75,12 @@ local development: staging and the course demo already run on Atlas.
 3. **Do not build Phases 1–2 yet.** Nothing in the measurements points to a problem below 100 assets,
    and the seeded organisations have three assets each. Building it now means a new Foundry deployment, a
    new local database image, a backfill and a new failure mode, all for no visible change.
-4. **The trigger is already instrumented.** `SearchQueryLog.candidateCount` (SCRUM-206) records how
-   many candidates each search sent. A search sends the whole catalogue up to the cap, so a count of
-   100 means that organisation's catalogue was cut off. Once `GET /api/search-telemetry` shows
-   searches sending 100, Phases 1–2 are worth their cost. Until then, SCRUM-147 stays in the
-   backlog with this decision attached.
+4. **The trigger is instrumented.** `SearchQueryLog.candidateCount` (SCRUM-206) records how many
+   candidates each search sent. A search sends the whole catalogue up to the cap, so a count of 100
+   means that organisation's catalogue was cut off. SCRUM-242 summarises it as `candidateCapHits` in
+   `GET /api/search-telemetry` and shows it on the admin "AI search" page; the Overview raises a notice when it happens. Once that
+   reports searches reaching the limit, Phases 1–2 are worth their cost. Until then, SCRUM-147 stays
+   in the backlog with this decision attached.
 
 ## SDD text (§2.6, AI services: candidate selection)
 
@@ -93,8 +94,8 @@ local development: staging and the course demo already run on Atlas.
 > embeddings (512 dimensions) of each asset's name, category and description, stored on the asset
 > document and queried with `orgId` as a pre-filter inside `$vectorSearch`. Azure AI Search was
 > rejected as a second datastore to keep in sync, and a Mongo text index because it does not match by
-> meaning (OD-10). The trigger to build it is search telemetry showing searches sending the full 100
-> candidates.
+> meaning (OD-10). The trigger to build it is the admin AI search page reporting searches
+> that reached the 100-candidate limit (`candidateCapHits` in search telemetry).
 
 ## Sources
 

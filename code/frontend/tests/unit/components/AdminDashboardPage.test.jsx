@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-102 AC2);
+// AI-Assisted Areas: AdminDashboardPage tests: counts rendered; ErrorState on API failure with retry (SCRUM-102 AC2);; the AI search notice appears only when it needs attention
 //   overdue/pending tiles and the 30-day activity chart (SCRUM-102 AT1); SCRUM-241: the attention tiles are their own list on the board
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
@@ -22,7 +22,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { AdminDashboardPage } from '../../../src/pages/AdminDashboardPage';
 import { formatDay } from '../../../src/utils/format';
-import { adminUser, errorResponse, summary } from '../../mocks/handlers';
+import { adminUser, errorResponse, searchTelemetrySummary, summary } from '../../mocks/handlers';
 import { server } from '../../mocks/server';
 import { renderWithAuth } from '../../utils/render';
 describe('AdminDashboardPage', () => {
@@ -49,6 +49,33 @@ describe('AdminDashboardPage', () => {
       String(summary.pendingRequests),
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('shows no AI search notice while AI search is working normally (SCRUM-242)', async () => {
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+
+    await screen.findByLabelText('Inventory summary');
+    // The figures moved to their own page; the Overview only speaks up when something needs the admin.
+    expect(screen.queryByRole('link', { name: 'View AI search' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'AI search' })).not.toBeInTheDocument();
+  });
+
+  it('shows the AI search notice when searches keep falling back (SCRUM-242)', async () => {
+    server.use(
+      http.get('*/api/search-telemetry', () =>
+        HttpResponse.json({
+          ...searchTelemetrySummary,
+          aiAssisted: 30,
+          fallbacks: { disabled: 0, unavailable: 8, contract: 3 },
+        }),
+      ),
+    );
+    renderWithAuth(<AdminDashboardPage />, { user: adminUser });
+
+    expect(await screen.findByRole('link', { name: 'View AI search' })).toHaveAttribute(
+      'href',
+      '/admin/ai-search',
+    );
   });
 
   it('shows how many units are in maintenance (SCRUM-141)', async () => {

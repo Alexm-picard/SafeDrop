@@ -190,6 +190,40 @@ export const similarItems = {
   aiAssisted: true,
 };
 
+/**
+ * 30 days of AI search, one entry per UTC day: mostly ranked by AI, with three fallbacks late in the
+ * month. The summary below is computed from it, so the fixture is internally consistent the way the
+ * API's numbers are: the daily bars add up to the totals, and the fallback reasons add up to the days'
+ * fallbacks.
+ */
+export const searchTelemetryDaily = Array.from({ length: 30 }, (_, i) => ({
+  date: new Date(Date.UTC(2026, 8, 12) + i * 86_400_000).toISOString().slice(0, 10),
+  aiAssisted: i % 4 === 0 ? 2 : 1,
+  fallback: [20, 25, 27].includes(i) ? 1 : 0,
+}));
+
+const sum = (key) => searchTelemetryDaily.reduce((n, day) => n + day[key], 0);
+
+/**
+ * What `GET /api/search-telemetry` answers (SCRUM-206, SCRUM-242): a healthy month. 41 searches, 38
+ * ranked by AI; the 3 fallbacks are 2 unavailable and 1 unusable answer.
+ */
+export const searchTelemetrySummary = {
+  from: '2026-09-11T12:00:00.000Z',
+  to: '2026-10-11T12:00:00.000Z',
+  kind: null,
+  total: sum('aiAssisted') + sum('fallback'),
+  aiAssisted: sum('aiAssisted'),
+  fallbacks: { disabled: 0, unavailable: 2, contract: 1 },
+  fallbackRate: sum('fallback') / (sum('aiAssisted') + sum('fallback')),
+  zeroResults: 2,
+  zeroResultRate: 2 / (sum('aiAssisted') + sum('fallback')),
+  candidateCapHits: 0,
+  candidateCap: 100,
+  latencyMs: { avg: 4800, p50: 4600, p95: 6900, max: 7400 },
+  daily: searchTelemetryDaily,
+};
+
 /** Units keyed by asset id, matching `AssetDetailPage`'s expectation of `data.units`. */
 export const assetUnits = {
   [assets[0].id]: [
@@ -683,6 +717,7 @@ export const handlers = [
     return HttpResponse.json({ graceHours });
   }),
   http.get('*/api/dashboard/summary', () => HttpResponse.json(summary)),
+  http.get('*/api/search-telemetry', () => HttpResponse.json(searchTelemetrySummary)),
   http.get('*/api/assets', ({ request }) =>
     HttpResponse.json(assetsPage(new URL(request.url).searchParams)),
   ),
