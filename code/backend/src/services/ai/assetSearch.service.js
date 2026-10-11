@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 10 of 16 commits co-authored by Claude Code)
-// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185)
+// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185); category-first substitutes and same-category fallback (SCRUM-184)
 // Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -175,12 +175,13 @@ async function runSearch(orgId, query) {
  * emails somebody instead of borrowing the equivalent item on the next shelf.
  *
  * **The asset itself is the query.** Its name, category and description describe what the member
- * wanted, so they go to the model in place of typed words and the SCRUM-103 candidate-and-ranking
- * pipeline is reused unchanged — one prompt contract, one place where model output is validated.
+ * wanted, so they go to the model, framed as a request for a substitute, in place of typed words. The
+ * SCRUM-103 prompt contract and output validation are reused unchanged; the candidates are not, since
+ * they are chosen by category rather than by text match (SCRUM-184, `substitutePool`).
  *
  * **Every failure is a fallback, never an error (AT-3).** Foundry switched off, unreachable, or
- * answering outside its contract all end in the same place: the candidates the backend had already
- * chosen, unranked. A member at a dead end gets a worse answer, never an error page.
+ * answering outside its contract all end in the same place: the same-category candidates the backend
+ * had already chosen, unranked. A member at a dead end gets a worse answer, never an error page.
  *
  * **Telemetry (SCRUM-206).** A lookup that reaches the AI pipeline writes one `SearchQueryLog` row of
  * kind `alternatives`, with the asset id as its subject — organisation data, not something a member
@@ -230,21 +231,21 @@ export async function getAlternatives(orgId, userId, assetId) {
  * needs about how it went — the same shape as `runSearch`.
  */
 async function rankAlternatives(orgId, userId, asset) {
-  // Chosen once, for both paths. The fallback is the same set unranked rather than a second,
-  // narrower query, so what the section *contains* does not change when Foundry flaps — only whether
-  // it is ordered and explained. It also means the AT-2 filters cannot be bypassed by the fallback,
-  // which is the obvious way for this feature to leak.
+  // Chosen once, for both paths. The fallback is the same-category part of this set, unranked, rather
+  // than a second query (SCRUM-184): the AT-2 filters cannot be bypassed by the fallback, which is the
+  // obvious way for this feature to leak, and the same-category items lead the model's pool too, so
+  // what the section offers changes little when Foundry flaps.
   const { candidates, candidateUnits } = await recommendableCandidates(orgId, userId, asset);
   if (!isFoundryEnabled()) {
     return {
-      result: unranked(candidates),
+      result: unranked(sameCategoryOnly(candidates, asset)),
       fallbackReason: SEARCH_FALLBACK_REASON.DISABLED,
       candidateCount: 0,
     };
   }
 
   const input = JSON.stringify({
-    query: queryFor(asset),
+    query: substituteQueryFor(asset),
     assets: toPromptAssets(candidates, candidateUnits),
   });
   let response;
@@ -260,7 +261,7 @@ async function rankAlternatives(orgId, userId, asset) {
     }
     log.warn({ orgId }, 'Foundry unavailable; alternatives returned unranked');
     return {
-      result: unranked(candidates),
+      result: unranked(sameCategoryOnly(candidates, asset)),
       fallbackReason: SEARCH_FALLBACK_REASON.UNAVAILABLE,
       candidateCount: candidates.length,
     };
@@ -276,7 +277,7 @@ async function rankAlternatives(orgId, userId, asset) {
       'model output did not fit the asset-search contract; alternatives returned unranked',
     );
     return {
-      result: unranked(candidates),
+      result: unranked(sameCategoryOnly(candidates, asset)),
       fallbackReason: SEARCH_FALLBACK_REASON.CONTRACT,
       candidateCount: candidates.length,
     };
@@ -320,7 +321,7 @@ function elapsedSince(startedAt) {
  * fallback path.
  */
 async function recommendableCandidates(orgId, userId, asset) {
-  const possible = (await pickCandidates(orgId, queryFor(asset))).filter(
+  const possible = (await substitutePool(orgId, asset)).filter(
     (candidate) => String(candidate._id) !== String(asset._id),
   );
   const possibleUnits = await unitRepo.listByAssets(
@@ -361,13 +362,69 @@ function unranked(candidates) {
 }
 
 /**
- * The asset's own words, standing in for the ones a member would have typed.
+ * The assets that may be offered in place of `asset`, best-first, before the borrowability and
+ * eligibility filters (SCRUM-184).
  *
- * Built by naming fields rather than serialising the document, so a field added to the model later —
- * or one that exists today, such as `imageUrl` — never reaches the model without a change here.
+ * The SCRUM-103 `pickCandidates` was built for typed words: it regex-matches the whole query, which
+ * for "Canon EOS R6 camera Full-frame mirrorless" matches nothing, and then fills up with the
+ * catalogue in name order. The model was then handed an alphabetical slice of the organisation and
+ * told to find something, and it did — a projector for a laptop, "because both names contain B".
+ * Category is the signal this feature actually has, so it decides what is offered.
+ *
+ * The model sees all of it; the fallback sees only the same-category part (`sameCategoryOnly`).
  */
-function queryFor(asset) {
-  return [asset.name, asset.category, asset.description].filter(Boolean).join(' ');
+async function substitutePool(orgId, asset) {
+  const [inCategory, { items: catalogue }] = await Promise.all([
+    assetRepo.listByCategory(orgId, asset.category, { limit: MAX_CANDIDATES }),
+    assetRepo.list(orgId, { limit: MAX_CANDIDATES }),
+  ]);
+  // Same category first, so it is never crowded out of the cap by names earlier in the alphabet; the
+  // rest of the catalogue after it, so the model can still find a substitute that is filed elsewhere
+  // (a camcorder for a camera). The fallback does not get that second half: see `sameCategoryOnly`.
+  return uniqueById([...inCategory, ...catalogue]).slice(0, MAX_CANDIDATES);
+}
+
+/**
+ * The candidates in `asset`'s category, ignoring case and keeping their order: the fallback's answer
+ * (SCRUM-184, SCRUM-151 AT-3 as written).
+ *
+ * Without the model nothing judges whether an item from another category could do the same job, so
+ * the fallback offers only what is certainly comparable, and offers nothing rather than a projector
+ * for a laptop. A subset of the filtered candidates, so the AT-2 filters still apply to it.
+ */
+function sameCategoryOnly(candidates, asset) {
+  const wanted = asset.category.toLowerCase();
+  return candidates.filter((candidate) => candidate.category.toLowerCase() === wanted);
+}
+
+/**
+ * What the model is asked when the asset itself is the query: a substitute for it, not more of it.
+ *
+ * Without the framing the model reads "Laptop b laptop" as a search and ranks by surface overlap.
+ * Built by naming fields rather than serialising the document, so a field added to the model later —
+ * or one that exists today, such as `imageUrl` — never reaches the model without a change here. The
+ * name and description are member-written, exactly as they were in the unframed query, so this adds
+ * no input the prompt's rule 2 was not already guarding.
+ */
+function substituteQueryFor(asset) {
+  const described = asset.description ? ` It is described as: ${asset.description}` : '';
+  return (
+    `I wanted to borrow "${asset.name}" (category: ${asset.category}), but none are available.` +
+    `${described} What could I borrow instead that does the same job? ` +
+    'Leave out anything that could not be used for the same purpose.'
+  );
+}
+
+/** `assets` with repeats removed, first occurrence kept, so order is preserved. */
+function uniqueById(assets) {
+  const byId = new Map();
+  for (const asset of assets) {
+    const id = String(asset._id);
+    if (!byId.has(id)) {
+      byId.set(id, asset);
+    }
+  }
+  return [...byId.values()];
 }
 
 /**
@@ -383,14 +440,7 @@ async function pickCandidates(orgId, query) {
     assetRepo.search(orgId, query, { limit: MAX_CANDIDATES }),
     assetRepo.list(orgId, { limit: MAX_CANDIDATES }),
   ]);
-  const byId = new Map();
-  for (const asset of [...matched, ...page]) {
-    const id = String(asset._id);
-    if (!byId.has(id)) {
-      byId.set(id, asset);
-    }
-  }
-  return [...byId.values()].slice(0, MAX_CANDIDATES);
+  return uniqueById([...matched, ...page]).slice(0, MAX_CANDIDATES);
 }
 
 /** The catalogue fallback: a case-insensitive match on name, description and category. */
