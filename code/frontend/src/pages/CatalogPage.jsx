@@ -39,7 +39,7 @@ import { ROLES, ROUTES } from '../utils/constants';
  * How long typing must pause before a search is sent. Each search may be an AI call, so a burst of
  * keystrokes should cost one; much longer than this and the page feels like it is ignoring the user.
  *
- * 600 rather than 300 (SCRUM-244): an AI search sends Foundry about 20,000 tokens, and at 300 ms a
+ * 600 rather than 300 (SCRUM-244): an AI search sends Foundry about 9,300 tokens, and at 300 ms a
  * member who paused mid-sentence ("something…", "something to record…") sent two or three of them for
  * one question. On staging that spent the deployment's per-minute token budget and turned the next
  * searches into 429s. The AI answer takes 4-7 s, so the extra 0.3 s is not felt.
