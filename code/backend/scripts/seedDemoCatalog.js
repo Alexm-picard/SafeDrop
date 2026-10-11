@@ -1,19 +1,25 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: a 120-asset demo catalogue for exercising AI search at realistic size (SCRUM-243, OD-10)
+// AI-Assisted Areas: a demo catalogue (90 assets by default, up to 120) for exercising AI search at realistic size (SCRUM-243, OD-10)
 // Human Contributions: asked for by Amber Rastella to test AI search with a larger catalogue; reviewer recorded on the PR
 // Notes: Development data only; refuses to run with NODE_ENV=production.
 
 /* eslint-disable no-console */
 
 /**
- * `npm run seed:catalog [-- --org <slug>] [-- --remove]`: adds a 120-asset demo catalogue to one
- * organisation (default `org-b`, from `npm run seed`), or removes it again.
+ * `npm run seed:catalog [-- --count <n>] [-- --org <slug>] [-- --remove]`: adds a demo catalogue of
+ * `n` assets (default 90, at most 120) to one organisation (default `org-b`, from `npm run seed`), or
+ * removes it again.
  *
- * Why 120: AI search sends the model at most 100 candidates (AI_MAX_CANDIDATES), so a catalogue this
- * size is the smallest that exercises the cut-off and the AI search page's catalog-size warning
- * (OD-10). It also tests whether the model still finds the right item among many: every description
+ * **Why 90 by default:** a full-looking catalogue for a demo that stays under the 100 candidates AI
+ * search sends the model (AI_MAX_CANDIDATES), so every search considers every item and the AI search
+ * page shows no catalog-size warning. **`--count 120`** goes past the limit on purpose, to exercise the
+ * cut-off and that warning (OD-10, SCRUM-243). Assets are taken evenly across the 15 categories, the
+ * first of each category before the second of any, so 90 is six per category and still includes every
+ * dead end below.
+ *
+ * Either size also tests whether the model finds the right item among many: every description
  * says what the item is for, not only what it is, so "something to record an interview" has a fair
  * chance of reaching "Zoom H5 Recorder" through meaning rather than shared words.
  *
@@ -219,13 +225,37 @@ const tagPrefix = (category) =>
     .slice(0, 3)
     .toUpperCase();
 
+/** The default size: a full-looking catalogue that stays under AI search's 100-candidate limit. */
+const DEFAULT_COUNT = 90;
+
 function parseArgs(argv) {
-  const args = { org: 'org-b', remove: false };
+  const args = { org: 'org-b', remove: false, count: DEFAULT_COUNT };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--org') args.org = argv[(i += 1)];
     else if (argv[i] === '--remove') args.remove = true;
+    else if (argv[i] === '--count') args.count = Number(argv[(i += 1)]);
   }
   return args;
+}
+
+/**
+ * The first `count` assets, taken evenly across categories: every category's first item, then every
+ * category's second, and so on. Each entry keeps its index within its category, which its unit tags
+ * and unit count are derived from, so an asset gets the same tags whatever `count` was.
+ * @returns {Array<{ category: string, index: number, name: string, description: string }>}
+ */
+function pickAssets(count) {
+  const picked = [];
+  const longest = Math.max(...Object.values(CATALOG).map((items) => items.length));
+  for (let index = 0; index < longest && picked.length < count; index += 1) {
+    for (const [category, items] of Object.entries(CATALOG)) {
+      if (index < items.length && picked.length < count) {
+        const [name, description] = items[index];
+        picked.push({ category, index, name, description });
+      }
+    }
+  }
+  return picked;
 }
 
 async function main() {
@@ -237,7 +267,12 @@ async function main() {
     console.error('MONGODB_URI is required to run the seed script.');
     process.exit(1);
   }
-  const { org: slug, remove } = parseArgs(process.argv.slice(2));
+  const { org: slug, remove, count } = parseArgs(process.argv.slice(2));
+  const available = Object.values(CATALOG).flat().length;
+  if (!Number.isInteger(count) || count < 1 || count > available) {
+    console.error(`--count must be a whole number from 1 to ${available}.`);
+    process.exit(1);
+  }
 
   await connectDb(process.env.MONGODB_URI);
   try {
@@ -271,22 +306,20 @@ async function main() {
     );
     let added = 0;
     let unitsAdded = 0;
-    for (const [category, items] of Object.entries(CATALOG)) {
-      for (const [index, [name, description]] of items.entries()) {
-        if (existing.has(name)) continue;
-        const asset = await assetRepo.create(orgId, { name, category, description });
-        const count = (index % 3) + 1;
-        for (let n = 1; n <= count; n += 1) {
-          await unitRepo.create(orgId, {
-            assetId: asset._id,
-            tag: `${tagPrefix(category)}-${String(index + 1).padStart(3, '0')}-${n}`,
-            status: DEAD_ENDS.has(name) ? UNIT_STATUS.MAINTENANCE : UNIT_STATUS.AVAILABLE,
-            condition: 'GOOD',
-          });
-          unitsAdded += 1;
-        }
-        added += 1;
+    for (const { category, index, name, description } of pickAssets(count)) {
+      if (existing.has(name)) continue;
+      const asset = await assetRepo.create(orgId, { name, category, description });
+      const units = (index % 3) + 1;
+      for (let n = 1; n <= units; n += 1) {
+        await unitRepo.create(orgId, {
+          assetId: asset._id,
+          tag: `${tagPrefix(category)}-${String(index + 1).padStart(3, '0')}-${n}`,
+          status: DEAD_ENDS.has(name) ? UNIT_STATUS.MAINTENANCE : UNIT_STATUS.AVAILABLE,
+          condition: 'GOOD',
+        });
+        unitsAdded += 1;
       }
+      added += 1;
     }
     const total = await Asset.countDocuments({ orgId, retiredAt: null });
     console.log(
