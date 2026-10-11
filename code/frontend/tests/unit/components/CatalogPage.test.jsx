@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (drafted from team design documents to satisfy SCRUM-115's acceptance criteria)
-// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states; "Ranked by AI" / text-match labels and the AI search wait
+// AI-Assisted Areas: CatalogPage tests — loading, populated, empty and error states; "Ranked by AI" / text-match labels and the AI search wait; slow-answer test timed for the 600 ms debounce (SCRUM-244)
 // Human Contributions: reviewed by Orelmis Toribio (PR #14, 2026-09-19)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 8554904).
 
@@ -276,7 +276,8 @@ describe('CatalogPage search (SCRUM-201)', () => {
     const queries = recordSearches(async ({ request }) => {
       const params = new URL(request.url).searchParams;
       if (params.get('q') === 'dell') {
-        await delay(600);
+        // Slower than the 600 ms typing pause, so it lands after "canon" has been sent (SCRUM-244).
+        await delay(1500);
       }
       return HttpResponse.json(plainSearch(params));
     });
@@ -290,7 +291,7 @@ describe('CatalogPage search (SCRUM-201)', () => {
     const results = await screen.findByRole('list', { name: 'Search results' });
     expect(within(results).getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
     // Give the slow "dell" answer time to land; it must not replace the newer results.
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     expect(screen.queryByText('Dell XPS 15')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Canon EOS R6' })).toBeVisible();
   });

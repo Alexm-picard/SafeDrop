@@ -124,7 +124,7 @@ export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
       { ...fields, latencyMs: Date.now() - startedAt, status: outcome.response?.status },
       'foundry call failed fast; retrying once',
     );
-    await pause(RETRY_DELAY_MS, deadline);
+    await pause(retryDelayMs(outcome.response), deadline);
     if (!deadline.aborted) {
       outcome = await attempt(url, body, deadline);
     }
@@ -162,11 +162,37 @@ export async function foundryRequest(orgId, body, { signal, prompt } = {}) {
   return parsed;
 }
 
-/**
- * How long to wait before the one retry. Long enough for a momentary blip or a per-second rate limit
- * to clear, short enough that a member does not notice it on top of a 4-7 second answer.
- */
+/** The wait before the one retry when Foundry gives no hint: long enough for a blip to clear. */
 const RETRY_DELAY_MS = 400;
+
+/** The wait before retrying a 429 that gives no hint: rate limits refill over seconds, not instantly. */
+const RATE_LIMIT_DELAY_MS = 1000;
+
+/** The longest wait honoured, whatever Foundry asks: a member is waiting for the answer. */
+const MAX_RETRY_WAIT_MS = 3000;
+
+/**
+ * How long to wait before the retry (SCRUM-244). A 429 from Foundry says how long it wants in
+ * `retry-after-ms` (or `retry-after`, in seconds); waiting less only earns a second 429, which is what
+ * staging's logs showed. The hint is honoured up to `MAX_RETRY_WAIT_MS`, and the shared deadline still
+ * cuts the wait short if it would run past `FOUNDRY_TIMEOUT_MS`.
+ * @param {Response|undefined} response the failed answer, if there was one
+ * @returns {number} milliseconds
+ */
+export function retryDelayMs(response) {
+  const header = (name) => response?.headers?.get?.(name);
+  const ms = Number(header('retry-after-ms'));
+  const seconds = Number(header('retry-after'));
+  let wait;
+  if (Number.isFinite(ms) && ms > 0) {
+    wait = ms;
+  } else if (Number.isFinite(seconds) && seconds > 0) {
+    wait = seconds * 1000;
+  } else {
+    wait = response?.status === 429 ? RATE_LIMIT_DELAY_MS : RETRY_DELAY_MS;
+  }
+  return Math.min(wait, MAX_RETRY_WAIT_MS);
+}
 
 /** Statuses that mean "try again shortly": rate limited, or the upstream briefly unwell. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);

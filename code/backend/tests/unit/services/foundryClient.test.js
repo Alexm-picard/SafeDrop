@@ -22,6 +22,7 @@ import {
   foundryRequest,
   isFoundryEnabled,
   promptFingerprint,
+  retryDelayMs,
 } from '../../../src/services/ai/foundry.client.js';
 
 // The real `env` is frozen by `loadEnv`, which is right in production and makes it unmockable here.
@@ -339,5 +340,30 @@ describe('foundryRequest: one retry on a fast transient failure (SCRUM-244)', ()
     await foundryRequest(ORG_ID, {});
 
     expect(fetchSpy.mock.calls[0][1].signal).toBe(fetchSpy.mock.calls[1][1].signal);
+  });
+});
+
+describe('retryDelayMs: how long to wait before the retry (SCRUM-244)', () => {
+  /** A failed response with the given status and headers. */
+  const failed = (status, headers = {}) => ({ status, headers: new Headers(headers) });
+
+  it("honours Foundry's retry-after-ms on a 429", () => {
+    // Staging's logs: retrying a 429 sooner than asked only earned a second 429.
+    expect(retryDelayMs(failed(429, { 'retry-after-ms': '1500' }))).toBe(1500);
+  });
+
+  it('reads retry-after in seconds when that is the header given', () => {
+    expect(retryDelayMs(failed(429, { 'retry-after': '2' }))).toBe(2000);
+  });
+
+  it('caps the wait at 3 seconds, because a member is waiting', () => {
+    expect(retryDelayMs(failed(429, { 'retry-after-ms': '60000' }))).toBe(3000);
+  });
+
+  it('waits a second for a 429 with no hint, and less for other blips', () => {
+    expect(retryDelayMs(failed(429))).toBe(1000);
+    expect(retryDelayMs(failed(503))).toBe(400);
+    // A network error has no response at all.
+    expect(retryDelayMs(undefined)).toBe(400);
   });
 });

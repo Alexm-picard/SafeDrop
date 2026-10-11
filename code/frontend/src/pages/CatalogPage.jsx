@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90%
-// AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards; "Ranked by AI" line and the AI search loading state
+// AI-Assisted Areas: catalogue list (SCRUM-115), search (SCRUM-201), Restricted badge (SCRUM-150, SCRUM-202); SCRUM-241 redesign: the catalogue and search results as a gallery of cards; "Ranked by AI" line and the AI search loading state; 600 ms search debounce (SCRUM-244)
 // Human Contributions: reviewed and approved by Amber Rastella (PR #7, 2026-09-18); latest changes reviewed and merged by Orelmis Toribio (PR #70, 2026-10-10); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 
 /**
@@ -38,8 +38,13 @@ import { ROLES, ROUTES } from '../utils/constants';
 /**
  * How long typing must pause before a search is sent. Each search may be an AI call, so a burst of
  * keystrokes should cost one; much longer than this and the page feels like it is ignoring the user.
+ *
+ * 600 rather than 300 (SCRUM-244): an AI search sends Foundry about 20,000 tokens, and at 300 ms a
+ * member who paused mid-sentence ("something…", "something to record…") sent two or three of them for
+ * one question. On staging that spent the deployment's per-minute token budget and turned the next
+ * searches into 429s. The AI answer takes 4-7 s, so the extra 0.3 s is not felt.
  */
-const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_DEBOUNCE_MS = 600;
 
 /** The longest query the API accepts (`searchQuery` in routes/assets.routes.js). */
 const SEARCH_MAX_LENGTH = 200;
