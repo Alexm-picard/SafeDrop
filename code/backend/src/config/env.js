@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11)
+// AI-Assisted Areas: Zod schema for every environment variable; fail-fast on missing/invalid values (SR-11); FOUNDRY_TIMEOUT_MS default raised to 15 s (SCRUM-243)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
@@ -102,7 +102,9 @@ export const envSchema = z
     FOUNDRY_API_VERSION: z.string().min(1).default('v1'),
     // Hard ceiling on one call. A search box that hangs is worse than one that says it is
     // unavailable, and an upstream with no timeout would hold a connection until the client gives up.
-    FOUNDRY_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(10_000),
+    // 15 s rather than 10 (SCRUM-243): against a 125-asset catalogue the live agent took 5-10 s, with
+    // a p95 of 9.3 s, so a 10 s ceiling turned ordinary slow answers into plain-search fallbacks.
+    FOUNDRY_TIMEOUT_MS: z.coerce.number().int().positive().max(60_000).default(15_000),
   })
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === 'production' && !value.COOKIE_SECURE) {

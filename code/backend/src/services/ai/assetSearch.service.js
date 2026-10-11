@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 10 of 16 commits co-authored by Claude Code)
-// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185); category-first substitutes and same-category fallback (SCRUM-184)
+// AI-Assisted Areas: AC1 plain catalogue search (SCRUM-103, SCRUM-146, SCRUM-200, SCRUM-151, SCRUM-185); category-first substitutes and same-category fallback (SCRUM-184); word-match candidate pick (SCRUM-243)
 // Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Alex Picard (PR #63, 2026-10-04); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -25,7 +25,7 @@
  * if not, which of the three fallbacks below happened, plus latency and counts. Never the query, and
  * never the caller. The write is fire-and-forget, so it cannot slow down or fail the search (AT-6).
  *
- * Exports: `searchAssets(orgId, query)`, `getAlternatives(orgId, userId, assetId)`.
+ * Exports: `searchAssets(orgId, query)`, `getAlternatives(orgId, userId, assetId)`, `queryWords(query)`.
  */
 import * as assetRepo from '../../repositories/asset.repository.js';
 import * as unitRepo from '../../repositories/assetUnit.repository.js';
@@ -426,19 +426,69 @@ function uniqueById(assets) {
 }
 
 /**
- * The assets to send to the model: plain-search matches first, then the catalogue in name order,
- * up to `MAX_CANDIDATES`. Without the matches going first, an org with more assets than the cap
- * would never show the model anything past the first hundred names, however well it matched.
- * Keyed by id so an asset found both ways is sent once and does not take two slots. The matches are
- * fetched up to the candidate cap, not the plain-search cap: they fill candidate slots, and asking for
- * more than the cap would only load documents the slice below throws away.
+ * The assets to send to the model, best first, up to `MAX_CANDIDATES`:
+ *
+ * 1. **Phrase matches**: the whole query found in a name, description or category, as plain search
+ *    finds it.
+ * 2. **Word matches** (SCRUM-243): assets containing the query's words, the most words first. A
+ *    sentence rarely matches as a phrase, so without this step a catalogue over the cap showed the
+ *    model only its first hundred names: measured on a 125-asset catalogue, "something to record an
+ *    interview" never saw the Zoom recorders and "something to draw digital art on" never saw the
+ *    Wacom tablets.
+ * 3. **The catalogue in name order**, filling whatever room is left, so a query that shares no words
+ *    with anything still gives the model a full set to judge by meaning.
+ *
+ * Keyed by id so an asset found more than one way is sent once and does not take two slots. Each list
+ * is fetched up to the candidate cap, not the plain-search cap: they fill candidate slots, and asking
+ * for more than the cap would only load documents the slice below throws away.
  */
 async function pickCandidates(orgId, query) {
-  const [matched, { items: page }] = await Promise.all([
+  const [matched, byWord, { items: page }] = await Promise.all([
     assetRepo.search(orgId, query, { limit: MAX_CANDIDATES }),
+    assetRepo.searchAnyWord(orgId, queryWords(query), { limit: MAX_CANDIDATES }),
     assetRepo.list(orgId, { limit: MAX_CANDIDATES }),
   ]);
-  return uniqueById([...matched, ...page]).slice(0, MAX_CANDIDATES);
+  return uniqueById([...matched, ...byWord, ...page]).slice(0, MAX_CANDIDATES);
+}
+
+/**
+ * Words too common to say anything about what a member wants ("something", "need", "for"). Matching
+ * them would rank half the catalogue equally and push the useful matches down.
+ */
+const STOP_WORDS = new Set(
+  (
+    'about all and any are but can could does for from get good have help into its just like looking ' +
+    'make may might more need needs our out please some something somewhere that the them then there ' +
+    'thing things this use using want way what when where which while who with would you your'
+  ).split(' '),
+);
+
+/** At most this many words are matched, which bounds the size of the database query. */
+const MAX_QUERY_WORDS = 8;
+
+/** Endings removed so a word matches its relatives: "recording" finds "record" and "recorder". */
+const SUFFIXES = ['ings', 'ing', 'ers', 'er', 'ies', 'es', 'ed', 's'];
+
+/**
+ * The words of a query worth matching on their own, lower-cased and trimmed of common endings.
+ *
+ * Only letters and digits survive the split, so a word can never carry regex syntax, and words
+ * shorter than three letters are dropped along with the stop words. An ending is removed only when at
+ * least four letters remain, so "art" stays "art" and "photos" becomes "photo", which also matches
+ * "photography". Matching is by containment, so a shortened word still finds the longer forms.
+ * @param {string} query
+ * @returns {string[]}
+ */
+export function queryWords(query) {
+  const words = query
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 3 && !STOP_WORDS.has(word))
+    .map((word) => {
+      const suffix = SUFFIXES.find((end) => word.endsWith(end) && word.length - end.length >= 4);
+      return suffix ? word.slice(0, -suffix.length) : word;
+    });
+  return [...new Set(words)].slice(0, MAX_QUERY_WORDS);
 }
 
 /** The catalogue fallback: a case-insensitive match on name, description and category. */
