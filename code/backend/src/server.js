@@ -2,7 +2,7 @@
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
 // AI-Assisted Areas: process bootstrap: connect Mongoose, listen, graceful shutdown
-// Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
+// Human Contributions: original entry point written by Orelmis Toribio (PR #5, 2026-09-14); reviewed by Amber Rastella (PR #7, 2026-09-18); later changes merged by Alexa Stein (PR #22, 2026-09-19)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog.
 
 /**
