@@ -1,0 +1,100 @@
+# AI-USAGE SUMMARY
+# Tools: Claude Code
+# Overall AI Contribution: ~90%
+# AI-Assisted Areas: on-demand job that runs `seed:catalog` against staging with the existing MONGODB_URI_STAGING secret (SCRUM-243)
+# Human Contributions: asked for by Amber Rastella so the staging demo catalogue can be added without sharing the connection string; reviewer recorded on the PR
+# Notes: Manual only. Dry run is the default mode.
+#
+# Seed the demo catalogue on staging (SCRUM-243).
+#
+# Adds, previews or removes the demo catalogue from code/backend/scripts/seedDemoCatalog.js in one
+# staging organisation, using the MONGODB_URI_STAGING secret the backup job already uses. So the
+# connection string never has to leave the repository's secrets, and nobody pastes it into a
+# terminal.
+#
+# Run it from Actions → "Seed demo catalog (staging)" → Run workflow. Start with mode `dry-run`: it
+# reports the organisation's current asset count, what would be added, whether the total crosses the
+# 100-item AI search limit, and any unit-tag clash, and writes nothing. Then run `seed`. `remove`
+# deletes exactly the demo assets and their units, nothing else.
+#
+# Only someone with write access to the repository can start it, and it never runs on its own.
+
+name: Seed demo catalog (staging)
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: 'Organization slug on staging (a wrong slug lists the ones that exist)'
+        required: true
+        type: string
+      mode:
+        description: 'dry-run writes nothing; seed adds the catalog; remove takes it out again'
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, seed, remove]
+      count:
+        description: 'How many demo assets (1-120). Keep org total at or under 100 for the AI limit.'
+        required: true
+        default: '90'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    # The deploy mirror carries this workflow too, and holds no secrets: only run from here.
+    if: github.repository == 'BUMETCS673/CS673OLF26P3'
+    name: ${{ inputs.mode }} — ${{ inputs.org }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: code/backend
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI_STAGING }}
+      # Inputs reach the shell as environment variables, never inlined into the script, so a crafted
+      # slug cannot become a command (GitHub's script-injection guidance).
+      ORG: ${{ inputs.org }}
+      MODE: ${{ inputs.mode }}
+      COUNT: ${{ inputs.count }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs and the secret
+        run: |
+          [ -n "$MONGODB_URI" ] || { echo "::error::repository secret MONGODB_URI_STAGING is not set"; exit 1; }
+          [[ "$ORG" =~ ^[a-z0-9-]{1,64}$ ]] || { echo "::error::org must be a slug: lower-case letters, digits and hyphens"; exit 1; }
+          [[ "$COUNT" =~ ^[0-9]{1,3}$ ]] || { echo "::error::count must be a whole number"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: code/backend/package-lock.json
+
+      - name: Install
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Run seedDemoCatalog.js
+        run: |
+          args=(--org "$ORG" --count "$COUNT")
+          case "$MODE" in
+            dry-run) args+=(--dry-run) ;;
+            remove) args=(--org "$ORG" --remove) ;;
+          esac
+          set -o pipefail
+          # Job logs on a public repository are public. A connection error can quote the URI, so
+          # anything between "://" and "@" is masked, as the backup job does.
+          node scripts/seedDemoCatalog.js "${args[@]}" 2>&1 \
+            | sed -E 's#(://)[^@[:space:]]*@#\1***:***@#g' \
+            | tee seed.log
+          {
+            echo "### Demo catalog: $MODE on \`$ORG\`"
+            echo ""
+            echo '```'
+            cat seed.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
