@@ -8,7 +8,8 @@
 /* eslint-disable no-console */
 
 /**
- * `npm run seed:catalog [-- --count <n>] [-- --org <slug>] [-- --remove]`: adds a demo catalogue of
+ * `npm run seed:catalog [-- --count <n>] [-- --org <slug>] [-- --dry-run] [-- --remove]`: adds a demo
+ * catalogue of
  * `n` assets (default 90, at most 120) to one organisation (default `org-b`, from `npm run seed`), or
  * removes it again.
  *
@@ -27,6 +28,10 @@
  * in MAINTENANCE. Those are dead ends with same-category substitutes in the catalogue, for the
  * similar-items section (SCRUM-151, SCRUM-184). MAINTENANCE rather than OUT because an OUT unit needs a
  * checkout request behind it, and this script creates none.
+ *
+ * **For a shared database, run `--dry-run` first.** It reports the organisation's asset count, what
+ * would be added, whether the total crosses the AI limit, and any unit-tag clash, and writes nothing.
+ * A real run makes the same checks and stops before writing if a tag would clash.
  *
  * Additive and repeatable: an asset whose name already exists in the organisation is skipped, so the
  * two items added by hand during testing (Dell Latitude 5440, Acer Chromebook 14) are left alone, and
@@ -228,12 +233,16 @@ const tagPrefix = (category) =>
 /** The default size: a full-looking catalogue that stays under AI search's 100-candidate limit. */
 const DEFAULT_COUNT = 90;
 
+/** AI search's candidate limit (AI_MAX_CANDIDATES); a catalogue above it is partly cut off. */
+const AI_LIMIT = 100;
+
 function parseArgs(argv) {
-  const args = { org: 'org-b', remove: false, count: DEFAULT_COUNT };
+  const args = { org: 'org-b', remove: false, count: DEFAULT_COUNT, dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--org') args.org = argv[(i += 1)];
     else if (argv[i] === '--remove') args.remove = true;
     else if (argv[i] === '--count') args.count = Number(argv[(i += 1)]);
+    else if (argv[i] === '--dry-run') args.dryRun = true;
   }
   return args;
 }
@@ -267,7 +276,7 @@ async function main() {
     console.error('MONGODB_URI is required to run the seed script.');
     process.exit(1);
   }
-  const { org: slug, remove, count } = parseArgs(process.argv.slice(2));
+  const { org: slug, remove, count, dryRun } = parseArgs(process.argv.slice(2));
   const available = Object.values(CATALOG).flat().length;
   if (!Number.isInteger(count) || count < 1 || count > available) {
     console.error(`--count must be a whole number from 1 to ${available}.`);
@@ -278,7 +287,9 @@ async function main() {
   try {
     const org = await Organization.findOne({ slug });
     if (!org) {
-      console.error(`No organization with slug "${slug}". Run \`npm run seed\` first.`);
+      // Slugs only, which are public in every login form; no names, members or ids.
+      const slugs = (await Organization.find({}, { slug: 1 }).limit(50)).map((o) => o.slug);
+      console.error(`No organization with slug "${slug}". Organizations here: ${slugs.join(', ')}`);
       process.exit(1);
     }
     const orgId = String(org._id);
@@ -304,10 +315,41 @@ async function main() {
         (a) => a.name,
       ),
     );
+    const toAdd = pickAssets(count).filter(({ name }) => !existing.has(name));
+    const tags = toAdd.flatMap(({ category, index }) =>
+      Array.from(
+        { length: (index % 3) + 1 },
+        (_, n) => `${tagPrefix(category)}-${String(index + 1).padStart(3, '0')}-${n + 1}`,
+      ),
+    );
+    // Checked before anything is written: a unit tag is unique per organisation, and a clash halfway
+    // through would leave a half-seeded catalogue in a shared database.
+    const clashes = (
+      await AssetUnit.find({ orgId, tag: mongoose.trusted({ $in: tags }) }, { tag: 1 })
+    ).map((u) => u.tag);
+    const before = await Asset.countDocuments({ orgId, retiredAt: null });
+    const after = before + toAdd.length;
+    console.log(
+      `${slug}: ${before} assets now; would add ${toAdd.length} assets and ${tags.length} units ` +
+        `(${existing.size} of the demo names already there), for ${after} in total.`,
+    );
+    if (after > AI_LIMIT) {
+      console.log(
+        `Note: ${after} is over the ${AI_LIMIT}-item AI search limit, so searches will see only part ` +
+          `of the catalog and the AI search page will warn about it. Use --count to stay under.`,
+      );
+    }
+    if (clashes.length > 0) {
+      console.error(`Stopping: these unit tags already exist in ${slug}: ${clashes.join(', ')}`);
+      process.exit(1);
+    }
+    if (dryRun) {
+      console.log('Dry run: nothing was written.');
+      return;
+    }
     let added = 0;
     let unitsAdded = 0;
-    for (const { category, index, name, description } of pickAssets(count)) {
-      if (existing.has(name)) continue;
+    for (const { category, index, name, description } of toAdd) {
       const asset = await assetRepo.create(orgId, { name, category, description });
       const units = (index % 3) + 1;
       for (let n = 1; n <= units; n += 1) {
