@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (inferred: 6 of 16 commits co-authored by Claude Code)
-// AI-Assisted Areas: AC1 plain search when AI is off (SCRUM-103, SCRUM-145, SCRUM-146, SCRUM-200)
+// AI-Assisted Areas: AC1 plain search when AI is off (SCRUM-103, SCRUM-145, SCRUM-146, SCRUM-200); word-match candidate pick (SCRUM-243)
 // Human Contributions: reviewed and approved by Alex Picard (PR #49, 2026-09-28); latest changes reviewed and approved by Mateus Silva (PR #60, 2026-10-03); CI passed on merge: lint, format, unit + integration tests, npm audit, Docker build, CodeQL
 // Notes: header added for SCRUM-216; the file had none.
 
@@ -64,7 +64,8 @@ const foundry = await import('../../../src/services/ai/foundry.client.js');
 const assetRepo = await import('../../../src/repositories/asset.repository.js');
 const unitRepo = await import('../../../src/repositories/assetUnit.repository.js');
 const groupRepo = await import('../../../src/repositories/group.repository.js');
-const { searchAssets } = await import('../../../src/services/ai/assetSearch.service.js');
+const { queryWords, searchAssets } =
+  await import('../../../src/services/ai/assetSearch.service.js');
 const { ServiceUnavailableError } = await import('../../../src/utils/errors.js');
 
 const ORG = '6aab2a45c6e457e01ac0968a';
@@ -279,6 +280,82 @@ describe('SCRUM-103 AC3: AI-assisted search', () => {
     expect(JSON.parse(body.input).assets.map((asset) => asset.id)).toEqual([recorder.id]);
   });
 
+  describe('SCRUM-243: word matches reach the model past the candidate cap', () => {
+    /** 101 assets that sort before anything below and match no useful word, so the cap is full. */
+    async function fillPastCap() {
+      await Promise.all(
+        Array.from({ length: 101 }, (_, i) =>
+          assetRepo.create(ORG, { name: `Asset ${String(i).padStart(3, '0')}`, category: 'Misc' }),
+        ),
+      );
+    }
+
+    function sentIds() {
+      const [, body] = foundry.foundryRequest.mock.calls[0];
+      return JSON.parse(body.input).assets.map((asset) => asset.id);
+    }
+
+    beforeEach(() => {
+      foundry.foundryRequest.mockResolvedValue(foundryReply({ matches: [], clarification: null }));
+    });
+
+    it('sends an asset that matches a word of a sentence, though the sentence matches nothing', async () => {
+      // Measured on the 125-asset demo catalogue: this query never reached the Zoom recorders before.
+      await fillPastCap();
+      const recorder = await assetRepo.create(ORG, {
+        name: 'Zoom H5 Recorder',
+        category: 'Audio',
+        description: 'Handheld recorder for interviews and lectures',
+      });
+
+      await searchAssets(ORG, 'something to record an interview');
+
+      expect(sentIds()).toContain(recorder.id);
+      expect(sentIds()).toHaveLength(100);
+    });
+
+    it('ranks an asset matching more of the words ahead of one matching fewer', async () => {
+      await fillPastCap();
+      const oneWord = await assetRepo.create(ORG, { name: 'Wacom Intuos Pro', category: 'Tablet' });
+      const twoWords = await assetRepo.create(ORG, {
+        name: 'Wacom Cintiq 16',
+        category: 'Tablet',
+        description: 'Pen display for drawing digital art',
+      });
+
+      await searchAssets(ORG, 'wacom for digital drawing');
+
+      const ids = sentIds();
+      expect(ids.indexOf(twoWords.id)).toBeLessThan(ids.indexOf(oneWord.id));
+      expect(ids.indexOf(oneWord.id)).toBeGreaterThanOrEqual(0);
+    });
+
+    it('falls back to the catalogue in name order when no word is worth matching', async () => {
+      await fillPastCap();
+
+      await searchAssets(ORG, 'something I need');
+
+      // Only stop words and short words: nothing to rank by, so the first 100 names, as before.
+      const names = (await assetRepo.list(ORG, { limit: 100 })).items.map((asset) => asset.id);
+      expect(sentIds()).toEqual(names);
+    });
+
+    it("never sends another organisation's asset or a retired one, whatever words they match", async () => {
+      const ours = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
+      const theirs = await assetRepo.create(OTHER_ORG, {
+        name: 'Tascam Recorder',
+        category: 'Audio',
+      });
+      const retired = await assetRepo.create(ORG, { name: 'Sony Recorder', category: 'Audio' });
+      await assetRepo.retire(ORG, retired.id);
+
+      await searchAssets(ORG, 'a recorder for lectures');
+
+      expect(sentIds()).toEqual([ours.id]);
+      expect(sentIds()).not.toContain(theirs.id);
+    });
+  });
+
   it('AC3b: drops any assetId the model returns that was not among the candidates sent', async () => {
     const recorder = await assetRepo.create(ORG, { name: 'Zoom H5 Recorder', category: 'Audio' });
     // A real asset, but another tenant's: it can only appear in the answer through injection or a
@@ -434,5 +511,35 @@ describe('SCRUM-202: restricted assets in search results', () => {
     });
     const [, body] = foundry.foundryRequest.mock.calls[0];
     expect(body.input).not.toMatch(/Certified Drone Pilots|allowedGroup|restricted/);
+  });
+});
+
+describe('SCRUM-243: queryWords', () => {
+  it('drops stop words and words under three letters', () => {
+    expect(queryWords('Something I need for my lab')).toEqual(['lab']);
+  });
+
+  it('trims common endings so a word finds its relatives', () => {
+    expect(queryWords('recording interviews with headphones')).toEqual([
+      'record',
+      'interview',
+      'headphon',
+    ]);
+  });
+
+  it('keeps short words whole rather than over-trimming them', () => {
+    // "art" and "photos" -> "photo": an ending comes off only when four letters remain.
+    expect(queryWords('art photos')).toEqual(['art', 'photo']);
+  });
+
+  it('splits on anything that is not a letter or digit, so no regex syntax survives', () => {
+    expect(queryWords('c++ (book) .* drone[s]')).toEqual(['book', 'drone']);
+  });
+
+  it('lists each word once, and at most eight', () => {
+    expect(queryWords('camera camera cameras')).toEqual(['camera']);
+    expect(
+      queryWords('alpha bravo charlie delta echo foxtrot golf hotel india juliet'),
+    ).toHaveLength(8);
   });
 });

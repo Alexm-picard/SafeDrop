@@ -1,7 +1,7 @@
 // AI-USAGE SUMMARY
 // Tools: Claude Code
 // Overall AI Contribution: ~90% (skeleton generated from team design documents)
-// AI-Assisted Areas: tenant-scoped Asset persistence (SDD §2.4); case-insensitive category lookup for alternatives (SCRUM-184)
+// AI-Assisted Areas: tenant-scoped Asset persistence (SDD §2.4); case-insensitive category lookup for alternatives (SCRUM-184); word-scored candidate search for AI search (SCRUM-243)
 // Human Contributions: reviewed by Amber Rastella (PR #7, 2026-09-18)
 // Notes: Generated from SDD v0.1, SPPP, NFR doc, Sprint 1 backlog. Header restored for SCRUM-216 (removed by mistake in 0ce2729).
 
@@ -142,6 +142,60 @@ export async function search(orgId, text, { limit = 50 } = {}) {
   })
     .sort({ name: 1 })
     .limit(limit);
+}
+
+/** The fields a word may match in, the same three `search()` looks at. */
+const WORD_FIELDS = ['name', 'description', 'category'];
+
+/**
+ * The tenant's assets that contain any of `words`, best first: by how many of the words each one
+ * contains, then by name (SCRUM-243).
+ *
+ * The candidate pick for AI search. `search()` matches the whole query as one phrase, which a sentence
+ * such as "something to record an interview" almost never does, so before this the model was sent the
+ * catalogue in name order and anything past the hundredth name never reached it. Matching single words
+ * ("record" in "Zoom H5 Recorder", "interview" in its description) puts the likely items first; the
+ * model still decides which actually fit.
+ *
+ * Scored in the database, so only the best `limit` come back however large the catalogue is. Each word
+ * is escaped, as in `search()`, so a word is always matched literally. Retired assets are left out
+ * (SCRUM-145). The results are hydrated into documents, so callers get the same shape as from `find`.
+ * @param {string} orgId
+ * @param {string[]} words already lower-cased and reduced by the caller; an empty list matches nothing
+ * @param {{ limit?: number }} [options]
+ * @returns {Promise<import('mongoose').Document[]>}
+ */
+export async function searchAnyWord(orgId, words, { limit = 50 } = {}) {
+  if (words.length === 0) {
+    return [];
+  }
+  const escaped = words.map(escapeRegExp);
+  const contains = (word) => ({
+    $or: WORD_FIELDS.map((field) => ({
+      $regexMatch: { input: { $ifNull: [`$${field}`, ''] }, regex: word, options: 'i' },
+    })),
+  });
+  const rows = await Asset.aggregate([
+    {
+      $match: {
+        // Aggregation does not cast like `find`, so the tenant id is converted here.
+        orgId: new mongoose.Types.ObjectId(String(orgId)),
+        retiredAt: null,
+        $or: escaped.flatMap((word) =>
+          WORD_FIELDS.map((field) => ({ [field]: new RegExp(word, 'i') })),
+        ),
+      },
+    },
+    {
+      $addFields: {
+        wordScore: { $add: escaped.map((word) => ({ $cond: [contains(word), 1, 0] })) },
+      },
+    },
+    { $sort: { wordScore: -1, name: 1 } },
+    { $limit: limit },
+    { $project: { wordScore: 0 } },
+  ]);
+  return rows.map((row) => Asset.hydrate(row));
 }
 
 /**
