@@ -13,16 +13,33 @@ CS673 Team 3 · Iteration 3 · SCRUM-227
 
 Claude Code is the only development tool named in any file header. Every one of the 274 headers that records a tool names it.
 
-### How much of the work was AI-assisted
+### Headline metrics
 
-We measure this two ways, and they answer different questions.
+| Metric                                                 | Value                                                                           |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| **AI contribution to code** (file headers)             | **about 92%** (mean over 274 files; median 90%, range 60–100%)                  |
+| **AI contribution to documents** (each document's log) | **about 55%** (mean of 11 logged entries in the SPPP, STD and SDD; range 5–85%) |
+| Commits with a `Co-Authored-By: Claude` trailer        | 74 of 194 (38%)                                                                 |
+| Pull requests merged after review by another member    | 79 of 82 (63 with a formal approval; none self-merged without one)              |
+| Automated tests guarding AI-written code               | about 1,190 backend and 450 frontend, with an 80% line-coverage floor           |
 
-| Measure                                             | Value                                                     | What it counts                                                                                                                 |
-| --------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| AI contribution recorded in file headers            | **mean 92%** (median 90%, range 60–100%) across 274 files | The share of each file's content first produced by the AI, as recorded by the author and confirmed by the reviewer (SCRUM-216) |
-| Commits carrying a `Co-Authored-By: Claude` trailer | **74 of 194** (38%)                                       | Only commits where the trailer was kept. It was not used consistently, so this understates AI involvement                      |
+### Code
 
-By area, the header figures are close together: backend source 91%, backend tests 92%, frontend source 93%, frontend tests 93%, CI workflows 90%. The honest summary is that **most code, tests and documentation were first drafted by AI, and the team's work was specifying, reviewing, testing and deciding.** The commit figure is the lower bound of how often the AI was involved in a change.
+The code figure comes from the AI-usage header every source file carries. Each header records the share of the file first produced by the AI, entered by the author and confirmed by the reviewer (SCRUM-216). By area the figures are close together: backend source 91%, backend tests 92%, frontend source 93%, frontend tests 93%, CI workflows 90%.
+
+The commit figure measures something different: only commits that kept a `Co-Authored-By: Claude` trailer. The trailer was not used consistently, so 38% is a lower bound on how often the AI was involved in a change, not a competing estimate.
+
+### Documents
+
+Each of our documents keeps its own AI usage log, one row per AI-assisted revision:
+
+| Document | Logged entries | AI contribution per entry                                                                             |
+| -------- | -------------- | ----------------------------------------------------------------------------------------------------- |
+| SPPP     | 4              | 5% and 5% (option comparisons), 50% (non-functional requirements), 60% (Iteration 1 reconciliation)   |
+| STD      | 3              | 75% (automated test report), 20% (QA metrics, measured by the QA Lead), 85% (Iteration 2 additions)   |
+| SDD      | 4              | 80% (initial draft), 70% (verification pass), 70% (Iteration 2 updates), 85% (Iteration 3 AI section) |
+
+Documents are more mixed than code: the AI drafted most of the SDD and the test reports, while the plan (SPPP) was largely written by hand. Taken together, **most code and tests were first drafted by AI, about half of the documentation was, and the team's work was specifying, reviewing, testing and deciding.**
 
 ### What it was used for
 
@@ -44,51 +61,41 @@ By area, the header figures are close together: backend source 91%, backend test
 
 ### What worked
 
-**Test-first with an AI writing both halves.** Asking for the failing test before the code kept the AI honest about what a change was for. A test written after the fact tends to restate what the code does. A test written first, and seen failing, states what was asked. Where we did this (most of the backend, the AI search features), defects found later were mostly in behaviour the tests could not see, not in the code they covered.
-
-**Decision records with evidence.** OD-9 and OD-10 put a question, the options, a measurement and a decision in one place. OD-10 is the clearest case. Instead of building vector search because the plan said so, we measured the live model first. It already matched by meaning within its 100-item candidate set, so we deferred the work, with a stated trigger for when to revisit it.
-
-**Keeping security rules out of the AI's discretion.** The agent is never given database access. Candidates are chosen by tenant-scoped queries, and any asset id the model returns that was not offered is dropped. Those choices meant a model mistake could produce a wrong answer, but not a data leak.
+**Test-first with an AI writing both halves.** Asking for the failing test before the code kept each change tied to what was asked; a test written afterwards tends to restate what the code does. The defects we found later were mostly in behaviour the tests could not see. **Decision records with evidence** (OD-9, OD-10) put each question, its options and a measurement in one place: OD-10 deferred vector search after measuring that the model already matched by meaning. **Security rules stayed out of the AI's discretion.** The agent never gets database access, and any asset id it returns that was not offered is dropped, so a model mistake can produce a wrong answer but not a data leak.
 
 ### What did not
 
-**Mocked tests gave false confidence about AI behaviour.** Every test of the search pipeline mocks Foundry, which is right for speed and repeatability. But it meant the suite could not see whether the _model's_ answers made sense, and two real defects passed every test. We only found them by using the feature with a live model and realistic data (below).
-
-**Bookkeeping lagged behind the work.** At the end of Iteration 2, 84 of 217 headers still said "pending team review", which was the largest single deduction in our AI Usage score. Headers had also been removed by mistake from 11 files and had to be restored (SCRUM-216).
-
-**Large AI-written changes are hard to review well.** Not every PR got a formal approval (63 of 82), and the ones that did were sometimes approved within minutes. Twice, a PR was merged before its author had finished pushing to it (#78, #81), and the later commits never reached `main` until follow-up PRs were opened.
+**Mocked tests gave false confidence about AI behaviour.** The search tests mock Foundry, so the suite could not see whether the model's answers made sense, and two real defects passed every test. **Bookkeeping lagged behind the work:** at the end of Iteration 2, 84 of 217 headers still said "pending team review", our largest AI Usage deduction, and 11 headers had been removed by mistake. **Large AI-written changes are hard to review:** 63 of 82 PRs got a formal approval, and twice a PR was merged before its author had finished pushing to it (#78, #81).
 
 ### Where the AI was wrong, and how we caught it
 
-| What the AI produced                                                                                                                | How it was caught                                                      | Fix                                                                                |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Similar items recommended a camera and a projector for a laptop "because both names contain B". All tests passed.                   | Using the feature against the live model                               | SCRUM-184: same-category candidates first, and a same-category fallback            |
-| AI search sent the model the first 100 items _alphabetically_, so "draw digital art" never saw the Wacom tablets. All tests passed. | Testing with a realistic 125-item catalogue                            | SCRUM-243: candidates ranked by matching words                                     |
-| After a local test of six concurrent searches succeeded, the AI concluded the staging failures were "not a rate limit".             | The staging logs: every failure was a 429 rate limit                   | SCRUM-244: retry as Foundry asks; we raised the token limit                        |
-| An estimate of "about 20,000 tokens per search"                                                                                     | Measuring a real request (about 9,300)                                 | Corrected in code and docs                                                         |
-| OD-10 named a telemetry figure as its trigger that no screen actually showed                                                        | The AI's own review while building the UI that would show it           | Added to the API and the AI search page                                            |
-| A first design put AI monitoring as a card on the admin Overview                                                                    | Human visual review: it read as "random and static" on a page of tasks | Moved to its own page, with an Overview notice only when something needs attention |
-| An earlier instruction to remove AI-usage headers stayed in the AI's saved memory after the team made headers a deliverable         | Amber noticed the conflict                                             | Instruction reversed and the memory corrected                                      |
+| What the AI produced                                                                                                              | How it was caught                                           | Fix                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Similar items recommended a camera and a projector for a laptop "because both names contain B". All tests passed.                 | Using the feature against the live model                    | SCRUM-184: same-category candidates first, and a same-category fallback |
+| AI search sent the model the first 100 items alphabetically, so "draw digital art" never saw the Wacom tablets. All tests passed. | Testing with a realistic 125-item catalogue                 | SCRUM-243: candidates ranked by matching words                          |
+| After a local test passed, the AI concluded the staging failures were "not a rate limit".                                         | The staging logs: every failure was a 429                   | SCRUM-244: retry as Foundry asks; token limit raised                    |
+| A first design put AI monitoring as a card on the admin Overview                                                                  | Human visual review: "random and static" on a page of tasks | Its own page, with an Overview notice only when needed                  |
+| An instruction to remove AI-usage headers stayed in the AI's saved memory after headers became a deliverable                      | Amber noticed the conflict                                  | Instruction reversed and the memory corrected                           |
 
-The pattern is consistent: **the AI was most often wrong where the truth lived outside the code**, in a model's actual behaviour, in production logs, or in how a screen felt to use. Unit tests did not catch any of these; running the system did.
+The AI was most often wrong where the truth lived outside the code: in a model's actual behaviour, in production logs, or in how a screen felt to use. Running the system caught these; unit tests did not.
 
 ### What we would do differently
 
-- **Make "run it live with realistic data" part of done for anything involving the model**, and seed a realistic catalogue from the first iteration, not the last.
-- **Measure before estimating.** Token counts, latency and rate limits took one request each to measure, and each estimate we made without measuring turned out wrong.
-- **Keep PRs small and finished before announcing them**, and verify after a merge that every commit reached `main`.
-- **Agree the AI-usage header format, and who completes it, on day one**, so it is written at review time, not reconstructed at the end.
+- Make "run it live with realistic data" part of done for anything involving the model, and seed a realistic catalogue from the first iteration.
+- Measure model cost, latency and limits before estimating them.
+- Keep PRs small and finished before announcing them.
+- Agree the AI-usage header format, and who completes it, on day one.
 
 ### Individual reflections
 
-**Amber Rastella (Security Lead).** I used Claude Code as a pair programmer that drafts quickly and needs checking against reality. The most useful habit was refusing to call an AI feature done until I had used it with the live model and real-sized data. That is how we found the similar-items and alphabetical-cutoff bugs that every test had passed. The most useful correction ran the other way: the AI's first design for AI monitoring was technically complete but felt wrong on the page, and moving it to its own screen was a human judgement it would not have made by itself. Next time I would measure model cost and limits before the demo week, not during it.
+**Amber Rastella (Security Lead).** I used Claude Code as a pair programmer that drafts quickly and needs checking against reality. My most useful habit was not calling an AI feature done until I had used it with the live model and real-sized data, which is how we found two search bugs that every test had passed. The most useful correction ran the other way: the AI's first monitoring design was complete but felt wrong on the page, and moving it was a human judgement. Next time I would measure model limits before demo week.
 
-\*\*Alexa Stein (Team Lead).Across my contributions — the member lifecycle backend and frontend (invites, roles, deactivation), the Users/Members admin pages, and most recently User Groups and restricted-equipment access control — I used Claude Code as a pair programmer: drafting the layered backend code (routes/services/repositories/models), writing the accompanying tests, and handling mechanical scaffolding like migrations and audit logging. It did well keeping multi-tenant isolation and transactional consistency correct across all of these features without me having to re-explain the pattern each time — once I set the convention (orgId-scoped queries, audit events written inside the same transaction as the state change), it applied it consistently on new work. It got things wrong in smaller ways repeatedly rather than one big failure: generated code occasionally missed our Prettier formatting or introduced response shapes inconsistent with sibling error patterns, so I had to catch those in review rather than trust first output. If I could change one thing, I'd build in a habit of running the full lint/format/test suite as part of what AI considers "done," rather than treating that verification as a separate step I have to prompt for every time.
+**Alexa Stein (Team Lead).** Across my contributions — the member lifecycle backend and frontend (invites, roles, deactivation), the Users/Members admin pages, and most recently User Groups and restricted-equipment access control — I used Claude Code as a pair programmer: drafting the layered backend code (routes/services/repositories/models), writing the accompanying tests, and handling mechanical scaffolding like migrations and audit logging. It did well keeping multi-tenant isolation and transactional consistency correct across all of these features without me having to re-explain the pattern each time — once I set the convention (orgId-scoped queries, audit events written inside the same transaction as the state change), it applied it consistently on new work. It got things wrong in smaller ways repeatedly rather than one big failure: generated code occasionally missed our Prettier formatting or introduced response shapes inconsistent with sibling error patterns, so I had to catch those in review rather than trust first output. If I could change one thing, I'd build in a habit of running the full lint/format/test suite as part of what AI considers "done," rather than treating that verification as a separate step I have to prompt for every time.
 
 **Alex Picard (Configuration Lead).** _To be written by Alex._
 
 **Mateus Silva (Requirements Lead).** I used Claude Code for pair programming by letting the AI draft the code, and then I proofread it before accepting it. What it did well was in the TDD process, as writing the unit tests to initially fail and then implementing them afterwards helped me to better understand the importance of each test in the context of the feature, and what error code to expect. One issue that I needed to address was when the AI reverted some changes to some code in the backend, but forgot to re-run the backend test suite before moving on to the frontend portion, and missed some tests in the suite that ended up failing. Next time, I would manually run the test suites myself after every change instead of relying on the AI to run it, and I would cut down on the lines of comments the AI makes.
 
-## **Orelmis Toribio (QA Lead).** I used Claude to draft most of my code, which I then reviewed and tested manually before committing. Beyond code generation, it was especially useful for quickly producing documentation using the context of our project documents and repository history. In my professional experience, documentation on a growing software project is often an afterthought because it's so time-consuming to write by hand, and AI largely removes that barrier to keeping documentation comprehensive and up to date. One thing I would do differently is rely less on the AI for design decisions, particularly around the UI workflow. I think people still have a better sense of what feels natural and intuitive to use. For example, the AI built the interface around Requests, so users track their equipment through the requests they've made. I think it would have been more intuitive to center the interface on Asset-Units instead, with a dedicated "My Equipment" section showing what each user currently has checked out. And just in general, a greater emphasis on object possession rather than request life cycles.
+**Orelmis Toribio (QA Lead).** I used Claude to draft most of my code, which I then reviewed and tested manually before committing. Beyond code generation, it was especially useful for quickly producing documentation using the context of our project documents and repository history. In my professional experience, documentation on a growing software project is often an afterthought because it's so time-consuming to write by hand, and AI largely removes that barrier to keeping documentation comprehensive and up to date. One thing I would do differently is rely less on the AI for design decisions, particularly around the UI workflow. I think people still have a better sense of what feels natural and intuitive to use. For example, the AI built the interface around Requests, so users track their equipment through the requests they've made. I think it would have been more intuitive to center the interface on Asset-Units instead, with a dedicated "My Equipment" section showing what each user currently has checked out. And just in general, a greater emphasis on object possession rather than request life cycles.
 
-_Sources: AI-usage headers in `code/` and `.github/` (274 files); `git log` (194 non-merge commits); GitHub pull requests #1–#82; Jira SCRUM-184, SCRUM-216, SCRUM-242, SCRUM-243, SCRUM-244; decision records `code/docs/od-9-search-telemetry.md` and `code/docs/od-10-ai-candidate-retrieval.md`. Figures as of 2026-10-11._
+_Sources: AI-usage headers in `code/` and `.github/` (274 files); the AI usage logs in the SPPP, STD (Iteration 2) and SDD (Iteration 3); `git log` (194 non-merge commits); GitHub pull requests #1–#82; Jira SCRUM-184, SCRUM-216, SCRUM-242, SCRUM-243, SCRUM-244; decision records `code/docs/od-9-search-telemetry.md` and `code/docs/od-10-ai-candidate-retrieval.md`. Figures as of 2026-10-11._
