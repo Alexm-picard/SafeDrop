@@ -87,7 +87,7 @@ The pattern is consistent: **the AI was most often wrong where the truth lived o
 
 **Alex Picard (Configuration Lead).** _To be written by Alex._
 
-**Mateus Silva (Requirements Lead).** _To be written by Mateus._
+**Mateus Silva (Requirements Lead).** I used Claude Code for pair programming by letting the AI draft the code, and then I proofread it before accepting it. What it did well was in the TDD process, as writing the unit tests to initially fail and then implementing them afterwards helped me to better understand the importance of each test in the context of the feature, and what error code to expect. One issue that I needed to address was when the AI reverted some changes to some code in the backend, but forgot to re-run the backend test suite before moving on to the frontend portion, and missed some tests in the suite that ended up failing. Next time, I would manually run the test suites myself after every change instead of relying on the AI to run it, and I would cut down on the lines of comments the AI makes.
 
 **Orelmis Toribio (QA Lead).** _To be written by Orelmis._
 
